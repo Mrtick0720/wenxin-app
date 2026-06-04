@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import DatePicker from '../components/DatePicker'
+import PullToRefresh from '../components/PullToRefresh'
 
 type Order = {
   id: number
@@ -31,7 +32,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [filterType, setFilterType] = useState('全部')
   const [fetching, setFetching] = useState(false)
 
-  async function loadOrders(date: string) {
+  const loadOrders = useCallback(async (date: string) => {
     setFetching(true)
     const { data } = await supabase
       .from('bento_orders')
@@ -40,12 +41,16 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       .order('id', { ascending: true })
     setOrders(data || [])
     setFetching(false)
-  }
+  }, [])
 
   async function handleDateChange(date: string) {
     setSelectedDate(date)
     await loadOrders(date)
   }
+
+  const handleRefresh = useCallback(async () => {
+    await loadOrders(selectedDate)
+  }, [selectedDate, loadOrders])
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
@@ -77,6 +82,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const isToday = selectedDate === today
 
   return (
+    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-4">
       {/* 今日概况 */}
       <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -198,5 +204,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         ))}
       </div>
     </div>
+    </PullToRefresh>
   )
 }
