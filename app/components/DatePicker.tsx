@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface DatePickerProps {
   selectedDate: string
@@ -24,9 +24,18 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
   const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
   const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-
   const daysInMonth = getDaysInMonth(viewYear, viewMonth)
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth)
+
+  // 锁定页面滚动
+  useEffect(() => {
+    if (showCalendar) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [showCalendar])
 
   function formatDisplay(dateStr: string) {
     const d = new Date(dateStr + 'T00:00:00')
@@ -80,62 +89,78 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       </div>
 
       {showCalendar && (
-        <>
-          {/* 背景遮罩 */}
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '24px',
+          }}
+          onClick={() => setShowCalendar(false)}
+        >
+          {/* 日历卡片 */}
           <div
-            className="fixed inset-0 z-40"
-            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
-            onClick={() => setShowCalendar(false)}
-          />
-
-          {/* 日历卡片 — 居中浮动 */}
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center px-6"
-            style={{ pointerEvents: 'none' }}
-          >
-          <div
-            className="bg-white rounded-3xl shadow-2xl p-5 w-full"
             style={{
-              maxWidth: '360px',
+              backgroundColor: 'white',
+              borderRadius: '24px',
+              padding: '20px',
+              width: '100%',
+              maxWidth: '340px',
               animation: 'slideInRight 0.25s ease-out forwards',
-              pointerEvents: 'auto',
             }}
+            onClick={e => e.stopPropagation()}
           >
             {/* 月份导航 */}
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
-              <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
-              <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">›</button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+              <button onClick={prevMonth} style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 18, cursor: 'pointer' }}>‹</button>
+              <span style={{ fontWeight: 600, color: '#111' }}>{viewYear}年 {months[viewMonth]}</span>
+              <button onClick={nextMonth} style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 18, cursor: 'pointer' }}>›</button>
             </div>
 
-            {/* 星期标题 */}
-            <div className="grid grid-cols-7 mb-2">
+            {/* 星期 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '8px' }}>
               {weekdays.map(d => (
-                <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+                <div key={d} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', padding: '4px 0' }}>{d}</div>
               ))}
             </div>
 
-            {/* 日期格子 */}
-            <div className="grid grid-cols-7 gap-y-1">
-              {Array.from({ length: firstDay }).map((_, i) => (
-                <div key={`empty-${i}`} />
-              ))}
+            {/* 日期 */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px 0' }}>
+              {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
               {Array.from({ length: daysInMonth }).map((_, i) => {
                 const day = i + 1
-                const month = String(viewMonth + 1).padStart(2, '0')
-                const dayStr = String(day).padStart(2, '0')
-                const dateStr = `${viewYear}-${month}-${dayStr}`
+                const m = String(viewMonth + 1).padStart(2, '0')
+                const d = String(day).padStart(2, '0')
+                const dateStr = `${viewYear}-${m}-${d}`
                 const isSelected = dateStr === selectedDate
                 const isToday = dateStr === todayStr
                 return (
                   <button
                     key={day}
                     onClick={() => handleDayClick(day)}
-                    className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-9
-                      ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
-                      ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
-                      ${!isSelected && !isToday ? 'text-gray-700' : ''}
-                    `}
+                    style={{
+                      aspectRatio: '1',
+                      borderRadius: '50%',
+                      border: isToday && !isSelected ? '1px solid #f97316' : 'none',
+                      background: isSelected ? '#f97316' : 'transparent',
+                      color: isSelected ? 'white' : isToday ? '#f97316' : '#374151',
+                      fontWeight: isSelected || isToday ? 600 : 400,
+                      fontSize: 14,
+                      cursor: 'pointer',
+                      width: 36,
+                      height: 36,
+                      margin: '0 auto',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                   >
                     {day}
                   </button>
@@ -144,17 +169,22 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
             </div>
 
             {/* Today + 取消 */}
-            <div className="mt-4 flex gap-3">
-              <button onClick={goToday} className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm">
+            <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+              <button
+                onClick={goToday}
+                style={{ flex: 1, padding: '12px', background: '#f97316', color: 'white', border: 'none', borderRadius: 16, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}
+              >
                 Today
               </button>
-              <button onClick={() => setShowCalendar(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm">
+              <button
+                onClick={() => setShowCalendar(false)}
+                style={{ flex: 1, padding: '12px', background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 16, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}
+              >
                 取消
               </button>
             </div>
           </div>
-          </div>
-        </>
+        </div>
       )}
     </>
   )
