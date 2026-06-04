@@ -12,15 +12,27 @@ async function getStats() {
   return data
 }
 
+async function getBentoStats() {
+  const today = new Date().toISOString().split('T')[0]
+  const { data } = await supabase
+    .from('bento_orders')
+    .select('*')
+    .eq('date', today)
+  const orders = data || []
+  const total = orders.length
+  const completed = orders.filter((o: any) => o.status === 'completed').length
+  return { total, completed }
+}
+
 export default async function Home() {
-  const stats = await getStats()
+  const [stats, bentoStats] = await Promise.all([getStats(), getBentoStats()])
 
   const revenueTotal = stats?.revenue_total ?? 0
   const revenueDineIn = stats?.revenue_dine_in ?? 0
-  const bentoOrders = stats?.bento_orders ?? 0
-  const bentoCompleted = stats?.bento_completed ?? 0
   const anomalyCount = stats?.anomaly_count ?? 0
   const pendingCount = stats?.pending_count ?? 0
+  const bentoOrders = bentoStats.total
+  const bentoCompleted = bentoStats.completed
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
 
   return (
