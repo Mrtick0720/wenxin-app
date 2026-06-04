@@ -24,12 +24,21 @@ async function getBentoStats() {
   return { total, completed }
 }
 
+async function getAnomalyCount() {
+  const today = new Date().toISOString().split('T')[0]
+  const { data } = await supabase
+    .from('incidents')
+    .select('id')
+    .eq('date', today)
+    .neq('status', 'resolved')
+  return data?.length ?? 0
+}
+
 export default async function Home() {
-  const [stats, bentoStats] = await Promise.all([getStats(), getBentoStats()])
+  const [stats, bentoStats, anomalyCount] = await Promise.all([getStats(), getBentoStats(), getAnomalyCount()])
 
   const revenueTotal = stats?.revenue_total ?? 0
   const revenueDineIn = stats?.revenue_dine_in ?? 0
-  const anomalyCount = stats?.anomaly_count ?? 0
   const pendingCount = stats?.pending_count ?? 0
   const bentoOrders = bentoStats.total
   const bentoCompleted = bentoStats.completed
@@ -74,11 +83,11 @@ export default async function Home() {
 
         {/* 今日状态三卡 */}
         <div className="grid grid-cols-3 gap-2">
-          <div className="bg-red-50 rounded-2xl p-3 text-center">
+          <Link href="/incidents" className="bg-red-50 rounded-2xl p-3 text-center block">
             <div className="text-sm text-gray-500 mb-1">异常</div>
             <div className="text-2xl font-bold text-red-500">{anomalyCount}</div>
             <div className="text-xs text-gray-400">项</div>
-          </div>
+          </Link>
           <div className="bg-orange-50 rounded-2xl p-3 text-center">
             <div className="text-sm text-gray-500 mb-1">待处理</div>
             <div className="text-2xl font-bold text-orange-500">{pendingCount}</div>
