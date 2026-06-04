@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
+import AnimateLayout from "./components/AnimateLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,7 +20,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh" className={`${geistSans.variable}`} style={{ colorScheme: 'light' }}>
-      <body className="min-h-full bg-gray-50" style={{ colorScheme: 'light' }}>{children}</body>
+      <body className="min-h-full bg-gray-50" style={{ colorScheme: 'light' }}>
+        <AnimateLayout>{children}</AnimateLayout>
+      </body>
     </html>
   );
 }
