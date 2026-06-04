@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import Greeting from './components/Greeting'
+import Link from 'next/link'
 
 async function getStats() {
   const { data } = await supabase
@@ -84,12 +85,12 @@ export default async function Home() {
             <div className="text-lg font-bold">RM {revenueDineIn.toLocaleString()}</div>
             <div className="text-xs text-gray-400 mt-1">→</div>
           </div>
-          <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold mb-1">Bento</div>
             <div className="text-xs text-green-500 mb-2">进行中</div>
             <div className="text-lg font-bold">{bentoOrders} 单</div>
             <div className="text-xs text-orange-500 mt-1">完成 {bentoPercent}% →</div>
-          </div>
+          </Link>
         </div>
 
         {/* 当日事项 */}
