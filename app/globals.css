@@ -18,3 +18,21 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideOutRight {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.page-slide-in {
+  animation: slideInRight 0.25s ease-out forwards;
+}
+
+.page-slide-out {
+  animation: slideOutRight 0.25s ease-in forwards;
+}
