@@ -79,17 +79,23 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         </button>
       </div>
 
-      {/* 日历面板 — 从右边滑入，覆盖整个页面 */}
       {showCalendar && (
-        <div
-          className="fixed inset-0 z-50 bg-gray-100 overflow-hidden"
-          style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
-        >
-          {/* 日历内容 — 垂直居中，禁止滚动 */}
-          <div className="absolute inset-0 flex flex-col items-center px-4" style={{ touchAction: 'none', paddingTop: '15vh' }}>
-            <div className="bg-white rounded-3xl p-5 shadow-lg w-full">
+        <>
+          {/* 背景遮罩 — 点击关闭 */}
+          <div
+            className="fixed inset-0 z-40"
+            style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}
+            onClick={() => setShowCalendar(false)}
+          />
+
+          {/* 日历面板 — 从右边滑入 */}
+          <div
+            className="fixed top-0 right-0 bottom-0 z-50 w-4/5 bg-white shadow-2xl flex flex-col"
+            style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
+          >
+            <div className="flex-1 flex flex-col justify-center px-5">
               {/* 月份导航 */}
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-6">
                 <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
                 <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
                 <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">›</button>
@@ -103,7 +109,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
               </div>
 
               {/* 日期格子 */}
-              <div className="grid grid-cols-7 gap-y-1">
+              <div className="grid grid-cols-7 gap-y-2">
                 {Array.from({ length: firstDay }).map((_, i) => (
                   <div key={`empty-${i}`} />
                 ))}
@@ -118,7 +124,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                     <button
                       key={day}
                       onClick={() => handleDayClick(day)}
-                      className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-9
+                      className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-8
                         ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
                         ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
                         ${!isSelected && !isToday ? 'text-gray-700' : ''}
@@ -129,25 +135,25 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                   )
                 })}
               </div>
+            </div>
 
-              {/* Today + 取消按钮 */}
-              <div className="mt-5 flex gap-3">
-                <button
-                  onClick={goToday}
-                  className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm"
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setShowCalendar(false)}
-                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm"
-                >
-                  取消
-                </button>
-              </div>
+            {/* Today + 取消按钮 */}
+            <div className="px-5 pb-8 flex gap-3">
+              <button
+                onClick={goToday}
+                className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm"
+              >
+                Today
+              </button>
+              <button
+                onClick={() => setShowCalendar(false)}
+                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm"
+              >
+                取消
+              </button>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   )
