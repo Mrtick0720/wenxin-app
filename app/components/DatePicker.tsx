@@ -81,74 +81,73 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
       {showCalendar && (
         <>
-          {/* 背景遮罩 — 点击关闭 */}
+          {/* 背景遮罩 */}
           <div
             className="fixed inset-0 z-40"
-            style={{ backgroundColor: 'rgba(0,0,0,0.3)' }}
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
             onClick={() => setShowCalendar(false)}
           />
 
-          {/* 日历面板 — 从右边滑入 */}
+          {/* 日历卡片 — 居中浮动 */}
           <div
-            className="fixed top-0 right-0 bottom-0 z-50 w-4/5 bg-white shadow-2xl flex flex-col"
-            style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
+            className="fixed z-50 bg-white rounded-3xl shadow-2xl p-5"
+            style={{
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: 'calc(100% - 48px)',
+              maxWidth: '360px',
+              animation: 'slideInRight 0.25s ease-out forwards',
+            }}
           >
-            <div className="flex-1 flex flex-col justify-center px-5">
-              {/* 月份导航 */}
-              <div className="flex items-center justify-between mb-6">
-                <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
-                <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
-                <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">›</button>
-              </div>
-
-              {/* 星期标题 */}
-              <div className="grid grid-cols-7 mb-2">
-                {weekdays.map(d => (
-                  <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
-                ))}
-              </div>
-
-              {/* 日期格子 */}
-              <div className="grid grid-cols-7 gap-y-2">
-                {Array.from({ length: firstDay }).map((_, i) => (
-                  <div key={`empty-${i}`} />
-                ))}
-                {Array.from({ length: daysInMonth }).map((_, i) => {
-                  const day = i + 1
-                  const month = String(viewMonth + 1).padStart(2, '0')
-                  const dayStr = String(day).padStart(2, '0')
-                  const dateStr = `${viewYear}-${month}-${dayStr}`
-                  const isSelected = dateStr === selectedDate
-                  const isToday = dateStr === todayStr
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => handleDayClick(day)}
-                      className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-8
-                        ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
-                        ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
-                        ${!isSelected && !isToday ? 'text-gray-700' : ''}
-                      `}
-                    >
-                      {day}
-                    </button>
-                  )
-                })}
-              </div>
+            {/* 月份导航 */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
+              <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
+              <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">›</button>
             </div>
 
-            {/* Today + 取消按钮 */}
-            <div className="px-5 pb-8 flex gap-3">
-              <button
-                onClick={goToday}
-                className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm"
-              >
+            {/* 星期标题 */}
+            <div className="grid grid-cols-7 mb-2">
+              {weekdays.map(d => (
+                <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+              ))}
+            </div>
+
+            {/* 日期格子 */}
+            <div className="grid grid-cols-7 gap-y-1">
+              {Array.from({ length: firstDay }).map((_, i) => (
+                <div key={`empty-${i}`} />
+              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1
+                const month = String(viewMonth + 1).padStart(2, '0')
+                const dayStr = String(day).padStart(2, '0')
+                const dateStr = `${viewYear}-${month}-${dayStr}`
+                const isSelected = dateStr === selectedDate
+                const isToday = dateStr === todayStr
+                return (
+                  <button
+                    key={day}
+                    onClick={() => handleDayClick(day)}
+                    className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-9
+                      ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
+                      ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
+                      ${!isSelected && !isToday ? 'text-gray-700' : ''}
+                    `}
+                  >
+                    {day}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Today + 取消 */}
+            <div className="mt-4 flex gap-3">
+              <button onClick={goToday} className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm">
                 Today
               </button>
-              <button
-                onClick={() => setShowCalendar(false)}
-                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm"
-              >
+              <button onClick={() => setShowCalendar(false)} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm">
                 取消
               </button>
             </div>
