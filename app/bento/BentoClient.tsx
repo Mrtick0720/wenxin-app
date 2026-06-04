@@ -71,10 +71,41 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     return areaMatch && typeMatch
   })
 
+  const total = orders.length
+  const completed = orders.filter(o => o.status === 'completed').length
+  const pending = orders.filter(o => o.status === 'pending').length
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+
   const isToday = selectedDate === today
 
   return (
     <div className="space-y-4">
+      {/* 今日概况 */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm">
+        <div className="text-sm text-gray-500 mb-3">今日概况</div>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-gray-900">{total}</div>
+            <div className="text-xs text-gray-400 mt-0.5">总订单</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-green-500">{completed}</div>
+            <div className="text-xs text-gray-400 mt-0.5">已完成</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-500">{pending}</div>
+            <div className="text-xs text-gray-400 mt-0.5">待处理</div>
+          </div>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-2">
+          <div
+            className="bg-green-500 h-2 rounded-full transition-all"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
+        <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
+      </div>
+
       {/* 日期选择 */}
       <div className="flex items-center justify-between">
         <div className="text-sm font-semibold text-gray-700">
