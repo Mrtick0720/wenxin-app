@@ -86,7 +86,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
         >
           {/* 日历内容 — 垂直居中，禁止滚动 */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center px-4" style={{ touchAction: 'none' }}>
+          <div className="absolute inset-0 flex flex-col items-center px-4" style={{ touchAction: 'none', paddingTop: '15vh' }}>
             <div className="bg-white rounded-3xl p-5 shadow-lg w-full">
               {/* 月份导航 */}
               <div className="flex items-center justify-between mb-4">
