@@ -82,18 +82,12 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       {/* 日历面板 — 从右边滑入，覆盖整个页面 */}
       {showCalendar && (
         <div
-          className="fixed inset-0 z-50"
+          className="fixed inset-0 z-50 bg-gray-100 overflow-hidden"
           style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
         >
-          {/* 背景灰化 */}
-          <div
-            className="absolute inset-0 bg-gray-100"
-            onClick={() => setShowCalendar(false)}
-          />
-
-          {/* 日历内容 */}
-          <div className="absolute inset-0 flex flex-col justify-center px-4">
-            <div className="bg-white rounded-3xl p-5 shadow-lg">
+          {/* 日历内容 — 垂直居中，禁止滚动 */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-4" style={{ touchAction: 'none' }}>
+            <div className="bg-white rounded-3xl p-5 shadow-lg w-full">
               {/* 月份导航 */}
               <div className="flex items-center justify-between mb-4">
                 <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
