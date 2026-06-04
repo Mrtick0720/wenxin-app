@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import PageTransition from '../components/PageTransition'
 
 const tables = [
   { id: 1, number: 'T01', status: 'occupied', pax: 4, opened_at: '11:30', amount: 88.50 },
@@ -24,6 +25,7 @@ export default function DineInPage() {
   const totalRevenue = tables.reduce((sum, t) => sum + t.amount, 0)
 
   return (
+    <PageTransition>
     <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
@@ -91,5 +93,6 @@ export default function DineInPage() {
         </div>
       </div>
     </main>
+    </PageTransition>
   )
 }

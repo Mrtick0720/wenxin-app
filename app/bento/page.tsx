@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import BentoClient from './BentoClient'
+import PageTransition from '../components/PageTransition'
 
 async function getBentoOrders() {
   const today = new Date().toISOString().split('T')[0]
@@ -20,6 +21,7 @@ export default async function BentoPage() {
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
 
   return (
+    <PageTransition>
     <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
@@ -63,5 +65,6 @@ export default async function BentoPage() {
         <BentoClient initialOrders={orders} />
       </div>
     </main>
+    </PageTransition>
   )
 }

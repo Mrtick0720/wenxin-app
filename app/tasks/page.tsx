@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import PageTransition from '../components/PageTransition'
 
 async function getTasks() {
   const today = new Date().toISOString().split('T')[0]
@@ -38,6 +39,7 @@ export default async function TasksPage() {
   const done = tasks.filter(t => t.status === 'done').length
 
   return (
+    <PageTransition>
     <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
@@ -93,5 +95,6 @@ export default async function TasksPage() {
         </div>
       </div>
     </main>
+    </PageTransition>
   )
 }
