@@ -110,12 +110,12 @@ export default async function Home() {
 
         {/* 堂食 + Bento */}
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold mb-1">堂食</div>
             <div className="text-xs text-green-500 mb-2">正常营业</div>
             <div className="text-lg font-bold">RM {revenueDineIn.toLocaleString()}</div>
             <div className="text-xs text-gray-400 mt-1">→</div>
-          </div>
+          </Link>
           <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold mb-1">Bento</div>
             <div className="text-xs text-green-500 mb-2">进行中</div>
