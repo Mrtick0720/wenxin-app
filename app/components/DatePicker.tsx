@@ -81,8 +81,8 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
       {/* 全屏日历弹出 */}
       {showCalendar && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-5">
+        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center px-4">
+          <div className="bg-white w-full rounded-3xl p-5">
             {/* 月份导航 */}
             <div className="flex items-center justify-between mb-4">
               <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-600">‹</button>
