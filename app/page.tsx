@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import Greeting from './components/Greeting'
 
 async function getStats() {
   const { data } = await supabase
@@ -43,12 +44,7 @@ export default async function Home() {
 
       <div className="px-4 py-4 pb-28 space-y-4">
         {/* 问候 */}
-        <div>
-          <h1 className="text-xl font-semibold">早上好，Bruce 👋</h1>
-          <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
-            5月20日 周一 · <span className="text-green-500 font-medium">● 营业中</span>
-          </p>
-        </div>
+        <Greeting />
 
         {/* 今日营业额 */}
         <div className="py-2">
