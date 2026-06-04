@@ -12,7 +12,7 @@ export default function PullToRefresh({ children, onRefresh }: PullToRefreshProp
   const [refreshing, setRefreshing] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
   const startY = useRef(0)
-  const threshold = 70
+  const threshold = 50
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (window.scrollY === 0) {

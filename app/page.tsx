@@ -61,12 +61,19 @@ export default async function Home() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
-          <span className="text-xl">☰</span>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.8" strokeLinecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
           <span className="font-semibold text-base">文心管理系统</span>
         </div>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <span className="text-xl">🔔</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 01-3.46 0"/>
+            </svg>
             <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">8</span>
           </div>
           <div className="flex items-center gap-1">
