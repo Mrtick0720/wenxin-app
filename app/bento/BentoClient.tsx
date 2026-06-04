@@ -3,7 +3,6 @@
 import { useState, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import DatePicker from '../components/DatePicker'
-import PullToRefresh from '../components/PullToRefresh'
 
 type Order = {
   id: number
@@ -82,7 +81,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const isToday = selectedDate === today
 
   return (
-    <PullToRefresh onRefresh={handleRefresh}>
     <div className="space-y-4">
       {/* 今日概况 */}
       <div className="bg-white rounded-2xl p-4 shadow-sm">
@@ -204,6 +202,5 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         ))}
       </div>
     </div>
-    </PullToRefresh>
   )
 }
