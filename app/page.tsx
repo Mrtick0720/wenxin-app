@@ -72,10 +72,10 @@ export default async function Home() {
             <div className="text-2xl font-bold text-orange-500">{pendingCount}</div>
             <div className="text-xs text-gray-400">项</div>
           </div>
-          <div className="bg-green-50 rounded-2xl p-3 text-center">
+          <Link href="/bento" className="bg-green-50 rounded-2xl p-3 text-center block">
             <div className="text-sm text-gray-500 mb-1">Bento</div>
             <div className="text-lg font-bold text-green-500">进行中</div>
-          </div>
+          </Link>
         </div>
 
         {/* 堂食 + Bento */}
