@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import Greeting from './components/Greeting'
 import Link from 'next/link'
+import HomeRefresh from './components/HomeRefresh'
 
 async function getStats() {
   const today = new Date().toISOString().split('T')[0]
@@ -54,6 +55,7 @@ export default async function Home() {
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
 
   return (
+    <HomeRefresh>
     <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
@@ -166,5 +168,6 @@ export default async function Home() {
         ))}
       </div>
     </main>
+    </HomeRefresh>
   )
 }
