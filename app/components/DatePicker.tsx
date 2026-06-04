@@ -90,14 +90,15 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
           {/* 日历卡片 — 居中浮动 */}
           <div
-            className="fixed z-50 bg-white rounded-3xl shadow-2xl p-5"
+            className="fixed inset-0 z-50 flex items-center justify-center px-6"
+            style={{ pointerEvents: 'none' }}
+          >
+          <div
+            className="bg-white rounded-3xl shadow-2xl p-5 w-full"
             style={{
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: 'calc(100% - 48px)',
               maxWidth: '360px',
               animation: 'slideInRight 0.25s ease-out forwards',
+              pointerEvents: 'auto',
             }}
           >
             {/* 月份导航 */}
@@ -151,6 +152,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                 取消
               </button>
             </div>
+          </div>
           </div>
         </>
       )}
