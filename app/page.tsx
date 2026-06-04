@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import Greeting from './components/Greeting'
 import Link from 'next/link'
 import HomeRefresh from './components/HomeRefresh'
+import BottomNav from './components/BottomNav'
 
 async function getStats() {
   const today = new Date().toISOString().split('T')[0]
@@ -145,28 +146,7 @@ export default async function Home() {
         :::
       </button>
 
-      {/* 底部导航 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-2 z-40">
-        {[
-          { icon: "🏠", label: "首页", active: true },
-          { icon: "✅", label: "审批", badge: 8 },
-          { icon: "📦", label: "Bento" },
-          { icon: "📊", label: "报表" },
-          { icon: "👤", label: "我的" },
-        ].map((item) => (
-          <div key={item.label} className="flex flex-col items-center relative">
-            <span className="text-xl">{item.icon}</span>
-            <span className={`text-xs mt-0.5 ${item.active ? "text-orange-500 font-medium" : "text-gray-400"}`}>
-              {item.label}
-            </span>
-            {item.badge && (
-              <span className="absolute -top-1 right-0 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                {item.badge}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
+      <BottomNav pendingCount={pendingCount} />
     </main>
     </HomeRefresh>
   )
