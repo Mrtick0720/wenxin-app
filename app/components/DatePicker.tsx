@@ -29,7 +29,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth)
 
   function formatDisplay(dateStr: string) {
-    const d = new Date(dateStr)
+    const d = new Date(dateStr + 'T00:00:00')
     const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
     return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`
   }
@@ -79,66 +79,78 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         </button>
       </div>
 
-      {/* 全屏日历弹出 */}
+      {/* 日历面板 — 从右边滑入，覆盖整个页面 */}
       {showCalendar && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center px-4">
-          <div className="bg-white w-full rounded-3xl p-5">
-            {/* 月份导航 */}
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-600">‹</button>
-              <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
-              <button onClick={nextMonth} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-600">›</button>
-            </div>
+        <div
+          className="fixed inset-0 z-50"
+          style={{ animation: 'slideInRight 0.25s ease-out forwards' }}
+        >
+          {/* 背景灰化 */}
+          <div
+            className="absolute inset-0 bg-gray-100"
+            onClick={() => setShowCalendar(false)}
+          />
 
-            {/* 星期标题 */}
-            <div className="grid grid-cols-7 mb-2">
-              {weekdays.map(d => (
-                <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
-              ))}
-            </div>
+          {/* 日历内容 */}
+          <div className="absolute inset-0 flex flex-col justify-center px-4">
+            <div className="bg-white rounded-3xl p-5 shadow-lg">
+              {/* 月份导航 */}
+              <div className="flex items-center justify-between mb-4">
+                <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">‹</button>
+                <span className="font-semibold text-gray-900">{viewYear}年 {months[viewMonth]}</span>
+                <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 text-lg">›</button>
+              </div>
 
-            {/* 日期格子 */}
-            <div className="grid grid-cols-7 gap-y-1">
-              {Array.from({ length: firstDay }).map((_, i) => (
-                <div key={`empty-${i}`} />
-              ))}
-              {Array.from({ length: daysInMonth }).map((_, i) => {
-                const day = i + 1
-                const month = String(viewMonth + 1).padStart(2, '0')
-                const dayStr = String(day).padStart(2, '0')
-                const dateStr = `${viewYear}-${month}-${dayStr}`
-                const isSelected = dateStr === selectedDate
-                const isToday = dateStr === todayStr
-                return (
-                  <button
-                    key={day}
-                    onClick={() => handleDayClick(day)}
-                    className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-9
-                      ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
-                      ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
-                      ${!isSelected && !isToday ? 'text-gray-700' : ''}
-                    `}
-                  >
-                    {day}
-                  </button>
-                )
-              })}
-            </div>
+              {/* 星期标题 */}
+              <div className="grid grid-cols-7 mb-2">
+                {weekdays.map(d => (
+                  <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+                ))}
+              </div>
 
-            {/* Today 按钮 */}
-            <div className="mt-4 flex gap-3">
-              <button
-                onClick={goToday}
-                className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm"
-              >
-                Today
-              </button>
-              <button
-                onClick={() => setShowCalendar(false)}
-                className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm"
-              >
-                取消
-              </button>
+              {/* 日期格子 */}
+              <div className="grid grid-cols-7 gap-y-1">
+                {Array.from({ length: firstDay }).map((_, i) => (
+                  <div key={`empty-${i}`} />
+                ))}
+                {Array.from({ length: daysInMonth }).map((_, i) => {
+                  const day = i + 1
+                  const month = String(viewMonth + 1).padStart(2, '0')
+                  const dayStr = String(day).padStart(2, '0')
+                  const dateStr = `${viewYear}-${month}-${dayStr}`
+                  const isSelected = dateStr === selectedDate
+                  const isToday = dateStr === todayStr
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => handleDayClick(day)}
+                      className={`aspect-square flex items-center justify-center rounded-full text-sm mx-auto w-9
+                        ${isSelected ? 'bg-orange-500 text-white font-semibold' : ''}
+                        ${isToday && !isSelected ? 'border border-orange-400 text-orange-500 font-semibold' : ''}
+                        ${!isSelected && !isToday ? 'text-gray-700' : ''}
+                      `}
+                    >
+                      {day}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Today + 取消按钮 */}
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={goToday}
+                  className="flex-1 py-3 bg-orange-500 text-white rounded-2xl font-medium text-sm"
+                >
+                  Today
+                </button>
+                <button
+                  onClick={() => setShowCalendar(false)}
+                  className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-2xl font-medium text-sm"
+                >
+                  取消
+                </button>
+              </div>
             </div>
           </div>
         </div>
