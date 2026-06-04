@@ -2,10 +2,11 @@ import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 async function getBentoOrders() {
+  const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('bento_orders')
     .select('*')
-    .eq('date', '2024-05-20')
+    .eq('date', today)
     .order('id', { ascending: true })
   return data || []
 }

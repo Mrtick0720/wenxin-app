@@ -3,10 +3,11 @@ import Greeting from './components/Greeting'
 import Link from 'next/link'
 
 async function getStats() {
+  const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('daily_stats')
     .select('*')
-    .eq('date', '2024-05-20')
+    .eq('date', today)
     .single()
   return data
 }
