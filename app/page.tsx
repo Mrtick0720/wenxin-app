@@ -21,7 +21,7 @@ export default async function Home() {
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
 
   return (
-    <main className="min-h-screen bg-gray-50 max-w-sm mx-auto relative">
+    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
@@ -116,7 +116,7 @@ export default async function Home() {
       </button>
 
       {/* 底部导航 */}
-      <div className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-sm bg-white border-t flex justify-around py-2 z-40">
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-2 z-40">
         {[
           { icon: "🏠", label: "首页", active: true },
           { icon: "✅", label: "审批", badge: 8 },
