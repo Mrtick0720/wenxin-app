@@ -2,59 +2,157 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useRouter } from 'next/navigation'
 
 type Order = {
   id: number
   customer_name: string
   phone: string
   address: string
+  area: string
+  menu_type: string
   items: string
   note: string
   amount: number
   paid: boolean
   status: string
+  date: string
 }
 
+const AREAS = ['全部', 'Likas', 'Luyang', 'Lintas']
+const MENU_TYPES = ['全部', '清单', '风味', '素食']
+
 export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
+  const today = new Date().toISOString().split('T')[0]
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
-  const router = useRouter()
+  const [selectedDate, setSelectedDate] = useState(today)
+  const [filterArea, setFilterArea] = useState('全部')
+  const [filterType, setFilterType] = useState('全部')
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [fetching, setFetching] = useState(false)
+
+  async function loadOrders(date: string) {
+    setFetching(true)
+    const { data } = await supabase
+      .from('bento_orders')
+      .select('*')
+      .eq('date', date)
+      .order('id', { ascending: true })
+    setOrders(data || [])
+    setFetching(false)
+  }
+
+  async function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const date = e.target.value
+    setSelectedDate(date)
+    setShowDatePicker(false)
+    await loadOrders(date)
+  }
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
     setLoading(order.id)
-    await supabase
-      .from('bento_orders')
-      .update({ status: newStatus })
-      .eq('id', order.id)
+    await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
     setOrders(orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o))
     setLoading(null)
-    router.refresh()
   }
 
   async function togglePaid(order: Order) {
     const newPaid = !order.paid
     setLoading(order.id)
-    await supabase
-      .from('bento_orders')
-      .update({ paid: newPaid })
-      .eq('id', order.id)
+    await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
     setOrders(orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o))
     setLoading(null)
   }
 
+  const filtered = orders.filter(o => {
+    const areaMatch = filterArea === '全部' || o.area === filterArea
+    const typeMatch = filterType === '全部' || o.menu_type === filterType
+    return areaMatch && typeMatch
+  })
+
+  const isToday = selectedDate === today
+
   return (
-    <div>
-      <div className="text-sm font-semibold text-gray-700 mb-2">订单列表</div>
+    <div className="space-y-4">
+      {/* 日期选择 */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold text-gray-700">
+          {isToday ? '今日订单' : selectedDate}
+        </div>
+        <button
+          onClick={() => setShowDatePicker(!showDatePicker)}
+          className="flex items-center gap-1 text-sm text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-xl"
+        >
+          📅 选择日期
+        </button>
+      </div>
+
+      {showDatePicker && (
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={handleDateChange}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+          />
+        </div>
+      )}
+
+      {/* 筛选 */}
+      <div className="space-y-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {AREAS.map(area => (
+            <button
+              key={area}
+              onClick={() => setFilterArea(area)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs border ${
+                filterArea === area
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-500 border-gray-200'
+              }`}
+            >
+              {area}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {MENU_TYPES.map(type => (
+            <button
+              key={type}
+              onClick={() => setFilterType(type)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs border ${
+                filterType === type
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : 'bg-white text-gray-500 border-gray-200'
+              }`}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 订单列表 */}
+      <div className="text-sm font-semibold text-gray-700">
+        订单列表 {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length} 单)</span>}
+      </div>
+
+      {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
+
       <div className="space-y-3">
-        {orders.length === 0 && (
-          <div className="text-center text-gray-400 py-8">今日暂无订单</div>
+        {!fetching && filtered.length === 0 && (
+          <div className="text-center text-gray-400 py-8">暂无订单</div>
         )}
-        {orders.map((order) => (
+        {!fetching && filtered.map((order) => (
           <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-gray-900">{order.customer_name}</span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-900">{order.customer_name}</span>
+                {order.menu_type && (
+                  <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>
+                )}
+              </div>
               <button
                 onClick={() => togglePaid(order)}
                 disabled={loading === order.id}
@@ -67,26 +165,27 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 {order.paid ? '✓ 已付款' : '未付款'}
               </button>
             </div>
+            {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
             <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
-            {order.note && (
-              <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>
-            )}
-            <div className="text-sm text-gray-400 mb-1">📍 {order.address}</div>
-            <div className="flex items-center justify-between mt-3">
+            {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
+            <div className="text-sm text-gray-400 mb-1">{order.address}</div>
+            <div className="flex items-center justify-between mt-2">
               <span className="text-sm text-gray-400">📞 {order.phone}</span>
               <span className="font-semibold text-gray-900">RM {order.amount}</span>
             </div>
-            <button
-              onClick={() => toggleStatus(order)}
-              disabled={loading === order.id}
-              className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${
-                order.status === 'completed'
-                  ? 'bg-gray-100 text-gray-500'
-                  : 'bg-orange-500 text-white'
-              }`}
-            >
-              {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
-            </button>
+            {isToday && (
+              <button
+                onClick={() => toggleStatus(order)}
+                disabled={loading === order.id}
+                className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${
+                  order.status === 'completed'
+                    ? 'bg-gray-100 text-gray-500'
+                    : 'bg-orange-500 text-white'
+                }`}
+              >
+                {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
+              </button>
+            )}
           </div>
         ))}
       </div>
