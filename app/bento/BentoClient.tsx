@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import DatePicker from '../components/DatePicker'
 
 type Order = {
   id: number
@@ -28,7 +29,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [selectedDate, setSelectedDate] = useState(today)
   const [filterArea, setFilterArea] = useState('全部')
   const [filterType, setFilterType] = useState('全部')
-  const [showDatePicker, setShowDatePicker] = useState(false)
   const [fetching, setFetching] = useState(false)
 
   async function loadOrders(date: string) {
@@ -42,10 +42,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     setFetching(false)
   }
 
-  async function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const date = e.target.value
+  async function handleDateChange(date: string) {
     setSelectedDate(date)
-    setShowDatePicker(false)
     await loadOrders(date)
   }
 
@@ -107,28 +105,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       </div>
 
       {/* 日期选择 */}
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-700">
-          {isToday ? '今日订单' : selectedDate}
-        </div>
-        <button
-          onClick={() => setShowDatePicker(!showDatePicker)}
-          className="flex items-center gap-1 text-sm text-gray-500 bg-white border border-gray-200 px-3 py-1.5 rounded-xl"
-        >
-          📅 选择日期
-        </button>
-      </div>
-
-      {showDatePicker && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={handleDateChange}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
-          />
-        </div>
-      )}
+      <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
 
       {/* 筛选 */}
       <div className="space-y-2">
