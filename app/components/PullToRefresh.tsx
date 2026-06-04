@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 interface PullToRefreshProps {
   children: React.ReactNode
@@ -8,74 +8,91 @@ interface PullToRefreshProps {
 }
 
 export default function PullToRefresh({ children, onRefresh }: PullToRefreshProps) {
-  const [pulling, setPulling] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
   const [pullDistance, setPullDistance] = useState(0)
-  const startY = useRef(0)
-  const threshold = 50
+  const [refreshing, setRefreshing] = useState(false)
+  const startYRef = useRef(0)
+  const pullingRef = useRef(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const threshold = 60
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (window.scrollY === 0) {
-      startY.current = e.touches[0].clientY
-    }
-  }, [])
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (refreshing) return
-    const currentY = e.touches[0].clientY
-    const distance = currentY - startY.current
-    if (distance > 0 && window.scrollY === 0) {
-      setPulling(true)
-      setPullDistance(Math.min(distance * 0.4, threshold + 20))
+    const onTouchStart = (e: TouchEvent) => {
+      if (window.scrollY === 0) {
+        startYRef.current = e.touches[0].clientY
+        pullingRef.current = true
+      }
     }
-  }, [refreshing])
 
-  const handleTouchEnd = useCallback(async () => {
-    if (pullDistance >= threshold && !refreshing) {
-      setRefreshing(true)
-      setPullDistance(50)
-      await onRefresh()
-      setRefreshing(false)
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pullingRef.current || refreshing) return
+      const dist = e.touches[0].clientY - startYRef.current
+      if (dist > 0 && window.scrollY === 0) {
+        e.preventDefault()
+        setPullDistance(Math.min(dist * 0.45, threshold + 30))
+      }
     }
-    setPulling(false)
-    setPullDistance(0)
+
+    const onTouchEnd = async () => {
+      if (!pullingRef.current) return
+      pullingRef.current = false
+
+      if (pullDistance >= threshold && !refreshing) {
+        setRefreshing(true)
+        setPullDistance(threshold)
+        await onRefresh()
+        setRefreshing(false)
+      }
+      setPullDistance(0)
+    }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: true })
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+    }
   }, [pullDistance, refreshing, onRefresh])
 
+  const showIndicator = pullDistance > 5 || refreshing
+  const indicatorHeight = refreshing ? threshold : pullDistance
+
   return (
-    <div
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ position: 'relative' }}
-    >
-      {/* 下拉刷新指示器 */}
+    <div ref={containerRef} style={{ overflowX: 'hidden' }}>
+      {/* 指示器区域 */}
       <div
         style={{
-          height: pullDistance || (refreshing ? 50 : 0),
+          height: indicatorHeight,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          transition: refreshing || pullDistance === 0 ? 'height 0.3s ease' : 'none',
           overflow: 'hidden',
-          transition: pulling ? 'none' : 'height 0.3s ease',
         }}
       >
-        {(pulling || refreshing) && (
+        {showIndicator && (
           <div
             style={{
-              width: 28,
-              height: 28,
+              width: 26,
+              height: 26,
               borderRadius: '50%',
               border: '2.5px solid #f97316',
               borderTopColor: 'transparent',
-              animation: refreshing ? 'spin 0.8s linear infinite' : 'none',
-              transform: pulling && !refreshing ? `rotate(${(pullDistance / threshold) * 360}deg)` : undefined,
+              animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none',
+              transform: !refreshing ? `rotate(${(pullDistance / threshold) * 300}deg)` : undefined,
+              transition: !refreshing ? 'none' : undefined,
             }}
           />
         )}
       </div>
 
       <style>{`
-        @keyframes spin {
+        @keyframes ptr-spin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
