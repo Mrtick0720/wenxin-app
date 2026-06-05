@@ -6,6 +6,10 @@ export function shouldShowBentoTodayShortcut(selectedDate: string, today: string
   return selectedDate !== today && !detailOpen
 }
 
+export function shouldTrackBentoDetailGesture(isInsideScrollArea: boolean) {
+  return !isInsideScrollArea
+}
+
 export function getBentoSwipeThreshold(width: number) {
   return Math.round(Math.min(44, Math.max(32, width * 0.092)))
 }

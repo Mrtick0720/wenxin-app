@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
-import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
+import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut, shouldTrackBentoDetailGesture } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
@@ -221,6 +221,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       axis = null; tracking = false; mode = null
 
       if (panelIsOpen.current) {
+        const isInsideScrollArea = !!(e.target as Element | null)?.closest('[data-scroll]')
+        if (!shouldTrackBentoDetailGesture(isInsideScrollArea)) return
         tracking = true; mode = 'close'
         return
       }
@@ -384,7 +386,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             <Link href="/" className="text-gray-500 text-xl">←</Link>
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ New</Link>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</Link>
         </div>
 
         <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
@@ -445,13 +447,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       </div>
 
       {/* Detail Panel */}
-      <div ref={setPanelRef} className="fixed inset-0 bg-white flex flex-col" style={{ zIndex: 20 }}>
+      <div ref={setPanelRef} className="fixed inset-0 bg-white flex flex-col min-h-0" style={{ zIndex: 20 }}>
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
             <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ New</Link>
         </div>
 
         <div className="px-4 pt-3 pb-2 flex gap-2" style={{ flexShrink: 0 }}>
@@ -466,7 +467,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+        <div data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {
