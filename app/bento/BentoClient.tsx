@@ -44,6 +44,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [filterType, setFilterType] = useState('全部')
   const [filterTime, setFilterTime] = useState('全部')
   const [fetching, setFetching] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
   useEffect(() => { setPortalMounted(true) }, [])
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
@@ -62,17 +63,11 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   // ── Lock body scroll (Android needs this even with position:fixed container) ──
   useEffect(() => {
     const prevBodyOverflow = document.body.style.overflow
-    const prevBodyPosition = document.body.style.position
-    const prevBodyWidth = document.body.style.width
     const prevHtmlOverflow = document.documentElement.style.overflow
     document.body.style.overflow = 'hidden'
-    document.body.style.position = 'fixed'
-    document.body.style.width = '100%'
     document.documentElement.style.overflow = 'hidden'
     return () => {
       document.body.style.overflow = prevBodyOverflow
-      document.body.style.position = prevBodyPosition
-      document.body.style.width = prevBodyWidth
       document.documentElement.style.overflow = prevHtmlOverflow
     }
   }, [])
@@ -117,11 +112,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   function openPanel() {
     if (panelIsOpen.current) return
     panelIsOpen.current = true
+    setDetailOpen(true)
     animatePanel(0)
   }
 
   function closePanel() {
     panelIsOpen.current = false
+    setDetailOpen(false)
     animatePanel(window.innerWidth)
   }
 
@@ -393,7 +390,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </div>
       </div>
 
-      {portalMounted && selectedDate !== today && createPortal(
+      {portalMounted && selectedDate !== today && !detailOpen && createPortal(
         <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
           <button onClick={() => handleDateChange(today)}
             style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}>
