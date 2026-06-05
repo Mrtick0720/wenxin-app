@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic'
 
 type BentoOrder = {
   status: string
+  amount: number
 }
 
 async function getStats() {
@@ -25,10 +26,11 @@ async function getBentoStats() {
     .from('bento_orders')
     .select('*')
     .eq('date', today)
-  const orders = data || []
+  const orders = (data || []) as BentoOrder[]
   const total = orders.length
-  const completed = orders.filter((o: BentoOrder) => o.status === 'completed').length
-  return { total, completed }
+  const completed = orders.filter(o => o.status === 'completed').length
+  const revenue = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
+  return { total, completed, revenue }
 }
 
 async function getAnomalyCount() {
@@ -55,11 +57,17 @@ async function getPendingCount() {
 async function getReservationCount() { return 8 }
 async function getComplaintCount() { return 1 }
 
-function getTodayString() {
-  const now = new Date()
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  return `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
+// ── Today's Issues — placeholder logic ──
+type Issue = { type: string; detail: string; link: string }
+function getTodayIssues(complaintCount: number): Issue[] {
+  const issues: Issue[] = []
+  if (complaintCount > 0) {
+    issues.push({ type: '⚠ Complaint', detail: `${complaintCount} unresolved`, link: '/complaints' })
+  }
+  // Placeholder items — will be driven by real data later
+  issues.push({ type: '⚠ Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
+  issues.push({ type: '⚠ Attendance', detail: 'Lina — missing punch-out', link: '/staff' })
+  return issues
 }
 
 export default async function Home() {
@@ -74,24 +82,28 @@ export default async function Home() {
 
   const revenueTotal = stats?.revenue_total ?? 0
   const revenueDineIn = stats?.revenue_dine_in ?? 0
+  const revenueBento = bentoStats.revenue
   const bentoOrders = bentoStats.total
   const bentoCompleted = bentoStats.completed
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
-  const todayStr = getTodayString()
+  const issues = getTodayIssues(complaintCount)
+  const now = new Date()
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const todayStr = `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
 
   return (
     <HomeRefresh>
     <main className="min-h-screen bg-gray-50 w-full mx-auto relative">
-      {/* Header — compressed spacing */}
-      <div className="bg-white px-4 pt-3 pb-2 border-b border-gray-50">
-        {/* Row 1: Avatar + Greeting ··· Bell */}
-        <div className="flex items-center justify-between mb-1.5">
+      {/* Header — minimal: Avatar + Greeting + Bell only */}
+      <div className="bg-white px-4 pt-3 pb-2.5 border-b border-gray-50">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center text-white font-semibold text-xs flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-white font-semibold text-[11px] flex-shrink-0">
               B
             </div>
             <div className="flex items-center gap-0.5">
-              <span className="text-[15px] font-medium text-gray-900">Hi, Bruce</span>
+              <span className="text-sm font-medium text-gray-900">Hi, Bruce</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -107,76 +119,119 @@ export default async function Home() {
             )}
           </div>
         </div>
-
-        {/* Row 2: Business Summary + Filter */}
-        <div className="flex items-center justify-between mb-0.5">
-          <span className="text-xs font-medium text-gray-400 tracking-wide">Business Summary</span>
-          <button className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
-              <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
-              <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-              <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/>
-              <line x1="17" y1="16" x2="23" y2="16"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Row 3: Date + Status — clickable → Reports */}
-        <Link href="/reports" className="inline-flex items-center gap-1 text-xs text-gray-400">
-          {todayStr}
-          <span className="text-green-500 font-medium">· ● Open</span>
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-        </Link>
       </div>
 
-      <div className="px-4 py-3 pb-28 space-y-3.5">
-        {/* Revenue Card — entire card clickable → Reports */}
+      <div className="px-4 pt-4 pb-28 space-y-4">
+        {/* ═══ Revenue Hero Card — first visual priority ═══ */}
         <Link href="/reports" className="block">
-          <div className="text-xs text-gray-500 mb-0.5">Today&apos;s Revenue</div>
           <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
-          <div className="text-xs text-gray-400 mt-1.5">Dine-in + Bento</div>
+          <div className="flex items-center gap-1.5 mt-1">
+            <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
+            <span className="text-[10px] text-green-500 font-medium">● Open</span>
+          </div>
+          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+            <span className="text-green-500 font-medium">↑ 12%</span>
+            <span>vs yesterday</span>
+          </div>
+          <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-gray-100">
+            <div>
+              <span className="text-xs text-gray-400">Dine-in </span>
+              <span className="text-sm font-semibold text-gray-900">RM {revenueDineIn.toLocaleString()}</span>
+            </div>
+            <div className="w-px h-4 bg-gray-200" />
+            <div>
+              <span className="text-xs text-gray-400">Bento </span>
+              <span className="text-sm font-semibold text-gray-900">RM {revenueBento.toLocaleString()}</span>
+            </div>
+          </div>
         </Link>
 
-        {/* Alert Cards — 4 columns */}
+        {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-4 gap-1.5">
           <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block">
-            <div className="text-[11px] text-gray-500 mb-0.5">Reservations</div>
+            <div className="text-[10px] text-gray-500 mb-0.5">Reservations</div>
             <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">Today</div>
           </Link>
           <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block">
-            <div className="text-[11px] text-gray-500 mb-0.5">Complaints</div>
+            <div className="text-[10px] text-gray-500 mb-0.5">Complaints</div>
             <div className="text-lg font-bold text-red-500">{complaintCount}</div>
+            <div className="text-[9px] text-red-400 mt-0.5">Needs attention</div>
           </Link>
           <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block">
-            <div className="text-[11px] text-gray-500 mb-0.5">Incidents</div>
+            <div className="text-[10px] text-gray-500 mb-0.5">Incidents</div>
             <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
+            <div className="text-[9px] text-gray-400 mt-0.5">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
           </Link>
           <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block">
-            <div className="text-[11px] text-gray-500 mb-0.5">Pending</div>
+            <div className="text-[10px] text-gray-500 mb-0.5">Pending</div>
             <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
+            <div className="text-[9px] text-amber-400 mt-0.5">{pendingCount > 0 ? `Overdue 2` : 'Clear'}</div>
           </Link>
         </div>
 
-        {/* Core Business Cards */}
+        {/* ═══ Today's Issues — replaces Today's Notes ═══ */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-gray-800">Today&apos;s Issues</span>
+            <span className="text-xs text-gray-400">{todayStr}</span>
+          </div>
+          {issues.length === 0 ? (
+            <div className="text-sm text-green-500 font-medium py-2">✓ No Issues Today</div>
+          ) : (
+            <div className="space-y-2">
+              {issues.map((issue, i) => (
+                <Link key={i} href={issue.link} className="flex items-center gap-2.5 py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="text-xs font-medium text-gray-700 flex-1">{issue.type}</span>
+                  <span className="text-xs text-gray-400">{issue.detail}</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ═══ Core Business Cards — redesigned with data ═══ */}
         <div className="grid grid-cols-2 gap-2">
           <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold mb-1">Dine-in</div>
-            <div className="text-xs text-green-500 mb-2">Open</div>
-            <div className="text-lg font-bold">RM {revenueDineIn.toLocaleString()}</div>
-            <div className="text-xs text-gray-400 mt-1">→</div>
+            <div className="text-sm font-semibold text-gray-900 mb-1">Dine-in</div>
+            <div className="text-xs text-green-500 mb-2">● Open</div>
+            <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+              <span>12 Orders</span>
+              <span>Avg RM 106</span>
+            </div>
           </Link>
           <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold mb-1">Bento</div>
+            <div className="text-sm font-semibold text-gray-900 mb-1">Bento</div>
             <div className="text-xs text-green-500 mb-2">In Progress</div>
-            <div className="text-lg font-bold">{bentoOrders} orders</div>
-            <div className="text-xs text-orange-500 mt-1">{bentoPercent}% complete →</div>
+            <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+              <span>{bentoOrders} Orders</span>
+              <span className="text-orange-500">{bentoPercent}% Done</span>
+            </div>
           </Link>
         </div>
 
-        {/* Quick Access — 4 items */}
+        {/* ═══ Shift Board — today's staffing ═══ */}
+        <Link href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-gray-800">Shift Board</span>
+            <span className="text-xs text-orange-500">→</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+            <span>4 on duty</span>
+            <span className="text-gray-300">·</span>
+            <span>Chef: Ah Ming</span>
+            <span className="text-gray-300">·</span>
+            <span>10:00–20:00</span>
+          </div>
+        </Link>
+
+        {/* ═══ Quick Access — low-frequency but essential ═══ */}
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
           <div className="grid grid-cols-4 gap-2">
@@ -192,23 +247,10 @@ export default async function Home() {
               <div className="text-lg mb-0.5">📋</div>
               <div className="text-[11px] font-medium text-gray-700">Inventory</div>
             </Link>
-            <Link href="/reports" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
-              <div className="text-lg mb-0.5">📊</div>
-              <div className="text-[11px] font-medium text-gray-700">Reports</div>
+            <Link href="/finance" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
+              <div className="text-lg mb-0.5">💰</div>
+              <div className="text-[11px] font-medium text-gray-700">Finance</div>
             </Link>
-          </div>
-        </div>
-
-        {/* Today's Notes */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold">Today&apos;s Notes</span>
-            <span className="text-sm text-orange-500">All →</span>
-          </div>
-          <div className="space-y-2">
-            {["Today's Special: Grilled Fish", "Soup of the Day: Winter Melon Pork Rib Soup", "15:00 Staff hygiene training"].map((item, i) => (
-              <div key={i} className="text-sm text-gray-700 py-1 border-b border-gray-50 last:border-0">{item}</div>
-            ))}
           </div>
         </div>
       </div>
