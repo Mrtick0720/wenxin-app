@@ -53,9 +53,10 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const panelAnimRef = useRef<Animation | null>(null)
   const panelIsOpen = useRef(false)
 
-  useEffect(() => {
-    // Start off-screen; do this once on mount before any paint
-    if (panelRef.current) panelRef.current.style.transform = `translateX(${window.innerWidth}px)`
+  // Ref callback: runs synchronously on mount, before first paint — fixes Android blank flash
+  const setPanelRef = useCallback((el: HTMLDivElement | null) => {
+    panelRef.current = el
+    if (el) el.style.transform = `translateX(${window.innerWidth}px)`
   }, [])
 
   function getPanelX(): number {
@@ -151,39 +152,45 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     }
   }
 
-  // ── Close gesture (right swipe anywhere on detail panel) ──
-  function onCloseTouchStart(e: React.TouchEvent) {
-    swipeStartX.current = e.touches[0].clientX
-    swipeStartY.current = e.touches[0].clientY
-    swipeAxis.current = null
-    swipeActive.current = true
-  }
-
-  function onCloseTouchMove(e: React.TouchEvent) {
-    if (!swipeActive.current) return
-    const dx = e.touches[0].clientX - swipeStartX.current
-    const dy = e.touches[0].clientY - swipeStartY.current
-    if (!swipeAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      swipeAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-    }
-    if (swipeAxis.current !== 'h' || dx < 0) return
+  // ── Close gesture — native listeners so we can preventDefault on Android ──
+  useEffect(() => {
     const el = panelRef.current
     if (!el) return
-    el.style.transform = `translateX(${dx}px)`
-  }
+    const panelEl = el
+    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false
 
-  function onCloseTouchEnd(e: React.TouchEvent) {
-    if (!swipeActive.current) { swipeActive.current = false; return }
-    swipeActive.current = false
-    if (swipeAxis.current !== 'h') return
-    const dx = e.changedTouches[0].clientX - swipeStartX.current
-    if (dx < 0) return
-    if (dx > window.innerWidth * 0.25) {
-      closePanel()
-    } else {
-      animatePanel(0)
+    function onStart(e: TouchEvent) {
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY
+      axis = null; tracking = true
     }
-  }
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
+      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5))
+        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (axis !== 'h' || dx < 0) return
+      e.preventDefault()                                    // blocks Android overscroll
+      panelEl.style.transform = `translateX(${Math.max(0, dx)}px)`
+    }
+    function onEnd(e: TouchEvent) {
+      if (!tracking) { tracking = false; return }
+      tracking = false
+      if (axis !== 'h') return
+      const dx = e.changedTouches[0].clientX - sx
+      if (dx < 0) return
+      if (dx > window.innerWidth * 0.2) closePanel()
+      else animatePanel(0)
+    }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, []) // eslint-disable-line — closes over refs only, no stale state
 
   // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
@@ -346,12 +353,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
       {/* Detail Panel — always rendered, controlled by transform */}
       <div
-        ref={panelRef}
+        ref={setPanelRef}
         className="fixed inset-0 bg-white flex flex-col"
         style={{ zIndex: 20, touchAction: 'pan-y' }}
-        onTouchStart={onCloseTouchStart}
-        onTouchMove={onCloseTouchMove}
-        onTouchEnd={onCloseTouchEnd}
       >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
