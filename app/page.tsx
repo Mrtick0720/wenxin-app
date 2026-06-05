@@ -132,24 +132,22 @@ export default async function Home() {
           </div>
         </Link>
 
-        {/* ═══ Core Business Cards — moved up directly under Revenue ═══ */}
+        {/* ═══ Core Business Cards — performance data only, no status ═══ */}
         <div className="grid grid-cols-2 gap-2">
           <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-1">Dine-in</div>
-            <div className="text-sm text-green-500 font-medium mb-2">● Open</div>
+            <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
             <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-              <span>12 Orders</span>
-              <span>Avg RM 106</span>
+            <div className="mt-2 space-y-0.5">
+              <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
+              <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
             </div>
           </Link>
           <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-1">Bento</div>
-            <div className="text-sm text-green-500 font-medium mb-2">In Progress</div>
+            <div className="text-sm font-semibold text-gray-900 mb-2">Bento</div>
             <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-              <span>{bentoOrders} Orders</span>
-              <span className="text-orange-500">{bentoPercent}% Done</span>
+            <div className="mt-2 space-y-0.5">
+              <div className="text-xs text-gray-400 whitespace-nowrap">{bentoOrders} Orders</div>
+              <div className="text-xs whitespace-nowrap text-orange-500">{bentoPercent}% Done</div>
             </div>
           </Link>
         </div>
@@ -221,19 +219,16 @@ export default async function Home() {
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
           <div className="grid grid-cols-4 gap-2">
-            <Link href="/procurement" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
-              <div className="text-xs font-semibold text-gray-700">Procurement</div>
-            </Link>
-            <Link href="/staff" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
-              <div className="text-xs font-semibold text-gray-700">Staff</div>
-            </Link>
-            <Link href="/inventory" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
-              <div className="text-xs font-semibold text-gray-700">Inventory</div>
-            </Link>
-            <Link href="/finance" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
-              <div className="text-xs font-semibold text-gray-700">Finance</div>
-            </Link>
-          </div>
+            {[
+              { href: '/procurement', label: 'Purchase' },
+              { href: '/staff',       label: 'Staff' },
+              { href: '/inventory',   label: 'Inventory' },
+              { href: '/finance',     label: 'Finance' },
+            ].map(({ href, label }) => (
+              <Link key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
+                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{label}</div>
+              </Link>
+            ))}</div>
         </div>
       </div>
 
