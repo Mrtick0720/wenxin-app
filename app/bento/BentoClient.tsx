@@ -48,6 +48,10 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
 
+  // ── Layout refs ──
+  const mainContainerRef = useRef<HTMLDivElement>(null)
+  const datepickerAreaRef = useRef<HTMLDivElement>(null)
+
   // ── Panel animation ──
   const panelRef = useRef<HTMLDivElement>(null)
   const panelAnimRef = useRef<Animation | null>(null)
@@ -110,47 +114,51 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     animatePanel(window.innerWidth)
   }
 
-  // ── Shared swipe state ──
-  const swipeStartX = useRef(0)
-  const swipeStartY = useRef(0)
-  const swipeAxis = useRef<'h' | 'v' | null>(null)
-  const swipeActive = useRef(false)
+  // ── Open gesture — native listeners on main container, excludes DatePicker area ──
+  useEffect(() => {
+    const container = mainContainerRef.current
+    if (!container) return
+    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false
 
-  // ── Open gesture (left swipe on header/lower area) ──
-  function onOpenTouchStart(e: React.TouchEvent) {
-    if (panelIsOpen.current || panelAnimRef.current) return
-    swipeStartX.current = e.touches[0].clientX
-    swipeStartY.current = e.touches[0].clientY
-    swipeAxis.current = null
-    swipeActive.current = true
-  }
-
-  function onOpenTouchMove(e: React.TouchEvent) {
-    if (!swipeActive.current) return
-    const dx = e.touches[0].clientX - swipeStartX.current
-    const dy = e.touches[0].clientY - swipeStartY.current
-    if (!swipeAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      swipeAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+    function onStart(e: TouchEvent) {
+      if (panelIsOpen.current || panelAnimRef.current) return
+      if (datepickerAreaRef.current?.contains(e.target as Node)) return
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY
+      axis = null; tracking = true
     }
-    if (swipeAxis.current !== 'h') return
-    const el = panelRef.current
-    if (!el) return
-    const x = Math.max(0, window.innerWidth + dx)
-    el.style.transform = `translateX(${x}px)`
-  }
-
-  function onOpenTouchEnd(e: React.TouchEvent) {
-    if (!swipeActive.current) { swipeActive.current = false; return }
-    swipeActive.current = false
-    if (swipeAxis.current !== 'h') return
-    const dx = e.changedTouches[0].clientX - swipeStartX.current
-    if (dx < -(window.innerWidth * 0.25)) {
-      panelIsOpen.current = true
-      animatePanel(0)
-    } else {
-      animatePanel(window.innerWidth)
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
+      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5))
+        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (axis !== 'h' || dx > 0) return   // only left swipe
+      e.preventDefault()                    // prevent Android scroll/rubber-band
+      const el = panelRef.current
+      if (!el) return
+      el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
     }
-  }
+    function onEnd(e: TouchEvent) {
+      if (!tracking) { tracking = false; return }
+      tracking = false
+      if (axis !== 'h') return
+      const dx = e.changedTouches[0].clientX - sx
+      if (dx < -(window.innerWidth * 0.25)) {
+        panelIsOpen.current = true
+        animatePanel(0)
+      } else {
+        animatePanel(window.innerWidth)
+      }
+    }
+
+    container.addEventListener('touchstart', onStart, { passive: true })
+    container.addEventListener('touchmove', onMove, { passive: false })
+    container.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      container.removeEventListener('touchstart', onStart)
+      container.removeEventListener('touchmove', onMove)
+      container.removeEventListener('touchend', onEnd)
+    }
+  }, []) // eslint-disable-line
 
   // ── Close gesture — native listeners so we can preventDefault on Android ──
   useEffect(() => {
@@ -261,15 +269,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const isToday = selectedDate === today
 
   return (
-    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+    // position:fixed inset:0 — most reliable way to prevent Android scroll (dvh unreliable)
+    <div ref={mainContainerRef} style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
 
-      {/* Header — swipe-left zone */}
+      {/* Header */}
       <div
         className="bg-white px-4 py-3 flex items-center justify-between border-b"
         style={{ flexShrink: 0 }}
-        onTouchStart={onOpenTouchStart}
-        onTouchMove={onOpenTouchMove}
-        onTouchEnd={onOpenTouchEnd}
       >
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-500 text-xl">←</Link>
@@ -280,18 +286,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </Link>
       </div>
 
-      {/* DatePicker — NOT a swipe zone */}
-      <div className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
+      {/* DatePicker — excluded from open-swipe via datepickerAreaRef */}
+      <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
         <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
       </div>
 
-      {/* Lower area — swipe-left zone */}
-      <div
-        className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden"
-        onTouchStart={onOpenTouchStart}
-        onTouchMove={onOpenTouchMove}
-        onTouchEnd={onOpenTouchEnd}
-      >
+      {/* Lower area */}
+      <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
         <div className="border-t border-gray-100 pt-3">
           <div className="grid grid-cols-4 gap-2 mb-3">
             <div className="text-center">
