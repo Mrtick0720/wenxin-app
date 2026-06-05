@@ -37,8 +37,14 @@ export default function BackButton({ href }: BackButtonProps) {
     // 3. Navigate immediately — real parent page renders behind the animation
     router.push(href)
 
-    // 4. Remove snapshot after animation; real page has taken over by then
-    setTimeout(() => bgEl?.remove(), 400)
+    // 4. Fade snapshot out slowly so the real page has time to fully paint
+    //    before the snapshot disappears — prevents white flash on home page return
+    setTimeout(() => {
+      if (!bgEl) return
+      bgEl.style.transition = 'opacity 0.25s ease'
+      bgEl.style.opacity = '0'
+      setTimeout(() => bgEl?.remove(), 260)
+    }, 500)
   }
 
   return (
