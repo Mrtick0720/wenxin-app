@@ -91,7 +91,7 @@ export default async function Home() {
 
   return (
     <HomeRefresh>
-    <main className="min-h-screen bg-gray-50 w-full mx-auto relative">
+    <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header — minimal: Avatar + Greeting + Bell only */}
       <div className="bg-white px-4 pt-3 pb-2.5 border-b border-gray-50">
         <div className="flex items-center justify-between">

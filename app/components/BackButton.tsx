@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { getSnapshot } from '@/lib/pageCapture'
 
 interface BackButtonProps {
   href: string
@@ -10,32 +11,34 @@ export default function BackButton({ href }: BackButtonProps) {
   const router = useRouter()
 
   const handleBack = () => {
-    const html = document.documentElement
-    const doc = document as Document & {
-      startViewTransition?: (cb: () => void) => { finished: Promise<void> }
+    // 1. Place the captured home page snapshot as a fixed background layer
+    const snapshot = getSnapshot()
+    let bgEl: HTMLElement | null = null
+
+    if (snapshot) {
+      bgEl = document.createElement('div')
+      bgEl.style.cssText =
+        'position:fixed;inset:0;z-index:0;overflow:hidden;background:#f9fafb;pointer-events:none;'
+      bgEl.appendChild(snapshot)
+      document.body.prepend(bgEl)
     }
 
-    if (doc.startViewTransition) {
-      html.dataset.navBack = ''
-      delete html.dataset.navForward
-      doc.startViewTransition(() => {
-        router.push(href)
-      }).finished.finally(() => {
-        delete html.dataset.navBack
-      })
-    } else {
-      // Fallback: fix current page on top, navigate immediately
-      const el = (document as Document).querySelector('.page-slide-in') as HTMLElement | null
-      if (el) {
-        el.style.position = 'fixed'
-        el.style.inset = '0'
-        el.style.width = '100%'
-        el.style.zIndex = '50'
-        el.style.backgroundColor = 'white'
-        el.style.animation = 'slideOutRight 0.25s ease-in forwards'
-      }
-      router.push(href)
+    // 2. Fix the current page on top and slide it out to the right
+    const pageEl = document.querySelector('.page-slide-in') as HTMLElement | null
+    if (pageEl) {
+      pageEl.style.position = 'fixed'
+      pageEl.style.inset = '0'
+      pageEl.style.width = '100%'
+      pageEl.style.zIndex = '10'
+      pageEl.style.background = 'white'
+      pageEl.style.animation = 'slideOutRight 0.28s ease-in forwards'
     }
+
+    // 3. Navigate immediately — real parent page renders behind the animation
+    router.push(href)
+
+    // 4. Remove snapshot after animation; real page has taken over by then
+    setTimeout(() => bgEl?.remove(), 400)
   }
 
   return (
