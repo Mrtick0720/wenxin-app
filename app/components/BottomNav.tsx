@@ -42,11 +42,11 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
 )
 
 const tabs = [
-  { href: '/', label: '首页', Icon: HomeIcon },
-  { href: '/tasks', label: '审批', Icon: ApprovalIcon, badge: true },
+  { href: '/', label: 'Home', Icon: HomeIcon },
+  { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
   { href: '/bento', label: 'Bento', Icon: BentoIcon },
-  { href: '/reports', label: '报表', Icon: ReportIcon },
-  { href: '/profile', label: '我的', Icon: ProfileIcon },
+  { href: '/reports', label: 'Reports', Icon: ReportIcon },
+  { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {

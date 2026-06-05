@@ -13,9 +13,9 @@ const tables = [
 ]
 
 const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
-  occupied: { label: '就餐中', bg: 'bg-orange-100', text: 'text-orange-600' },
-  empty: { label: '空桌', bg: 'bg-gray-100', text: 'text-gray-400' },
-  paid: { label: '待清台', bg: 'bg-green-100', text: 'text-green-600' },
+  occupied: { label: 'Dining', bg: 'bg-orange-100', text: 'text-orange-600' },
+  empty: { label: 'Empty', bg: 'bg-gray-100', text: 'text-gray-400' },
+  paid: { label: 'To Clear', bg: 'bg-green-100', text: 'text-green-600' },
 }
 
 export default function DineInPage() {
@@ -30,38 +30,36 @@ export default function DineInPage() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <Link href="/" className="text-gray-500 text-xl">←</Link>
-        <span className="font-semibold text-base">堂食详情</span>
+        <span className="font-semibold text-base">Dine-in Details</span>
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
-        {/* 概况 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-gray-500">今日堂食营业额</div>
-            <div className="text-xs text-green-500 font-medium">● 正常营业</div>
+            <div className="text-sm text-gray-500">Today&apos;s Dine-in Revenue</div>
+            <div className="text-xs text-green-500 font-medium">● Open</div>
           </div>
           <div className="text-3xl font-bold text-gray-900 mb-3">RM {totalRevenue.toLocaleString()}</div>
           <div className="grid grid-cols-3 gap-3">
             <div className="text-center">
               <div className="text-xl font-bold text-orange-500">{occupied}</div>
-              <div className="text-xs text-gray-400 mt-0.5">就餐中</div>
+              <div className="text-xs text-gray-400 mt-0.5">Dining</div>
             </div>
             <div className="text-center">
               <div className="text-xl font-bold text-gray-400">{empty}</div>
-              <div className="text-xs text-gray-400 mt-0.5">空桌</div>
+              <div className="text-xs text-gray-400 mt-0.5">Empty</div>
             </div>
             <div className="text-center">
               <div className="text-xl font-bold text-green-500">{paid}</div>
-              <div className="text-xs text-gray-400 mt-0.5">待清台</div>
+              <div className="text-xs text-gray-400 mt-0.5">To Clear</div>
             </div>
           </div>
         </div>
 
-        {/* 桌台状态 */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-gray-700">桌台状态</div>
-            <div className="text-xs text-gray-400">共 {tables.length} 桌</div>
+            <div className="text-sm font-semibold text-gray-700">Table Status</div>
+            <div className="text-xs text-gray-400">{tables.length} tables</div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             {tables.map((table) => {
@@ -74,12 +72,12 @@ export default function DineInPage() {
                   </div>
                   {table.status !== 'empty' ? (
                     <>
-                      <div className="text-sm text-gray-600">{table.pax} 人</div>
-                      <div className="text-sm text-gray-400">{table.opened_at} 开台</div>
+                      <div className="text-sm text-gray-600">{table.pax} pax</div>
+                      <div className="text-sm text-gray-400">Opened {table.opened_at}</div>
                       <div className="text-sm font-semibold text-gray-900 mt-1">RM {table.amount}</div>
                     </>
                   ) : (
-                    <div className="text-sm text-gray-400">空桌候客</div>
+                    <div className="text-sm text-gray-400">Ready for guests</div>
                   )}
                 </div>
               )
@@ -87,9 +85,8 @@ export default function DineInPage() {
           </div>
         </div>
 
-        {/* POS 提示 */}
         <div className="bg-blue-50 rounded-2xl p-4">
-          <div className="text-xs text-blue-500">💡 当前显示模拟数据，接入 POS 系统后将显示真实桌台状态</div>
+          <div className="text-xs text-blue-500">Current table data is simulated. Real table status will appear after POS integration.</div>
         </div>
       </div>
     </main>

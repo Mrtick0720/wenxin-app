@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import {
+  getBentoGestureAxis,
   getBentoPanelAction,
   getBentoPullState,
+  getBentoSwipeThreshold,
   shouldShowBentoTodayShortcut,
 } from '../lib/bentoInteractionUtils.ts'
 
@@ -21,6 +23,24 @@ assert.equal(
   getBentoPanelAction({ dx: -120, dy: 12, threshold: 80, mode: 'open' }),
   'open',
   'left swipe past threshold opens the detail panel'
+)
+
+assert.equal(
+  getBentoSwipeThreshold(390),
+  47,
+  'iPhone-sized screens use a lower swipe threshold for a more responsive panel'
+)
+
+assert.equal(
+  getBentoGestureAxis({ dx: -52, dy: 31 }),
+  'h',
+  'slightly diagonal Android left swipes still count as horizontal'
+)
+
+assert.equal(
+  getBentoPanelAction({ dx: -52, dy: 31, threshold: getBentoSwipeThreshold(390), mode: 'open' }),
+  'open',
+  'shorter slightly diagonal left swipe opens the detail panel'
 )
 
 assert.equal(

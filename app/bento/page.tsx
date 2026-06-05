@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase'
-import { todayLocalStr } from '@/lib/dateUtils'
 import BentoClient from './BentoClient'
 import PageTransition from '../components/PageTransition'
 

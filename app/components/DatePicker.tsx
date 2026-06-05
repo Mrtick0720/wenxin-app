@@ -1,11 +1,13 @@
 'use client'
 
+/* eslint-disable react-hooks/immutability, react-hooks/set-state-in-effect */
+
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
 
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function getWeekDays(mondayStr: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(mondayStr, i))
@@ -13,7 +15,7 @@ function getWeekDays(mondayStr: string): string[] {
 
 function getMonthInfo(weekStart: string) {
   const d = new Date(weekStart + 'T00:00:00')
-  return { key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ZH[d.getMonth()], year: d.getFullYear() }
+  return { key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS[d.getMonth()], year: d.getFullYear() }
 }
 
 function getDaysInMonth(y: number, m: number) { return new Date(y, m + 1, 0).getDate() }
@@ -294,12 +296,12 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) } else setCalMonth(calMonth - 1) }}
             style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-          <span style={{ fontWeight: 600, fontSize: 17, color: '#111' }}>{calYear}年 {MONTHS_ZH[calMonth]}</span>
+          <span style={{ fontWeight: 600, fontSize: 17, color: '#111' }}>{MONTHS[calMonth]} {calYear}</span>
           <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1) } else setCalMonth(calMonth + 1) }}
             style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
-          {['日','一','二','三','四','五','六'].map(d => (
+          {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>{d}</div>
           ))}
         </div>
@@ -330,7 +332,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           <button onClick={() => { onDateChange(today); closeCalendar() }}
             style={{ flex: 1, padding: 12, background: '#60a5fa', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Today</button>
           <button onClick={closeCalendar}
-            style={{ flex: 1, padding: 12, background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 14, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>取消</button>
+            style={{ flex: 1, padding: 12, background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 14, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
         </div>
       </div>
     </div>

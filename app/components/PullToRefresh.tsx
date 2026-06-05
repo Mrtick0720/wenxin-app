@@ -64,7 +64,6 @@ export default function PullToRefresh({ children, onRefresh }: PullToRefreshProp
 
   return (
     <div ref={containerRef} style={{ overflowX: 'hidden' }}>
-      {/* 指示器区域 */}
       <div
         style={{
           height: indicatorHeight,

@@ -1,8 +1,20 @@
 type PanelMode = 'open' | 'close'
 type PanelAction = 'open' | 'close' | 'reset-open' | 'reset-closed' | 'none'
+type GestureAxis = 'h' | 'v' | null
 
 export function shouldShowBentoTodayShortcut(selectedDate: string, today: string, detailOpen: boolean) {
   return selectedDate !== today && !detailOpen
+}
+
+export function getBentoSwipeThreshold(width: number) {
+  return Math.round(Math.min(56, Math.max(44, width * 0.12)))
+}
+
+export function getBentoGestureAxis({ dx, dy }: { dx: number; dy: number }): GestureAxis {
+  const absX = Math.abs(dx)
+  const absY = Math.abs(dy)
+  if (absX < 8 && absY < 8) return null
+  return absX >= absY * 0.65 ? 'h' : 'v'
 }
 
 export function getBentoPanelAction({
@@ -16,7 +28,7 @@ export function getBentoPanelAction({
   threshold: number
   mode: PanelMode
 }): PanelAction {
-  if (Math.abs(dx) <= Math.abs(dy) || Math.abs(dx) < 8) return 'none'
+  if (getBentoGestureAxis({ dx, dy }) !== 'h') return 'none'
 
   if (mode === 'open') {
     if (dx < -threshold) return 'open'

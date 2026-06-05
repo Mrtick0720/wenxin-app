@@ -3,35 +3,36 @@
 export default function Greeting() {
   const hour = new Date().getHours()
 
-  let greeting = '早上好'
+  let greeting = 'Good morning'
   let icon = '🌅'
 
   if (hour >= 5 && hour < 12) {
-    greeting = '早上好'
+    greeting = 'Good morning'
     icon = '🌤️'
   } else if (hour >= 12 && hour < 14) {
-    greeting = '中午好'
+    greeting = 'Good noon'
     icon = '☀️'
   } else if (hour >= 14 && hour < 19) {
-    greeting = '下午好'
+    greeting = 'Good afternoon'
     icon = '🌤️'
   } else if (hour >= 19 && hour < 23) {
-    greeting = '晚上好'
+    greeting = 'Good evening'
     icon = '🌙'
   } else {
-    greeting = '深夜好'
+    greeting = 'Working late'
     icon = '🌃'
   }
 
   const today = new Date()
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-  const dateStr = `${today.getMonth() + 1}月${today.getDate()}日 ${weekdays[today.getDay()]}`
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  const dateStr = `${months[today.getMonth()]} ${today.getDate()} ${weekdays[today.getDay()]}`
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-gray-900">{icon} {greeting}，Bruce</h1>
+      <h1 className="text-xl font-semibold text-gray-900">{icon} {greeting}, Bruce</h1>
       <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
-        {dateStr} · <span className="text-green-500 font-medium">● 营业中</span>
+        {dateStr} · <span className="text-green-500 font-medium">● Open</span>
       </p>
     </div>
   )

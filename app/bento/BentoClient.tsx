@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
-import { getBentoPanelAction, getBentoPullState, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
+import { getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
@@ -25,14 +25,43 @@ type Order = {
   time_slot?: string
 }
 
-const AREAS = ['全部', 'Likas', 'Luyang', 'Lintas']
-const MENU_TYPES = ['全部', '清单', '风味', '素食']
-const TIME_SLOTS = ['全部', '午餐', '晚餐']
+const ALL = 'all'
+const AREAS = ['Likas', 'Luyang', 'Lintas']
+const AREA_OPTIONS = [{ value: ALL, label: 'All Areas' }, ...AREAS.map(area => ({ value: area, label: area }))]
+const MENU_TYPES = [
+  { value: 'standard', label: 'Standard', aliases: ['standard', 'Standard', '清单'] },
+  { value: 'signature', label: 'Signature', aliases: ['signature', 'Signature', '风味'] },
+  { value: 'vegetarian', label: 'Vegetarian', aliases: ['vegetarian', 'Vegetarian', '素食'] },
+]
+const TIME_SLOTS = [
+  { value: 'lunch', label: 'Lunch', aliases: ['lunch', 'Lunch', '午餐'] },
+  { value: 'dinner', label: 'Dinner', aliases: ['dinner', 'Dinner', '晚餐'] },
+]
+const MENU_TYPE_OPTIONS = [
+  { value: ALL, label: 'All Types' },
+  ...MENU_TYPES.map(({ value, label }) => ({ value, label })),
+]
+const TIME_SLOT_OPTIONS = [
+  { value: ALL, label: 'All Slots' },
+  ...TIME_SLOTS.map(({ value, label }) => ({ value, label })),
+]
+
+function matchesOption(value: string | undefined, selected: string, options: typeof MENU_TYPES | typeof TIME_SLOTS) {
+  if (selected === ALL) return true
+  const option = options.find(o => o.value === selected)
+  if (!option) return value === selected
+  return option.aliases.includes(value || '')
+}
+
+function getMenuTypeLabel(value: string | undefined) {
+  return MENU_TYPES.find(type => type.aliases.includes(value || ''))?.label || value
+}
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
-  const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`
+  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]
+  return `${month} ${d.getDate()} ${weekday}`
 }
 
 export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
@@ -41,9 +70,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
-  const [filterArea, setFilterArea] = useState('全部')
-  const [filterType, setFilterType] = useState('全部')
-  const [filterTime, setFilterTime] = useState('全部')
+  const [filterArea, setFilterArea] = useState(ALL)
+  const [filterType, setFilterType] = useState(ALL)
+  const [filterTime, setFilterTime] = useState(ALL)
   const [fetching, setFetching] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
   const [mainPullOffset, setMainPullOffsetState] = useState(0)
@@ -205,9 +234,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (!tracking) return
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-      }
+      if (!axis) axis = getBentoGestureAxis({ dx, dy })
       if (!axis) return
 
       if (axis === 'v') {
@@ -248,7 +275,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const action = getBentoPanelAction({
         dx,
         dy,
-        threshold: window.innerWidth * 0.22,
+        threshold: getBentoSwipeThreshold(window.innerWidth),
         mode: mode === 'close' ? 'close' : 'open',
       })
 
@@ -285,9 +312,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   }
 
   const filtered = orders.filter(o =>
-    (filterArea === '全部' || o.area === filterArea) &&
-    (filterType === '全部' || o.menu_type === filterType) &&
-    (filterTime === '全部' || o.time_slot === filterTime)
+    (filterArea === ALL || o.area === filterArea) &&
+    matchesOption(o.menu_type, filterType, MENU_TYPES) &&
+    matchesOption(o.time_slot, filterTime, TIME_SLOTS)
   )
   const total = orders.length
   const completed = orders.filter(o => o.status === 'completed').length
@@ -318,8 +345,25 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           zIndex: 1,
         }}
       >
-        <span className="text-xs font-medium text-orange-500">{refreshing ? '刷新中...' : '下拉刷新'}</span>
+        <span
+          aria-label={refreshing ? 'Refreshing' : 'Pull to refresh'}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: '50%',
+            border: '2.5px solid #f97316',
+            borderTopColor: 'transparent',
+            animation: mainPullActive ? 'bento-refresh-spin 0.75s linear infinite' : 'none',
+          }}
+        />
       </div>
+
+      <style>{`
+        @keyframes bento-refresh-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
 
       <div
         style={{
@@ -331,29 +375,26 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           willChange: 'transform',
         }}
       >
-        {/* Header */}
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <Link href="/" className="text-gray-500 text-xl">←</Link>
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ New</Link>
         </div>
 
-        {/* DatePicker — ref used to keep horizontal date swipes separate from panel opening */}
         <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
           <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
         </div>
 
-        {/* Lower area */}
         <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
           <div className="border-t border-gray-100 pt-3">
             <div className="grid grid-cols-4 gap-2 mb-3">
               {[
-                { val: total, label: '总订单', color: 'text-gray-900' },
-                { val: completed, label: '已完成', color: 'text-green-500' },
-                { val: pending, label: '待处理', color: 'text-orange-500' },
-                { val: totalAmount > 0 ? totalAmount : '—', label: '总金额', color: 'text-blue-500' },
+                { val: total, label: 'Orders', color: 'text-gray-900' },
+                { val: completed, label: 'Done', color: 'text-green-500' },
+                { val: pending, label: 'Pending', color: 'text-orange-500' },
+                { val: totalAmount > 0 ? totalAmount : '—', label: 'Amount', color: 'text-blue-500' },
               ].map(({ val, label, color }) => (
                 <div key={label} className="text-center">
                   <div className={`text-2xl font-bold ${color}`}>{val}</div>
@@ -364,7 +405,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             <div className="w-full bg-gray-100 rounded-full h-2">
               <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
             </div>
-            <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
+            <div className="text-xs text-gray-400 mt-1 text-right">{percent}% complete</div>
           </div>
 
           <div className="flex gap-2">
@@ -374,8 +415,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
               </svg>
               <div>
-                <div className="text-xs font-medium text-gray-700">未付款</div>
-                <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} 单待付` : '全部已付'}</div>
+                <div className="text-xs font-medium text-gray-700">Unpaid</div>
+                <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} pending` : 'All paid'}</div>
               </div>
             </Link>
             <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
@@ -384,15 +425,15 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>
               </svg>
               <div>
-                <div className="text-xs font-medium text-gray-700">周菜单</div>
-                <div className="text-xs text-gray-400">本周菜品</div>
+                <div className="text-xs font-medium text-gray-700">Weekly Menu</div>
+                <div className="text-xs text-gray-400">This week</div>
               </div>
             </Link>
           </div>
 
           <button onClick={openPanel} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
             <span className="text-sm text-gray-600">
-              {fetching ? '加载中...' : total > 0 ? `查看 ${formatDate(selectedDate)} 全部订单` : '暂无订单'}
+              {fetching ? 'Loading...' : total > 0 ? `View all orders for ${formatDate(selectedDate)}` : 'No orders'}
             </span>
             <span className="text-gray-400 text-sm">→</span>
           </button>
@@ -406,25 +447,24 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
             <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ New</Link>
         </div>
 
         <div className="px-4 pt-3 pb-2 flex gap-2" style={{ flexShrink: 0 }}>
-          <Dropdown value={filterArea} onChange={setFilterArea} options={AREAS.map(a => ({ value: a, label: a === '全部' ? '全部地区' : a }))} />
-          <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPES.map(t => ({ value: t, label: t === '全部' ? '全部类型' : t }))} />
-          <Dropdown value={filterTime} onChange={setFilterTime} options={TIME_SLOTS.map(t => ({ value: t, label: t === '全部' ? '全时段' : t }))} />
+          <Dropdown value={filterArea} onChange={setFilterArea} options={AREA_OPTIONS} />
+          <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPE_OPTIONS} />
+          <Dropdown value={filterTime} onChange={setFilterTime} options={TIME_SLOT_OPTIONS} />
         </div>
 
         <div className="px-4 pb-2" style={{ flexShrink: 0 }}>
           <span className="text-sm font-semibold text-gray-700">
-            订单列表 {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length} 单)</span>}
+            Orders {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length})</span>}
           </span>
         </div>
 
-        {/* data-scroll lets gesture handler allow vertical scroll here */}
         <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}>
-          {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
-          {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">暂无订单</div>}
+          {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
+          {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {
             const isDelivery = !!order.address
             return (
@@ -432,9 +472,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   <span className="font-semibold text-gray-900">{order.customer_name}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
-                    {isDelivery ? '配送' : '自取'}
+                    {isDelivery ? 'Delivery' : 'Pickup'}
                   </span>
-                  {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>}
+                  {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
                 </div>
                 {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
                 <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
@@ -447,12 +487,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 {isToday && (
                   <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
                     className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
-                    {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
+                    {loading === order.id ? 'Updating...' : order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
                   </button>
                 )}
                 <button onClick={() => togglePaid(order)} disabled={loading === order.id}
                   className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
-                  {order.paid ? '✓ 已付款' : '未付款 — 点击标记'}
+                  {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
                 </button>
               </div>
             )

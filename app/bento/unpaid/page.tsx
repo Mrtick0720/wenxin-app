@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
@@ -19,9 +21,19 @@ type Order = {
   date: string
 }
 
+const MENU_TYPE_LABELS: Record<string, string> = {
+  standard: 'Standard',
+  signature: 'Signature',
+  vegetarian: 'Vegetarian',
+  '清单': 'Standard',
+  '风味': 'Signature',
+  '素食': 'Vegetarian',
+}
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
-  return `${d.getMonth() + 1}月${d.getDate()}日`
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]
+  return `${month} ${d.getDate()}`
 }
 
 export default function UnpaidPage() {
@@ -29,11 +41,7 @@ export default function UnpaidPage() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<number | null>(null)
 
-  useEffect(() => {
-    loadUnpaid()
-  }, [])
-
-  async function loadUnpaid() {
+  const loadUnpaid = useCallback(async () => {
     setLoading(true)
     const { data } = await supabase
       .from('bento_orders')
@@ -42,7 +50,11 @@ export default function UnpaidPage() {
       .order('date', { ascending: false })
     setOrders(data || [])
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    loadUnpaid()
+  }, [loadUnpaid])
 
   async function markPaid(order: Order) {
     setUpdating(order.id)
@@ -53,7 +65,6 @@ export default function UnpaidPage() {
 
   const total = orders.reduce((sum, o) => sum + o.amount, 0)
 
-  // 按客户分组
   const grouped = orders.reduce<Record<string, Order[]>>((acc, o) => {
     const key = o.customer_name
     if (!acc[key]) acc[key] = []
@@ -66,7 +77,7 @@ export default function UnpaidPage() {
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link href="/bento" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base">未付款订单</span>
+          <span className="font-semibold text-base">Unpaid Orders</span>
         </div>
         {orders.length > 0 && (
           <span className="text-sm text-red-500 font-semibold">RM {total.toFixed(1)}</span>
@@ -74,12 +85,12 @@ export default function UnpaidPage() {
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
-        {loading && <div className="text-center text-gray-400 py-8">加载中...</div>}
+        {loading && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
         {!loading && orders.length === 0 && (
           <div className="text-center text-gray-400 py-12">
             <div className="text-4xl mb-3">🎉</div>
-            <div className="font-medium text-gray-500">所有订单均已付款</div>
+            <div className="font-medium text-gray-500">All orders are paid</div>
           </div>
         )}
 
@@ -87,7 +98,6 @@ export default function UnpaidPage() {
           const customerTotal = customerOrders.reduce((s, o) => s + o.amount, 0)
           return (
             <div key={name} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              {/* 客户头部 */}
               <div className="px-4 py-3 bg-orange-50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="font-semibold text-gray-900">{name}</span>
@@ -96,7 +106,6 @@ export default function UnpaidPage() {
                 <span className="text-sm font-semibold text-orange-600">RM {customerTotal.toFixed(1)}</span>
               </div>
 
-              {/* 订单列表 */}
               <div className="divide-y divide-gray-50">
                 {customerOrders.map(order => (
                   <div key={order.id} className="px-4 py-3">
@@ -104,7 +113,7 @@ export default function UnpaidPage() {
                       <span className="text-xs text-gray-400">{formatDate(order.date)}</span>
                       <div className="flex items-center gap-2">
                         {order.menu_type && (
-                          <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>
+                          <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{MENU_TYPE_LABELS[order.menu_type] || order.menu_type}</span>
                         )}
                         <span className="text-sm font-medium text-gray-900">RM {order.amount}</span>
                       </div>
@@ -115,7 +124,6 @@ export default function UnpaidPage() {
                 ))}
               </div>
 
-              {/* 收款按钮 */}
               <div className="px-4 pb-4 pt-2">
                 <button
                   onClick={() => {
@@ -124,7 +132,7 @@ export default function UnpaidPage() {
                   disabled={customerOrders.some(o => updating === o.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white"
                 >
-                  ✓ 全部收款 RM {customerTotal.toFixed(1)}
+                  ✓ Mark All Paid RM {customerTotal.toFixed(1)}
                 </button>
               </div>
             </div>

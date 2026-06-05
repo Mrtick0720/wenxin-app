@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+/* eslint-disable react-hooks/set-state-in-effect */
+
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import { toLocalDateStr, addDays } from '@/lib/dateUtils'
 
-const DAYS = ['一', '二', '三', '四', '五', '六', '日']
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
 type WeekMenu = {
@@ -36,7 +38,8 @@ function formatWeekLabel(weekStart: string): string {
   const start = new Date(weekStart + 'T00:00:00')
   const end = new Date(weekStart + 'T00:00:00')
   end.setDate(end.getDate() + 6)
-  return `${start.getMonth() + 1}月${start.getDate()}日 — ${end.getMonth() + 1}月${end.getDate()}日`
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${months[start.getMonth()]} ${start.getDate()} — ${months[end.getMonth()]} ${end.getDate()}`
 }
 
 function getDayDate(weekStart: string, dayIndex: number): string {
@@ -60,11 +63,7 @@ export default function WeeklyMenuPage() {
   const [editDay, setEditDay] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
 
-  useEffect(() => {
-    loadMenu(weekStart)
-  }, [weekStart])
-
-  async function loadMenu(ws: string) {
+  const loadMenu = useCallback(async (ws: string) => {
     setLoading(true)
     const { data } = await supabase
       .from('bento_weekly_menu')
@@ -73,7 +72,11 @@ export default function WeeklyMenuPage() {
       .maybeSingle()
     setMenu(data || emptyMenu(ws))
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    loadMenu(weekStart)
+  }, [loadMenu, weekStart])
 
   function startEdit(key: string) {
     setEditDay(key)
@@ -105,14 +108,13 @@ export default function WeeklyMenuPage() {
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link href="/bento" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base">周菜单</span>
+          <span className="font-semibold text-base">Weekly Menu</span>
         </div>
-        {saving && <span className="text-xs text-gray-400">保存中...</span>}
-        {saved && <span className="text-xs text-green-500">✓ 已保存</span>}
+        {saving && <span className="text-xs text-gray-400">Saving...</span>}
+        {saved && <span className="text-xs text-green-500">✓ Saved</span>}
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
-        {/* 周切换 */}
         <div className="flex items-center justify-between bg-white rounded-2xl px-4 py-3 shadow-sm">
           <button
             onClick={() => setWeekStart(addWeeks(weekStart, -1))}
@@ -122,7 +124,7 @@ export default function WeeklyMenuPage() {
           </button>
           <div className="text-center">
             <div className="text-sm font-semibold text-gray-800">{formatWeekLabel(weekStart)}</div>
-            {isCurrentWeek && <div className="text-xs text-orange-500 mt-0.5">本周</div>}
+            {isCurrentWeek && <div className="text-xs text-orange-500 mt-0.5">This week</div>}
           </div>
           <button
             onClick={() => setWeekStart(addWeeks(weekStart, 1))}
@@ -132,9 +134,8 @@ export default function WeeklyMenuPage() {
           </button>
         </div>
 
-        {loading && <div className="text-center text-gray-400 py-8">加载中...</div>}
+        {loading && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
-        {/* 菜单列表 */}
         {!loading && (
           <div className="space-y-2">
             {DAY_KEYS.map((key, i) => {
@@ -146,7 +147,7 @@ export default function WeeklyMenuPage() {
                   <div key={key} className="bg-white rounded-2xl p-4 shadow-sm border border-orange-200">
                     <div className="flex items-center gap-2 mb-2">
                       <span className={`text-sm font-semibold ${isToday ? 'text-orange-500' : 'text-gray-700'}`}>
-                        周{DAYS[i]}
+                        {DAYS[i]}
                       </span>
                       <span className="text-xs text-gray-400">{getDayDate(weekStart, i)}</span>
                     </div>
@@ -154,7 +155,7 @@ export default function WeeklyMenuPage() {
                       autoFocus
                       value={editValue}
                       onChange={e => setEditValue(e.target.value)}
-                      placeholder="例：鸡腿饭、牛腩饭、豆腐饭"
+                      placeholder="Example: Chicken rice, Beef brisket rice, Tofu rice"
                       rows={3}
                       className="w-full text-sm text-gray-700 outline-none resize-none bg-gray-50 rounded-xl px-3 py-2 border border-gray-200"
                     />
@@ -163,13 +164,13 @@ export default function WeeklyMenuPage() {
                         onClick={saveDay}
                         className="flex-1 py-2 bg-orange-500 text-white rounded-xl text-sm font-medium"
                       >
-                        保存
+                        Save
                       </button>
                       <button
                         onClick={() => setEditDay(null)}
                         className="flex-1 py-2 bg-gray-100 text-gray-500 rounded-xl text-sm"
                       >
-                        取消
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -184,16 +185,16 @@ export default function WeeklyMenuPage() {
                 >
                   <div className="flex-shrink-0 w-10">
                     <div className={`text-sm font-semibold ${isToday ? 'text-orange-500' : 'text-gray-700'}`}>
-                      周{DAYS[i]}
+                      {DAYS[i]}
                     </div>
                     <div className="text-xs text-gray-400">{getDayDate(weekStart, i)}</div>
-                    {isToday && <div className="text-xs text-orange-400 mt-0.5">今天</div>}
+                    {isToday && <div className="text-xs text-orange-400 mt-0.5">Today</div>}
                   </div>
                   <div className="flex-1 min-w-0">
                     {value ? (
                       <div className="text-sm text-gray-700 whitespace-pre-wrap">{value}</div>
                     ) : (
-                      <div className="text-sm text-gray-300">点击添加菜品...</div>
+                      <div className="text-sm text-gray-300">Tap to add menu...</div>
                     )}
                   </div>
                   <svg className="flex-shrink-0 w-4 h-4 text-gray-300 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -210,7 +211,7 @@ export default function WeeklyMenuPage() {
             onClick={() => setWeekStart(todayWeekStart)}
             className="w-full py-2.5 bg-white border border-orange-200 text-orange-500 rounded-xl text-sm font-medium"
           >
-            回到本周
+            Back to this week
           </button>
         )}
       </div>
