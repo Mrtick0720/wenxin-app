@@ -7,7 +7,7 @@ export function shouldShowBentoTodayShortcut(selectedDate: string, today: string
 }
 
 export function getBentoSwipeThreshold(width: number) {
-  return Math.round(Math.min(56, Math.max(44, width * 0.12)))
+  return Math.round(Math.min(44, Math.max(32, width * 0.092)))
 }
 
 export function getBentoGestureAxis({ dx, dy }: { dx: number; dy: number }): GestureAxis {
@@ -15,6 +15,13 @@ export function getBentoGestureAxis({ dx, dy }: { dx: number; dy: number }): Ges
   const absY = Math.abs(dy)
   if (absX < 8 && absY < 8) return null
   return absX >= absY * 0.65 ? 'h' : 'v'
+}
+
+export function getBentoCloseGestureAxis({ dx, dy }: { dx: number; dy: number }): GestureAxis {
+  const absX = Math.abs(dx)
+  const absY = Math.abs(dy)
+  if (absX < 10 && absY < 10) return null
+  return absX >= absY * 1.25 ? 'h' : 'v'
 }
 
 export function getBentoPanelAction({
@@ -28,7 +35,10 @@ export function getBentoPanelAction({
   threshold: number
   mode: PanelMode
 }): PanelAction {
-  if (getBentoGestureAxis({ dx, dy }) !== 'h') return 'none'
+  const axis = mode === 'close'
+    ? getBentoCloseGestureAxis({ dx, dy })
+    : getBentoGestureAxis({ dx, dy })
+  if (axis !== 'h') return 'none'
 
   if (mode === 'open') {
     if (dx < -threshold) return 'open'

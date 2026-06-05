@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
-import { getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
+import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
@@ -234,7 +234,11 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (!tracking) return
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
-      if (!axis) axis = getBentoGestureAxis({ dx, dy })
+      if (!axis) {
+        axis = mode === 'close'
+          ? getBentoCloseGestureAxis({ dx, dy })
+          : getBentoGestureAxis({ dx, dy })
+      }
       if (!axis) return
 
       if (axis === 'v') {
@@ -250,9 +254,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (mode === 'open' && dx < 0) {
         e.preventDefault()
         if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-      } else if (mode === 'close') {
+      } else if (mode === 'close' && dx > 0) {
         e.preventDefault()
-        if (dx > 0 && el) {
+        if (el) {
           const inScroll = !!(e.target as Element | null)?.closest('[data-scroll]')
           if (!inScroll) el.style.transform = `translateX(${Math.max(0, dx)}px)`
         }
@@ -462,7 +466,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}>
+        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {

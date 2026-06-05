@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import {
+  getBentoCloseGestureAxis,
   getBentoGestureAxis,
   getBentoPanelAction,
   getBentoPullState,
@@ -27,8 +28,8 @@ assert.equal(
 
 assert.equal(
   getBentoSwipeThreshold(390),
-  47,
-  'iPhone-sized screens use a lower swipe threshold for a more responsive panel'
+  36,
+  'phone-sized screens use a low swipe threshold for a more responsive panel'
 )
 
 assert.equal(
@@ -41,6 +42,30 @@ assert.equal(
   getBentoPanelAction({ dx: -52, dy: 31, threshold: getBentoSwipeThreshold(390), mode: 'open' }),
   'open',
   'shorter slightly diagonal left swipe opens the detail panel'
+)
+
+assert.equal(
+  getBentoPanelAction({ dx: -38, dy: 24, threshold: getBentoSwipeThreshold(390), mode: 'open' }),
+  'open',
+  'short Android left swipes open the detail panel'
+)
+
+assert.equal(
+  getBentoCloseGestureAxis({ dx: 28, dy: 46 }),
+  'v',
+  'detail page vertical scrolling wins over diagonal movement'
+)
+
+assert.equal(
+  getBentoPanelAction({ dx: 28, dy: 46, threshold: getBentoSwipeThreshold(390), mode: 'close' }),
+  'none',
+  'diagonal vertical movement in detail page does not block scrolling'
+)
+
+assert.equal(
+  getBentoPanelAction({ dx: 58, dy: 14, threshold: getBentoSwipeThreshold(390), mode: 'close' }),
+  'close',
+  'clear right swipe closes the detail panel'
 )
 
 assert.equal(
