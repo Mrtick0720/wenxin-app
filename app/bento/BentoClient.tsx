@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useCallback, useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
+import { getBentoPanelAction, getBentoPullState, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'
 
@@ -35,20 +36,28 @@ function formatDate(dateStr: string) {
 }
 
 export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
+  const router = useRouter()
   const today = todayLocalStr()
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
-  const [portalMounted, setPortalMounted] = useState(false)
   const [filterArea, setFilterArea] = useState('全部')
   const [filterType, setFilterType] = useState('全部')
   const [filterTime, setFilterTime] = useState('全部')
   const [fetching, setFetching] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
-  useEffect(() => { setPortalMounted(true) }, [])
+  const [mainPullOffset, setMainPullOffsetState] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
   const datepickerAreaRef = useRef<HTMLDivElement>(null)
+  const mainPullOffsetRef = useRef(0)
+  const pullRefreshThreshold = 70
+
+  const setMainPullOffset = useCallback((offset: number) => {
+    mainPullOffsetRef.current = offset
+    setMainPullOffsetState(offset)
+  }, [])
 
   // ── Panel: always rendered, starts hidden via inline style ──
   const panelRef = useRef<HTMLDivElement>(null)
@@ -60,8 +69,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     if (el) el.style.transform = `translateX(${window.innerWidth}px)`
   }, [])
 
-  // No body/html manipulation — position:fixed container is sufficient.
-  // Setting overflow:hidden on body/html blocks child scroll on both iOS and Android.
+  // No body/html locking here. The Bento shell handles main-page gestures,
+  // while the detail list keeps its own native scroll.
 
   // ── Panel animation ──
   function getPanelX(): number {
@@ -113,87 +122,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     animatePanel(window.innerWidth)
   }
 
-  // ── Gesture listeners on document ──
-  useEffect(() => {
-    let sx = 0, sy = 0
-    let axis: 'h' | 'v' | null = null
-    let tracking = false
-    let mode: 'open' | 'close' | null = null
-
-    function onStart(e: TouchEvent) {
-      const t = e.touches[0]
-      sx = t.clientX; sy = t.clientY
-      axis = null; tracking = false; mode = null
-
-      if (panelIsOpen.current) {
-        tracking = true; mode = 'close'
-        return
-      }
-      if (panelAnimRef.current) return
-
-      // Exclude DatePicker by bounding-rect Y (more reliable than DOM contains on Android)
-      const dp = datepickerAreaRef.current
-      if (dp) {
-        const r = dp.getBoundingClientRect()
-        if (t.clientY >= r.top && t.clientY <= r.bottom) return
-      }
-      tracking = true; mode = 'open'
-    }
-
-    function onMove(e: TouchEvent) {
-      if (!tracking) return
-      const dx = e.touches[0].clientX - sx
-      const dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-      }
-      if (axis !== 'h') return  // vertical → don't prevent, let pull-to-refresh work
-
-      const el = panelRef.current
-      if (mode === 'open' && dx < 0) {
-        // Left swipe: slide panel in from right
-        e.preventDefault()
-        if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-      } else if (mode === 'close') {
-        // Detail open: block ALL horizontal browser navigation (left=forward, right=back)
-        e.preventDefault()
-        if (dx > 0 && el) {
-          // Only move panel when swiping right (closing)
-          const inScroll = !!(e.target as Element | null)?.closest('[data-scroll]')
-          if (!inScroll) el.style.transform = `translateX(${Math.max(0, dx)}px)`
-        }
-      }
-    }
-
-    function onEnd(e: TouchEvent) {
-      if (!tracking) return
-      tracking = false
-      if (axis !== 'h') return
-      const dx = e.changedTouches[0].clientX - sx
-      const thresh = window.innerWidth * 0.22
-
-      if (mode === 'open' && dx < -thresh) {
-        openPanel()
-      } else if (mode === 'open' && dx < 0) {
-        animatePanel(window.innerWidth)  // didn't reach threshold, close back
-      } else if (mode === 'close' && dx > thresh) {
-        closePanel()
-      } else if (mode === 'close') {
-        animatePanel(0)  // didn't reach threshold, keep open
-      }
-      // mode=open + dx≥0: right swipe on main page → allow browser back navigation, do nothing
-    }
-
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: false })
-    document.addEventListener('touchend', onEnd, { passive: true })
-    return () => {
-      document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onEnd)
-    }
-  }, []) // eslint-disable-line
-
   // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
     const { data } = await supabase.from('bento_orders').select('*').eq('date', date).order('id', { ascending: true })
@@ -224,6 +152,122 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
   useEffect(() => { prefetchAdjacent(today) }, []) // eslint-disable-line
 
+  const refreshSelectedDate = useCallback(async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    const result = await fetchDate(selectedDate)
+    setOrders(result)
+    router.refresh()
+    await new Promise(resolve => setTimeout(resolve, 350))
+    setRefreshing(false)
+  }, [fetchDate, refreshing, router, selectedDate])
+
+  // ── Gesture listeners on document ──
+  useEffect(() => {
+    let sx = 0, sy = 0
+    let axis: 'h' | 'v' | null = null
+    let tracking = false
+    let mode: 'open' | 'close' | 'datepicker' | null = null
+
+    function isInDatePicker(clientY: number) {
+      const dp = datepickerAreaRef.current
+      if (!dp) return false
+      const r = dp.getBoundingClientRect()
+      return clientY >= r.top && clientY <= r.bottom
+    }
+
+    function finishMainPull(dy: number) {
+      const pullState = getBentoPullState({ dy, threshold: pullRefreshThreshold })
+      if (pullState.shouldRefresh) {
+        setMainPullOffset(pullRefreshThreshold)
+        void refreshSelectedDate().finally(() => setMainPullOffset(0))
+      } else {
+        setMainPullOffset(0)
+      }
+    }
+
+    function onStart(e: TouchEvent) {
+      const t = e.touches[0]
+      sx = t.clientX; sy = t.clientY
+      axis = null; tracking = false; mode = null
+
+      if (panelIsOpen.current) {
+        tracking = true; mode = 'close'
+        return
+      }
+      if (panelAnimRef.current) return
+
+      tracking = true
+      mode = isInDatePicker(t.clientY) ? 'datepicker' : 'open'
+    }
+
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const dx = e.touches[0].clientX - sx
+      const dy = e.touches[0].clientY - sy
+      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      }
+      if (!axis) return
+
+      if (axis === 'v') {
+        if (mode === 'close') return
+        e.preventDefault()
+        setMainPullOffset(getBentoPullState({ dy, threshold: pullRefreshThreshold }).offset)
+        return
+      }
+
+      if (mode === 'datepicker') return
+
+      const el = panelRef.current
+      if (mode === 'open' && dx < 0) {
+        e.preventDefault()
+        if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
+      } else if (mode === 'close') {
+        e.preventDefault()
+        if (dx > 0 && el) {
+          const inScroll = !!(e.target as Element | null)?.closest('[data-scroll]')
+          if (!inScroll) el.style.transform = `translateX(${Math.max(0, dx)}px)`
+        }
+      }
+    }
+
+    function onEnd(e: TouchEvent) {
+      if (!tracking) return
+      tracking = false
+
+      const dx = e.changedTouches[0].clientX - sx
+      const dy = e.changedTouches[0].clientY - sy
+
+      if (axis === 'v' && mode !== 'close') {
+        finishMainPull(dy)
+        return
+      }
+      if (axis !== 'h' || mode === 'datepicker') return
+
+      const action = getBentoPanelAction({
+        dx,
+        dy,
+        threshold: window.innerWidth * 0.22,
+        mode: mode === 'close' ? 'close' : 'open',
+      })
+
+      if (action === 'open') openPanel()
+      else if (action === 'reset-closed') animatePanel(window.innerWidth)
+      else if (action === 'close') closePanel()
+      else if (action === 'reset-open') animatePanel(0)
+    }
+
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+    }
+  }, [refreshSelectedDate, setMainPullOffset]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
     setLoading(order.id)
@@ -252,75 +296,107 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
   const unpaidCount = orders.filter(o => !o.paid).length
   const isToday = selectedDate === today
+  const showTodayShortcut = shouldShowBentoTodayShortcut(selectedDate, today, detailOpen)
+  const mainPullActive = mainPullOffset !== 0 || refreshing
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', overscrollBehavior: 'none', background: '#f9fafb' }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: 10,
+          left: 0,
+          right: 0,
+          height: 34,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: mainPullActive ? 1 : 0,
+          transform: `translateY(${Math.min(mainPullOffset, pullRefreshThreshold) - 28}px)`,
+          transition: mainPullOffset === 0 || refreshing ? 'transform 0.25s ease, opacity 0.2s ease' : 'none',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
+      >
+        <span className="text-xs font-medium text-orange-500">{refreshing ? '刷新中...' : '下拉刷新'}</span>
+      </div>
 
-      {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          transform: `translateY(${mainPullOffset}px)`,
+          transition: mainPullOffset === 0 || refreshing ? 'transform 0.28s cubic-bezier(0.2,0,0,1)' : 'none',
+          willChange: 'transform',
+        }}
+      >
+        {/* Header */}
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-gray-500 text-xl">←</Link>
+            <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
+          </div>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
         </div>
-        <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
-      </div>
 
-      {/* DatePicker — ref used to exclude it from open-swipe */}
-      <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
-        <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
-      </div>
+        {/* DatePicker — ref used to keep horizontal date swipes separate from panel opening */}
+        <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
+          <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
+        </div>
 
-      {/* Lower area */}
-      <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
-        <div className="border-t border-gray-100 pt-3">
-          <div className="grid grid-cols-4 gap-2 mb-3">
-            {[
-              { val: total, label: '总订单', color: 'text-gray-900' },
-              { val: completed, label: '已完成', color: 'text-green-500' },
-              { val: pending, label: '待处理', color: 'text-orange-500' },
-              { val: totalAmount > 0 ? totalAmount : '—', label: '总金额', color: 'text-blue-500' },
-            ].map(({ val, label, color }) => (
-              <div key={label} className="text-center">
-                <div className={`text-2xl font-bold ${color}`}>{val}</div>
-                <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+        {/* Lower area */}
+        <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
+          <div className="border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-4 gap-2 mb-3">
+              {[
+                { val: total, label: '总订单', color: 'text-gray-900' },
+                { val: completed, label: '已完成', color: 'text-green-500' },
+                { val: pending, label: '待处理', color: 'text-orange-500' },
+                { val: totalAmount > 0 ? totalAmount : '—', label: '总金额', color: 'text-blue-500' },
+              ].map(({ val, label, color }) => (
+                <div key={label} className="text-center">
+                  <div className={`text-2xl font-bold ${color}`}>{val}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2">
+              <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
+          </div>
+
+          <div className="flex gap-2">
+            <Link href="/bento/unpaid" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+                <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
+              </svg>
+              <div>
+                <div className="text-xs font-medium text-gray-700">未付款</div>
+                <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} 单待付` : '全部已付'}</div>
               </div>
-            ))}
+            </Link>
+            <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="2" width="14" height="20" rx="2"/>
+                <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>
+              </svg>
+              <div>
+                <div className="text-xs font-medium text-gray-700">周菜单</div>
+                <div className="text-xs text-gray-400">本周菜品</div>
+              </div>
+            </Link>
           </div>
-          <div className="w-full bg-gray-100 rounded-full h-2">
-            <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
-          </div>
-          <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
-        </div>
 
-        <div className="flex gap-2">
-          <Link href="/bento/unpaid" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
-              <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
-            </svg>
-            <div>
-              <div className="text-xs font-medium text-gray-700">未付款</div>
-              <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} 单待付` : '全部已付'}</div>
-            </div>
-          </Link>
-          <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="5" y="2" width="14" height="20" rx="2"/>
-              <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>
-            </svg>
-            <div>
-              <div className="text-xs font-medium text-gray-700">周菜单</div>
-              <div className="text-xs text-gray-400">本周菜品</div>
-            </div>
-          </Link>
+          <button onClick={openPanel} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
+            <span className="text-sm text-gray-600">
+              {fetching ? '加载中...' : total > 0 ? `查看 ${formatDate(selectedDate)} 全部订单` : '暂无订单'}
+            </span>
+            <span className="text-gray-400 text-sm">→</span>
+          </button>
         </div>
-
-        <button onClick={openPanel} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
-          <span className="text-sm text-gray-600">
-            {fetching ? '加载中...' : total > 0 ? `查看 ${formatDate(selectedDate)} 全部订单` : '暂无订单'}
-          </span>
-          <span className="text-gray-400 text-sm">→</span>
-        </button>
       </div>
 
       {/* Detail Panel */}
@@ -346,7 +422,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </div>
 
         {/* data-scroll lets gesture handler allow vertical scroll here */}
-        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3">
+        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch' }}>
           {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">暂无订单</div>}
           {!fetching && filtered.map((order) => {
@@ -384,14 +460,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </div>
       </div>
 
-      {portalMounted && selectedDate !== today && !detailOpen && createPortal(
-        <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
+      {showTodayShortcut && (
+        <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 30, pointerEvents: 'auto' }}>
           <button onClick={() => handleDateChange(today)}
             style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}>
             TODAY
           </button>
-        </div>,
-        document.body
+        </div>
       )}
     </div>
   )

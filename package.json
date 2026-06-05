@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
     "start": "next start",
     "lint": "eslint"
   },
