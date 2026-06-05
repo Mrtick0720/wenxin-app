@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
-import { todayLocalStr } from '@/lib/dateUtils'
+import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
 import Link from 'next/link'
 import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'
@@ -35,7 +35,7 @@ function formatDate(dateStr: string) {
 }
 
 export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
@@ -46,30 +46,62 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [filterTime, setFilterTime] = useState('全部')
   const [fetching, setFetching] = useState(false)
 
+  // Order cache: keyed by date string — avoids reloading already-fetched data
+  const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
+
   const isToday = selectedDate === today
   const headerTitle = isToday ? 'Bento 今日进度' : `Bento ${formatDate(selectedDate)}`
 
-  const loadOrders = useCallback(async (date: string) => {
-    setFetching(true)
+  // Fetch a single date's orders, updating cache
+  const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
     const { data } = await supabase
       .from('bento_orders')
       .select('*')
       .eq('date', date)
       .order('id', { ascending: true })
-    setOrders(data || [])
-    setFetching(false)
+    const result = data || []
+    cache.current[date] = result
+    return result
   }, [])
+
+  // Pre-load adjacent week's representative date silently in background
+  const prefetchAdjacent = useCallback((date: string) => {
+    const monday = getMondayOfWeek(date)
+    const d = new Date(date + 'T00:00:00')
+    const idx = d.getDay() === 0 ? 6 : d.getDay() - 1
+    const prevRep = addDays(addDays(monday, -7), idx)
+    const nextRep = addDays(addDays(monday, 7), idx)
+    if (!cache.current[prevRep]) fetchDate(prevRep)
+    if (!cache.current[nextRep]) fetchDate(nextRep)
+  }, [fetchDate])
 
   async function handleDateChange(date: string) {
     setSelectedDate(date)
-    await loadOrders(date)
+    if (cache.current[date] !== undefined) {
+      // Instant: use cached data
+      setOrders(cache.current[date])
+    } else {
+      // Not cached yet: load normally
+      setFetching(true)
+      const result = await fetchDate(date)
+      setOrders(result)
+      setFetching(false)
+    }
+    prefetchAdjacent(date)
   }
+
+  // Pre-load adjacent weeks on mount
+  useEffect(() => {
+    prefetchAdjacent(today)
+  }, []) // eslint-disable-line
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
     setLoading(order.id)
     await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
-    setOrders(orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o))
+    const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
+    setOrders(updated)
+    cache.current[selectedDate] = updated
     setLoading(null)
   }
 
@@ -77,7 +109,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     const newPaid = !order.paid
     setLoading(order.id)
     await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
-    setOrders(orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o))
+    const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
+    setOrders(updated)
+    cache.current[selectedDate] = updated
     setLoading(null)
   }
 
@@ -109,7 +143,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       <div className="px-4 py-4 pb-8 space-y-4">
         {/* 概况卡片 + 日期选择 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} isLoading={fetching} />
+          <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
           <div className="border-t border-gray-100 mt-3 pt-3">
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="text-center">

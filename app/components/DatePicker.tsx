@@ -22,14 +22,13 @@ function getFirstDayOfMonth(y: number, m: number) { return new Date(y, m, 1).get
 interface DatePickerProps {
   selectedDate: string
   onDateChange: (date: string) => void
-  isLoading?: boolean
 }
 
-export default function DatePicker({ selectedDate, onDateChange, isLoading = false }: DatePickerProps) {
+export default function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
   const today = todayLocalStr()
   const [viewWeekStart, setViewWeekStart] = useState(() => getMondayOfWeek(selectedDate))
 
-  // ── Calendar popup ────────────────────────────────────────────
+  // Calendar popup
   const [showCalendar, setShowCalendar] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [calYear, setCalYear] = useState(new Date().getFullYear())
@@ -42,19 +41,15 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
     return () => { document.body.style.overflow = ''; document.body.style.position = ''; document.body.style.width = '' }
   }, [showCalendar])
 
-  // ── Strip refs ────────────────────────────────────────────────
+  // Strip refs
   const stripRef = useRef<HTMLDivElement>(null)
   const touchStartX = useRef(0)
   const isDragging = useRef(false)
   const hasDragged = useRef(false)
-  const isLoadingRef = useRef(isLoading)
-  // State machine: 'idle' | 'springing-back' | 'waiting-load' | 'snapping-forward'
-  const animState = useRef('idle')
-  const snapTarget = useRef<{ weekStart: string; transform: string } | null>(null)
-  const [isWaiting, setIsWaiting] = useState(false)
+  const pendingWeek = useRef<{ weekStart: string; transform: string } | null>(null)
   const navDirection = useRef<'next' | 'prev'>('next')
 
-  // ── Month label animation ─────────────────────────────────────
+  // Month animation
   const initial = getMonthInfo(getMondayOfWeek(selectedDate))
   const [displayMonth, setDisplayMonth] = useState({ label: initial.label, year: initial.year })
   const [exitMonth, setExitMonth] = useState<{ label: string; year: number } | null>(null)
@@ -75,37 +70,18 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
     }
   }, [viewWeekStart])
 
-  // Keep isLoadingRef in sync
-  useEffect(() => { isLoadingRef.current = isLoading }, [isLoading])
-
-  // When loading finishes, snap forward if waiting
-  useEffect(() => {
-    if (!isLoading && animState.current === 'waiting-load') {
-      doSnapForward()
-    }
-  }, [isLoading]) // eslint-disable-line
-
   // Sync view when selectedDate changes externally
   useEffect(() => {
     const monday = getMondayOfWeek(selectedDate)
-    if (monday === viewWeekStart) return
-
-    if (animState.current !== 'idle') {
-      // Our own triggered change → let animation continue
-      if (snapTarget.current?.weekStart === monday) return
-      // External override (e.g. TODAY button) → cancel and jump
-      snapTarget.current = null
-      animState.current = 'idle'
-      setIsWaiting(false)
+    if (monday !== viewWeekStart && !isDragging.current && !pendingWeek.current) {
+      applyTransform('translateX(-33.333%)', false)
+      setViewWeekStart(monday)
     }
-    applyTransform('translateX(-33.333%)', false)
-    setViewWeekStart(monday)
   }, [selectedDate]) // eslint-disable-line
 
   const prevWeekStart = addDays(viewWeekStart, -7)
   const nextWeekStart = addDays(viewWeekStart, 7)
 
-  // ── Strip helpers ─────────────────────────────────────────────
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
@@ -117,23 +93,16 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
     return stripRef.current?.parentElement?.clientWidth ?? 300
   }
 
-  function doSnapForward() {
-    if (!snapTarget.current) return
-    animState.current = 'snapping-forward'
-    setIsWaiting(false)
-    applyTransform(snapTarget.current.transform, true)
-  }
-
-  // Representative date in target week: same day-of-week as current selectedDate
+  // Representative date in target week: same day-of-week as selectedDate
   function getRepDate(newWeekStart: string): string {
     const d = new Date(selectedDate + 'T00:00:00')
     const idx = d.getDay() === 0 ? 6 : d.getDay() - 1
     return addDays(newWeekStart, idx)
   }
 
-  // ── Touch handlers ────────────────────────────────────────────
+  // Touch handlers — strip follows finger directly, snaps on release
   function handleTouchStart(e: React.TouchEvent) {
-    if (animState.current !== 'idle') return
+    if (pendingWeek.current) return
     touchStartX.current = e.touches[0].clientX
     isDragging.current = true
     hasDragged.current = false
@@ -143,7 +112,7 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
   function handleTouchMove(e: React.TouchEvent) {
     if (!isDragging.current) return
     const delta = e.touches[0].clientX - touchStartX.current
-    if (Math.abs(delta) > 5) hasDragged.current = true
+    if (Math.abs(delta) > 3) hasDragged.current = true
     applyTransform(`translateX(calc(-33.333% + ${delta}px))`, false)
   }
 
@@ -153,45 +122,30 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
     const delta = e.changedTouches[0].clientX - touchStartX.current
     const threshold = getContainerWidth() * 0.22
 
-    if (Math.abs(delta) > threshold) {
-      const goingPrev = delta > 0
-      const targetWeek = goingPrev ? prevWeekStart : nextWeekStart
-      navDirection.current = goingPrev ? 'prev' : 'next'
-      snapTarget.current = {
-        weekStart: targetWeek,
-        transform: goingPrev ? 'translateX(0%)' : 'translateX(-66.666%)'
-      }
-      animState.current = 'springing-back'
-      // Trigger data load for representative date in new week
-      onDateChange(getRepDate(targetWeek))
-      // Spring back to current position while loading
-      applyTransform('translateX(-33.333%)', true)
+    if (delta > threshold) {
+      navDirection.current = 'prev'
+      pendingWeek.current = { weekStart: prevWeekStart, transform: 'translateX(0%)' }
+      onDateChange(getRepDate(prevWeekStart))
+      applyTransform('translateX(0%)', true)
+    } else if (delta < -threshold) {
+      navDirection.current = 'next'
+      pendingWeek.current = { weekStart: nextWeekStart, transform: 'translateX(-66.666%)' }
+      onDateChange(getRepDate(nextWeekStart))
+      applyTransform('translateX(-66.666%)', true)
     } else {
       applyTransform('translateX(-33.333%)', true)
     }
   }
 
   function handleTransitionEnd() {
-    if (animState.current === 'springing-back') {
-      animState.current = 'waiting-load'
-      if (!isLoadingRef.current) {
-        doSnapForward()
-      } else {
-        setIsWaiting(true)
-      }
-    } else if (animState.current === 'snapping-forward') {
-      const target = snapTarget.current
-      snapTarget.current = null
-      animState.current = 'idle'
-      setIsWaiting(false)
-      if (target) {
-        applyTransform('translateX(-33.333%)', false)
-        setViewWeekStart(target.weekStart)
-      }
-    }
+    if (!pendingWeek.current) return
+    const { weekStart } = pendingWeek.current
+    pendingWeek.current = null
+    applyTransform('translateX(-33.333%)', false)
+    setViewWeekStart(weekStart)
   }
 
-  // ── Calendar popup handlers ───────────────────────────────────
+  // Calendar popup handlers
   function handleCalendarSelect(day: number) {
     const m = String(calMonth + 1).padStart(2, '0')
     const d = String(day).padStart(2, '0')
@@ -211,7 +165,6 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
       style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '0 24px', boxSizing: 'border-box' }}
     >
       <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: 24, padding: 20, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
-        {/* Month nav */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) } else setCalMonth(calMonth - 1) }}
             style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
@@ -219,13 +172,11 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
           <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1) } else setCalMonth(calMonth + 1) }}
             style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
         </div>
-        {/* Weekday headers */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
           {['日','一','二','三','四','五','六'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>{d}</div>
           ))}
         </div>
-        {/* Days */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
           {Array.from({ length: firstCalDay }).map((_, i) => <div key={`e${i}`} />)}
           {Array.from({ length: daysInCalMonth }).map((_, i) => {
@@ -249,7 +200,6 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
             )
           })}
         </div>
-        {/* Buttons */}
         <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
           <button onClick={() => { onDateChange(today); setShowCalendar(false) }}
             style={{ flex: 1, padding: 12, background: '#60a5fa', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Today</button>
@@ -262,7 +212,7 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
 
   return (
     <div>
-      {/* Header: centered, calendar icon is clickable */}
+      {/* Centered header — calendar icon + month label, both clickable */}
       <div className="flex justify-center mb-3">
         <button
           onClick={() => {
@@ -292,14 +242,14 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
         </button>
       </div>
 
-      {/* Weekday labels */}
+      {/* Static weekday labels */}
       <div className="grid grid-cols-7 mb-1">
         {WEEKDAY_LABELS.map((label, i) => (
           <div key={i} className="text-center text-xs text-gray-300 font-medium pb-1">{label}</div>
         ))}
       </div>
 
-      {/* Sliding strip */}
+      {/* Sliding week strip */}
       <div className="overflow-hidden">
         <div
           ref={stripRef}
@@ -321,20 +271,18 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
                     <button
                       key={dateStr}
                       onClick={() => {
-                        if (hasDragged.current || animState.current !== 'idle') return
+                        if (hasDragged.current || pendingWeek.current) return
                         onDateChange(dateStr)
                         if (wi !== 1) {
                           const dir = wi === 0 ? 'prev' : 'next'
                           navDirection.current = dir
                           const targetWeek = dir === 'prev' ? prevWeekStart : nextWeekStart
-                          snapTarget.current = { weekStart: targetWeek, transform: dir === 'prev' ? 'translateX(0%)' : 'translateX(-66.666%)' }
-                          animState.current = 'springing-back'
-                          applyTransform('translateX(-33.333%)', true)
+                          pendingWeek.current = { weekStart: targetWeek, transform: dir === 'prev' ? 'translateX(0%)' : 'translateX(-66.666%)' }
+                          applyTransform(pendingWeek.current.transform, true)
                         }
                       }}
                       className="flex justify-center items-center py-1"
                     >
-                      {/* Separate circle bg (scales) from text (color transitions) */}
                       <span className="relative w-8 h-8 flex items-center justify-center">
                         <span
                           className="absolute inset-0 rounded-full"
@@ -364,16 +312,6 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
         </div>
       </div>
 
-      {/* Loading dots while waiting for data before snap */}
-      {isWaiting && (
-        <div className="flex justify-center gap-1 pt-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: '0ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: '150ms' }} />
-          <span className="w-1.5 h-1.5 rounded-full bg-blue-300 animate-bounce" style={{ animationDelay: '300ms' }} />
-        </div>
-      )}
-
-      {/* Calendar portal */}
       {mounted && createPortal(calendarModal, document.body)}
     </div>
   )
