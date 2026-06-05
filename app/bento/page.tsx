@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
 import BentoClient from './BentoClient'
 import PageTransition from '../components/PageTransition'
 
@@ -18,22 +17,9 @@ export default async function BentoPage() {
 
   return (
     <PageTransition>
-    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
-      {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base">Bento 今日进度</span>
-        </div>
-        <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">
-          + 新增
-        </Link>
-      </div>
-
-      <div className="px-4 py-4 pb-8">
+      <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
         <BentoClient initialOrders={orders} />
-      </div>
-    </main>
+      </main>
     </PageTransition>
   )
 }
