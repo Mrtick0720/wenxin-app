@@ -8,13 +8,6 @@ const complaints = [
   { id: 3, customer: 'Table 3 Guest', type: 'Service', description: 'Waited 20 min for menu', severity: 'low', status: 'open', time: '13:10' },
 ]
 
-const typeLabel: Record<string, string> = {
-  'Food Quality': 'Food Quality',
-  'Delivery': 'Delivery',
-  'Service': 'Service',
-  'Other': 'Other',
-}
-
 const severityConfig: Record<string, { label: string; color: string }> = {
   high: { label: 'Urgent', color: 'bg-red-100 text-red-600' },
   medium: { label: 'Normal', color: 'bg-orange-100 text-orange-600' },

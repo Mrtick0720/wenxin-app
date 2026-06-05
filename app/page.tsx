@@ -1,7 +1,9 @@
 import { supabase } from '@/lib/supabase'
+import { todayLocalStr } from '@/lib/dateUtils'
 import Link from 'next/link'
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
+import FunctionLauncher from './components/FunctionLauncher'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +13,7 @@ type BentoOrder = {
 }
 
 async function getStats() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('daily_stats')
     .select('*')
@@ -21,11 +23,12 @@ async function getStats() {
 }
 
 async function getBentoStats() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('bento_orders')
     .select('*')
     .eq('date', today)
+    .neq('status', 'canceled')
   const orders = (data || []) as BentoOrder[]
   const total = orders.length
   const completed = orders.filter(o => o.status === 'completed').length
@@ -34,7 +37,7 @@ async function getBentoStats() {
 }
 
 async function getAnomalyCount() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('incidents')
     .select('id')
@@ -44,7 +47,7 @@ async function getAnomalyCount() {
 }
 
 async function getPendingCount() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('tasks')
     .select('id')
@@ -55,26 +58,24 @@ async function getPendingCount() {
 
 // Placeholders — real data will come from Supabase tables
 async function getReservationCount() { return 8 }
-async function getComplaintCount() { return 1 }
 
 // ── Today's Issues — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
-function getTodayIssues(_complaintCount: number): Issue[] {
+function getTodayIssues(): Issue[] {
   const issues: Issue[] = []
   // Complaint is already shown in Alert Cards above — only show operational issues here
-  issues.push({ type: '⚠ Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
-  issues.push({ type: '⚠ Attendance', detail: 'Lina — missing punch-out', link: '/staff' })
+  issues.push({ type: 'Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
+  issues.push({ type: 'Attendance', detail: 'Lina missing punch-out', link: '/staff' })
   return issues
 }
 
 export default async function Home() {
-  const [stats, bentoStats, anomalyCount, pendingCount, reservationCount, complaintCount] = await Promise.all([
+  const [stats, bentoStats, anomalyCount, pendingCount, reservationCount] = await Promise.all([
     getStats(),
     getBentoStats(),
     getAnomalyCount(),
     getPendingCount(),
     getReservationCount(),
-    getComplaintCount(),
   ])
 
   const revenueTotal = stats?.revenue_total ?? 0
@@ -83,7 +84,7 @@ export default async function Home() {
   const bentoOrders = bentoStats.total
   const bentoCompleted = bentoStats.completed
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
-  const issues = getTodayIssues(complaintCount)
+  const issues = getTodayIssues()
   const now = new Date()
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -92,18 +93,15 @@ export default async function Home() {
   return (
     <HomeRefresh>
     <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
-      {/* Header — minimal: Avatar + Greeting + Bell only */}
       <div className="bg-white px-4 pt-3 pb-2.5 border-b border-gray-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-white font-semibold text-[11px] flex-shrink-0">
-              B
+              W
             </div>
-            <div className="flex items-center gap-0.5">
-              <span className="text-sm font-medium text-gray-900">Hi, Bruce</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="9 18 15 12 9 6"/>
-              </svg>
+            <div>
+              <div className="text-sm font-semibold text-gray-900">Wenxin Ops</div>
+              <div className="text-[11px] text-gray-400">Main Store · {todayStr} · Open</div>
             </div>
           </div>
           <div className="relative">
@@ -119,27 +117,53 @@ export default async function Home() {
       </div>
 
       <div className="px-4 pt-4 pb-28 space-y-4">
-        {/* ═══ Revenue Hero Card — first visual priority ═══ */}
+        <div>
+          <div className="text-xl font-semibold text-gray-900">Good morning, Bruce</div>
+          <div className="mt-1 text-xs text-green-500 font-medium">● Operations normal</div>
+        </div>
+
         <Link href="/reports" className="block">
-          <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
-            <span className="text-xs text-green-500 font-semibold">● Open</span>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-gray-700">Today&apos;s Revenue</span>
+            <span className="text-xs text-orange-500">Reports →</span>
           </div>
+          <div className="mt-2 text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
           <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-            <span className="text-green-500 font-medium">↑ 12%</span>
-            <span>vs yesterday</span>
+            <span>Dine-in + Bento</span>
+            <span className="text-green-500 font-medium">+12% vs yesterday</span>
           </div>
         </Link>
 
-        {/* ═══ Core Business Cards — performance data only, no status ═══ */}
+        <div className="grid grid-cols-4 gap-1.5">
+          <Link href="/incidents" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Incidents</div>
+            <div className="text-lg font-bold text-red-500">{anomalyCount}</div>
+            <div className="text-[11px] text-red-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Review' : 'Clear'}</div>
+          </Link>
+          <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Pending</div>
+            <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
+            <div className="text-[11px] text-amber-400 mt-0.5 truncate">{pendingCount > 0 ? 'Approvals' : 'Clear'}</div>
+          </Link>
+          <Link href="/bento" className="bg-green-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Bento</div>
+            <div className="text-lg font-bold text-green-600">{bentoPercent}%</div>
+            <div className="text-[11px] text-green-500 mt-0.5 truncate">In Progress</div>
+          </Link>
+          <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Booking</div>
+            <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5 truncate">Today</div>
+          </Link>
+        </div>
+
         <div className="grid grid-cols-2 gap-2">
           <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
             <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
             <div className="mt-2 space-y-0.5">
-              <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
-              <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
+              <div className="text-xs text-green-500 whitespace-nowrap">Open</div>
+              <div className="text-xs text-gray-400 whitespace-nowrap">12 tables · Avg RM 106</div>
             </div>
           </Link>
           <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
@@ -152,38 +176,18 @@ export default async function Home() {
           </Link>
         </div>
 
-        {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
-        <div className="grid grid-cols-4 gap-1.5">
-          <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Booking</div>
-            <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 truncate">Today</div>
-          </Link>
-          <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Complaint</div>
-            <div className="text-lg font-bold text-red-500">{complaintCount}</div>
-            <div className="text-[11px] text-red-400 mt-0.5 truncate">! Urgent</div>
-          </Link>
-          <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Incident</div>
-            <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
-          </Link>
-          <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Pending</div>
-            <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
-            <div className="text-[11px] text-amber-400 mt-0.5 truncate">{pendingCount > 0 ? 'Overdue' : 'Clear'}</div>
-          </Link>
-        </div>
-
-        {/* ═══ Today's Issues — Low Stock + Attendance only (Complaints shown in Alert Cards above) ═══ */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-gray-800">Today&apos;s Issues</span>
-            <span className="text-xs text-gray-400">{todayStr}</span>
+            <span className="text-sm font-semibold text-gray-800">Today&apos;s Agenda</span>
+            <Link href="/tasks" className="text-xs text-orange-500">All →</Link>
+          </div>
+          <div className="mb-3 space-y-1.5 text-sm text-gray-600">
+            <div>Feature dish: Grilled Fish</div>
+            <div>Soup of the day: Winter Melon Pork Rib Soup</div>
+            <div>15:00 Staff hygiene training</div>
           </div>
           {issues.length === 0 ? (
-            <div className="text-sm text-green-500 font-medium py-2">✓ No Issues Today</div>
+            <div className="text-sm text-green-500 font-medium py-2">No issues today</div>
           ) : (
             <div className="space-y-2">
               {issues.map((issue, i) => (
@@ -199,7 +203,6 @@ export default async function Home() {
           )}
         </div>
 
-        {/* ═══ Shift Board — today's staffing ═══ */}
         <Link href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-gray-800">Shift Board</span>
@@ -214,24 +217,9 @@ export default async function Home() {
             <span>10:00–20:00</span>
           </div>
         </Link>
-
-        {/* ═══ Quick Access — low-frequency but essential ═══ */}
-        <div>
-          <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { href: '/purchase', label: 'Purchase' },
-              { href: '/staff',       label: 'Staff' },
-              { href: '/inventory',   label: 'Inventory' },
-              { href: '/finance',     label: 'Finance' },
-            ].map(({ href, label }) => (
-              <Link key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
-                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{label}</div>
-              </Link>
-            ))}</div>
-        </div>
       </div>
 
+      <FunctionLauncher />
       <BottomNav pendingCount={pendingCount} />
     </main>
     </HomeRefresh>

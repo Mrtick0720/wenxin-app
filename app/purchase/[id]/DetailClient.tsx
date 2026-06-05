@@ -251,7 +251,7 @@ export default function DetailClient() {
             </button>
           ) : (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-              <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete "{item?.name}"?</div>
+              <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete &quot;{item?.name}&quot;?</div>
               <div className="flex gap-2">
                 <button onClick={() => setShowDelete(false)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600">

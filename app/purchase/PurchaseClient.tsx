@@ -1,5 +1,7 @@
 'use client'
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
@@ -48,10 +50,6 @@ const CATEGORY_COLOR: Record<string, string> = {
   'Meat': '#ef4444', 'Seafood': '#3b82f6', 'Vegetables': '#22c55e',
   'Condiments': '#f59e0b', 'Staples': '#8b5cf6', 'Supplies': '#64748b', 'Other': '#9ca3af',
 }
-const CATEGORY_BG: Record<string, string> = {
-  'Meat': '#fff1f1', 'Seafood': '#eff6ff', 'Vegetables': '#f0fdf4',
-  'Condiments': '#fffbeb', 'Staples': '#faf5ff', 'Supplies': '#f8fafc', 'Other': '#f9fafb',
-}
 const CATEGORY_ORDER = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
 
 function getCatColor(cat: string) { return CATEGORY_COLOR[cat] ?? '#9ca3af' }
@@ -65,8 +63,6 @@ function sortItems(items: PurchaseItem[]) {
 // ── Simple date button with calendar popup ──
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-
 function formatDateLabel(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
@@ -147,11 +143,10 @@ function DonutChart({ items }: { items: PurchaseItem[] }) {
     cat, color: CATEGORY_COLOR[cat] ?? '#9ca3af',
     amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
   })).filter(d => d.amt > 0)
-  let cumLen = 0
-  const segments = catData.map(d => {
+  const segments = catData.map((d, index) => {
+    const priorAmount = catData.slice(0, index).reduce((sum, item) => sum + item.amt, 0)
     const segLen = (d.amt / total) * circ
-    const seg = { ...d, dashoffset: -cumLen, segLen }
-    cumLen += segLen; return seg
+    return { ...d, dashoffset: -(priorAmount / total) * circ, segLen }
   })
   return (
     <div className="flex flex-col items-center">

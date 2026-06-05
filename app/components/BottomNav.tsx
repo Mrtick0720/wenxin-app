@@ -49,8 +49,8 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
 const tabs = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
-  { href: '/staff', label: 'Schedule', Icon: StaffIcon },
-  { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
+  { href: '/bento', label: 'Bento', Icon: PurchaseIcon },
+  { href: '/reports', label: 'Reports', Icon: StaffIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 

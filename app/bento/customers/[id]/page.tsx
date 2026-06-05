@@ -1,10 +1,14 @@
 'use client'
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase'
+import { buildSubscriptionSchedule } from '@/lib/subscriptionSchedule'
+import { todayLocalStr } from '@/lib/dateUtils'
 
 type Customer = {
   id: number
@@ -30,6 +34,7 @@ type Order = {
   quantity?: number
   status: string
   amount: number
+  customer_name?: string
 }
 
 const SUB_COLORS: Record<string, { color: string; bg: string }> = {
@@ -41,20 +46,6 @@ const SUB_COLORS: Record<string, { color: string; bg: string }> = {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-function getEndDate(startDate: string, subType: string, totalPortions: number): string | null {
-  if (!startDate || totalPortions <= 0) return null
-  const d = new Date(startDate + 'T00:00:00')
-  if (subType === 'weekly') {
-    d.setDate(d.getDate() + Math.ceil(totalPortions / 5) * 7)
-  } else if (subType === 'monthly') {
-    const months = Math.ceil(totalPortions / 22)
-    d.setMonth(d.getMonth() + months)
-  } else {
-    d.setDate(d.getDate() + totalPortions)
-  }
-  return d.toISOString().split('T')[0]
-}
-
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
@@ -62,7 +53,6 @@ function formatDate(dateStr: string) {
 
 export default function CustomerDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const id = params.id as string
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
@@ -72,6 +62,8 @@ export default function CustomerDetailPage() {
   const [editing, setEditing] = useState(false)
   const [usedEdit, setUsedEdit] = useState('')
   const [saving, setSaving] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [updatingDate, setUpdatingDate] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -86,7 +78,7 @@ export default function CustomerDetailPage() {
       // Match orders by customer name
       const { data: nameOrders } = await supabase
         .from('bento_orders')
-        .select('id,date,menu_type,quantity,status,amount')
+        .select('id,date,menu_type,quantity,status,amount,customer_name')
         .ilike('customer_name', cust.name)
         .order('date', { ascending: false })
       setOrders((nameOrders || []) as Order[])
@@ -120,6 +112,75 @@ export default function CustomerDetailPage() {
     setCustomer(c => c ? { ...c, active: newActive } : c)
   }
 
+  function getDefaultMenuType() {
+    const pref = customer?.menu_preference?.toLowerCase() || ''
+    if (pref.includes('signature')) return 'signature'
+    if (pref.includes('vegetarian') || pref.includes('vege')) return 'vegetarian'
+    return 'standard'
+  }
+
+  async function toggleScheduleDate(date: string) {
+    if (!customer) return
+    setUpdatingDate(date)
+    const existing = orders.find(o => o.date === date)
+    if (existing) {
+      const nextStatus = existing.status === 'canceled' ? 'pending' : 'canceled'
+      await supabase.from('bento_orders').update({ status: nextStatus }).eq('id', existing.id)
+    } else {
+      await supabase.from('bento_orders').insert({
+        date,
+        customer_name: customer.name,
+        phone: customer.phone,
+        address: customer.delivery_address,
+        area: customer.area,
+        menu_type: getDefaultMenuType(),
+        items: customer.menu_preference || 'Subscription meal',
+        note: customer.taste_notes || customer.note || '',
+        amount: 0,
+        quantity: 1,
+        time_slot: 'lunch',
+        paid: true,
+        status: 'canceled',
+      })
+    }
+    await loadData()
+    setUpdatingDate(null)
+  }
+
+  async function syncScheduleOrders() {
+    if (!customer) return
+    setSyncing(true)
+    const canceledDates = orders.filter(o => o.status === 'canceled').map(o => o.date)
+    const schedule = buildSubscriptionSchedule({
+      startDate: customer.start_date,
+      totalPortions: customer.total_portions,
+      canceledDates,
+    })
+    const existingActiveDates = new Set(orders.filter(o => o.status !== 'canceled').map(o => o.date))
+    const rows = schedule.serviceDays
+      .filter(day => day.status === 'active' && !existingActiveDates.has(day.date))
+      .map(day => ({
+        date: day.date,
+        customer_name: customer.name,
+        phone: customer.phone,
+        address: customer.delivery_address,
+        area: customer.area,
+        menu_type: getDefaultMenuType(),
+        items: customer.menu_preference || 'Subscription meal',
+        note: customer.taste_notes || customer.note || '',
+        amount: 0,
+        quantity: 1,
+        time_slot: 'lunch',
+        paid: true,
+        status: 'pending',
+      }))
+    if (rows.length > 0) {
+      await supabase.from('bento_orders').insert(rows)
+    }
+    await loadData()
+    setSyncing(false)
+  }
+
   if (loading) return (
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
       <div className="text-gray-400">Loading...</div>
@@ -135,10 +196,15 @@ export default function CustomerDetailPage() {
   const colors = SUB_COLORS[customer.subscription_type] ?? SUB_COLORS.monthly
   const remaining = customer.total_portions - customer.used_portions
   const pct = customer.total_portions > 0 ? Math.round((customer.used_portions / customer.total_portions) * 100) : 0
-  const endDate = getEndDate(customer.start_date, customer.subscription_type, customer.total_portions)
-
-  // Calendar: order dates set
-  const orderDates = new Set(orders.map(o => o.date))
+  const canceledDates = orders.filter(o => o.status === 'canceled').map(o => o.date)
+  const schedule = buildSubscriptionSchedule({
+    startDate: customer.start_date,
+    totalPortions: customer.total_portions,
+    canceledDates,
+  })
+  const endDate = schedule.endDate
+  const scheduleByDate = new Map(schedule.serviceDays.map(day => [day.date, day]))
+  const activeOrderDates = new Set(orders.filter(o => o.status !== 'canceled').map(o => o.date))
 
   // Calendar rendering
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
@@ -251,10 +317,20 @@ export default function CustomerDetailPage() {
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else setCalMonth(m => m - 1) }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">‹</button>
-            <span className="text-sm font-semibold text-gray-800">{MONTHS[calMonth]} {calYear}</span>
+            <div className="text-center">
+              <div className="text-sm font-semibold text-gray-800">{MONTHS[calMonth]} {calYear}</div>
+              {endDate && <div className="text-[11px] text-gray-400">Ends {formatDate(endDate)}</div>}
+            </div>
             <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">›</button>
           </div>
+          <button
+            onClick={syncScheduleOrders}
+            disabled={syncing}
+            className="mb-3 w-full rounded-xl bg-orange-500 py-2.5 text-sm font-semibold text-white disabled:bg-gray-300"
+          >
+            {syncing ? 'Syncing...' : 'Sync active days to Bento orders'}
+          </button>
           <div className="grid grid-cols-7 mb-1">
             {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
               <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
@@ -265,32 +341,46 @@ export default function CustomerDetailPage() {
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1
               const dateStr = `${calYear}-${String(calMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-              const hasOrder = orderDates.has(dateStr)
+              const scheduleDay = scheduleByDate.get(dateStr)
+              const isServiceDay = !!scheduleDay
+              const isCanceled = scheduleDay?.status === 'canceled'
+              const hasOrder = activeOrderDates.has(dateStr)
               const isStart = dateStr === startDateStr
               const isEnd = dateStr === endDateStr
-              const today = new Date().toISOString().split('T')[0]
+              const today = todayLocalStr()
               const isToday = dateStr === today
               return (
                 <div key={day} className="flex justify-center py-0.5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm relative
+                  <button
+                    onClick={() => isServiceDay && toggleScheduleDate(dateStr)}
+                    disabled={!isServiceDay || updatingDate === dateStr}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm relative
                     ${isStart || isEnd ? 'ring-2' : ''}
-                    ${hasOrder ? 'font-bold' : ''}`}
+                    ${isServiceDay ? 'font-bold active:scale-95' : ''}`}
                     style={{
-                      background: hasOrder ? colors.color : isToday ? '#f3f4f6' : 'transparent',
-                      color: hasOrder ? '#fff' : isToday ? colors.color : '#374151',
+                      background: isCanceled ? '#fee2e2' : isServiceDay ? colors.color : isToday ? '#f3f4f6' : 'transparent',
+                      color: isCanceled ? '#ef4444' : isServiceDay ? '#fff' : isToday ? colors.color : '#374151',
                       outline: (isStart || isEnd) ? `2px solid ${colors.color}` : undefined,
+                      opacity: updatingDate === dateStr ? 0.45 : 1,
                     }}>
                     {day}
+                    {hasOrder && !isCanceled && (
+                      <div className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white" />
+                    )}
+                    {isCanceled && (
+                      <div className="absolute left-1/2 top-1/2 h-0.5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-28deg] rounded-full bg-red-400" />
+                    )}
                     {(isStart || isEnd) && !hasOrder && (
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: colors.color }} />
                     )}
-                  </div>
+                  </button>
                 </div>
               )
             })}
           </div>
           <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
-            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{ background: colors.color }}/> Order day</div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{ background: colors.color }}/> Active</div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-100 border border-red-300"/> Canceled</div>
             <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full border-2" style={{ borderColor: colors.color }}/> Start/End</div>
           </div>
         </div>
@@ -307,8 +397,11 @@ export default function CustomerDetailPage() {
                     <div className="text-xs text-gray-400 mt-0.5">{o.menu_type}{(o.quantity ?? 1) > 1 ? ` ×${o.quantity}` : ''}</div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${o.status === 'completed' ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'}`}>
-                      {o.status === 'completed' ? 'Done' : 'Pending'}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                      o.status === 'canceled' ? 'bg-red-50 text-red-500' :
+                      o.status === 'completed' ? 'bg-green-50 text-green-500' : 'bg-orange-50 text-orange-500'
+                    }`}>
+                      {o.status === 'canceled' ? 'Canceled' : o.status === 'completed' ? 'Done' : 'Pending'}
                     </span>
                     <span className="text-sm font-medium text-gray-700">RM {o.amount}</span>
                   </div>

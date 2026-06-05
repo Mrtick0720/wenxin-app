@@ -47,6 +47,7 @@ export default function UnpaidPage() {
       .from('bento_orders')
       .select('*')
       .eq('paid', false)
+      .neq('status', 'canceled')
       .order('date', { ascending: false })
     setOrders(data || [])
     setLoading(false)
