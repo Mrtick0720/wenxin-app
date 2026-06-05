@@ -194,25 +194,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     setRefreshing(false)
   }, [fetchDate, refreshing, router, selectedDate])
 
-  // ── Stop touch events from the scrollable order list ──
-  // Critical for Android: prevents passive:false deadlock by stopping
-  // touch events from bubbling up to the document gesture handler.
-  // The browser handles scroll natively without any JS interference.
-  useEffect(() => {
-    const el = scrollAreaRef.current
-    if (!el) return
-    function stop(e: TouchEvent) { e.stopPropagation() }
-    el.addEventListener('touchstart', stop)
-    el.addEventListener('touchmove', stop)
-    el.addEventListener('touchend', stop)
-    return () => {
-      el.removeEventListener('touchstart', stop)
-      el.removeEventListener('touchmove', stop)
-      el.removeEventListener('touchend', stop)
-    }
-  }, [])
-
-  // ── Gesture listeners on document ──
+  // ── Gesture system ──
+  // Key architecture for Android compatibility:
+  // 1. When panel is CLOSED → document-level touchmove for main-page gestures
+  // 2. When panel is OPEN   → NO document touchmove (avoids Android scroll deadlock)
+  // 3. Scroll area touchmove is stopped at source → browser scrolls natively
+  // 4. Panel touchmove handles swipe-to-close from header/filter areas
   useEffect(() => {
     let sx = 0, sy = 0
     let axis: 'h' | 'v' | null = null
@@ -256,9 +243,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
 
-      // ── Detail panel is open: right-swipe to close ──
-      // Scroll-area touches are stopped at source, so only header/filter
-      // touches reach here. Any right-swipe with horizontal intent → close.
       if (mode === 'close') {
         if (dx > 20 && dx > Math.abs(dy) * 1.5) {
           e.preventDefault()
@@ -295,7 +279,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const dx = e.changedTouches[0].clientX - sx
       const dy = e.changedTouches[0].clientY - sy
 
-      // ── Detail panel close gesture ──
       if (mode === 'close') {
         const threshold = getBentoSwipeThreshold(window.innerWidth)
         if (dx > threshold) {
@@ -323,15 +306,37 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       else if (action === 'reset-closed') animatePanel(window.innerWidth)
     }
 
+    // ── Attach listeners to the RIGHT elements ──
+    // touchstart/touchend always on document (passive, no perf impact)
     document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: false })
     document.addEventListener('touchend', onEnd, { passive: true })
+
+    const panelEl = panelRef.current
+    const scrollEl = scrollAreaRef.current
+
+    // Stop touchmove on the scroll area → browser handles vertical scroll
+    // natively without any JS ancestor seeing the event.
+    function stopMove(e: TouchEvent) { e.stopPropagation() }
+
+    if (detailOpen && panelEl) {
+      // Panel open: touchmove on panel (not document) + stopMove on scroll area
+      panelEl.addEventListener('touchmove', onMove, { passive: false })
+      if (scrollEl) scrollEl.addEventListener('touchmove', stopMove, { passive: false })
+    } else {
+      // Panel closed: touchmove on document for main-page gestures
+      document.addEventListener('touchmove', onMove, { passive: false })
+    }
+
+    // Cleanup always tries all attachment points (removeEventListener on
+    // a non-attached target is a safe no-op).
     return () => {
       document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchmove', onMove)
       document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchmove', onMove)
+      if (panelEl) panelEl.removeEventListener('touchmove', onMove)
+      if (scrollEl) scrollEl.removeEventListener('touchmove', stopMove)
     }
-  }, [refreshSelectedDate, setMainPullOffset]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [refreshSelectedDate, setMainPullOffset, detailOpen]) // eslint-disable-line
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
