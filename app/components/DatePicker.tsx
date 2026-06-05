@@ -94,7 +94,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
-    el.style.transition = animate ? 'transform 0.38s cubic-bezier(0.45, 0, 0.55, 1)' : 'none'
+    el.style.transition = animate ? 'transform 0.35s cubic-bezier(0.3, 0, 0.1, 1)' : 'none'
     el.style.transform = value
   }
 
@@ -135,15 +135,11 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       navDirection.current = 'prev'
       pendingWeek.current = { weekStart: prevWeekStart, transform: 'translateX(0%)' }
       onDateChange(getRepDate(prevWeekStart))
-      applyTransform('translateX(-33.333%)', false)
-      stripRef.current?.getBoundingClientRect()
       applyTransform('translateX(0%)', true)
     } else if (delta < -threshold) {
       navDirection.current = 'next'
       pendingWeek.current = { weekStart: nextWeekStart, transform: 'translateX(-66.666%)' }
       onDateChange(getRepDate(nextWeekStart))
-      applyTransform('translateX(-33.333%)', false)
-      stripRef.current?.getBoundingClientRect()
       applyTransform('translateX(-66.666%)', true)
     } else {
       applyTransform('translateX(-33.333%)', true)
