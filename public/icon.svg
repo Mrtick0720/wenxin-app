@@ -1,48 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <!-- White background -->
-  <rect width="512" height="512" fill="#ffffff"/>
-
-  <!-- Pot body -->
-  <ellipse cx="256" cy="320" rx="148" ry="108" fill="#C9A84C"/>
-
-  <!-- Pot rim -->
-  <ellipse cx="256" cy="230" rx="148" ry="20" fill="#C9A84C"/>
-
-  <!-- Lid -->
-  <path d="M 118 230 Q 118 155 256 148 Q 394 155 394 230 Z" fill="#C9A84C"/>
-
-  <!-- Lid rim -->
-  <ellipse cx="256" cy="230" rx="138" ry="14" fill="#B8962E"/>
-
-  <!-- Lid knob stem -->
-  <rect x="244" y="130" width="24" height="22" rx="8" fill="#C9A84C"/>
-
-  <!-- Lid knob top -->
-  <ellipse cx="256" cy="128" rx="28" ry="14" fill="#C9A84C"/>
-  <ellipse cx="256" cy="125" rx="20" ry="9" fill="#D4B55A"/>
-
-  <!-- Pot handles -->
-  <ellipse cx="100" cy="268" rx="22" ry="14" fill="#C9A84C"/>
-  <ellipse cx="412" cy="268" rx="22" ry="14" fill="#C9A84C"/>
-
-  <!-- Steam left -->
-  <path d="M 206 138 C 196 118 214 100 204 80" fill="none" stroke="#C9A84C" stroke-width="8" stroke-linecap="round"/>
-  <!-- Steam middle -->
-  <path d="M 256 132 C 246 112 264 94 254 74" fill="none" stroke="#C9A84C" stroke-width="8" stroke-linecap="round"/>
-  <!-- Steam right -->
-  <path d="M 306 138 C 316 118 298 100 308 80" fill="none" stroke="#C9A84C" stroke-width="8" stroke-linecap="round"/>
-
-  <!-- Left cloud -->
-  <path d="M 52 295 C 30 285 28 260 48 250 C 38 232 52 215 70 222 C 72 205 90 200 104 212 C 112 198 130 200 134 216 C 148 205 164 215 158 232 C 172 238 172 258 156 265 C 160 280 148 292 132 286 C 126 300 108 304 96 294 C 86 308 60 308 52 295 Z" fill="#C9A84C"/>
-  <path d="M 70 282 C 56 275 54 260 66 254 C 58 242 66 230 78 235 C 79 222 92 218 102 228 C 108 216 122 218 124 230 C 134 222 146 230 142 242 C 152 246 152 260 142 266 C 144 276 136 284 124 280 C 120 290 106 293 98 284 C 92 294 72 294 70 282 Z" fill="#ffffff"/>
-
-  <!-- Right cloud -->
-  <path d="M 460 295 C 482 285 484 260 464 250 C 474 232 460 215 442 222 C 440 205 422 200 408 212 C 400 198 382 200 378 216 C 364 205 348 215 354 232 C 340 238 340 258 356 265 C 352 280 364 292 380 286 C 386 300 404 304 416 294 C 426 308 452 308 460 295 Z" fill="#C9A84C"/>
-  <path d="M 442 282 C 456 275 458 260 446 254 C 454 242 446 230 434 235 C 433 222 420 218 410 228 C 404 216 390 218 388 230 C 378 222 366 230 370 242 C 360 246 360 260 370 266 C 368 276 376 284 388 280 C 392 290 406 293 414 284 C 420 294 440 294 442 282 Z" fill="#ffffff"/>
-
-  <!-- 文心 text -->
-  <text x="256" y="345" text-anchor="middle" font-family="STSong, SimSun, serif" font-size="80" font-weight="bold" fill="#ffffff" letter-spacing="10">文心</text>
-
-  <!-- subtle pot body highlight -->
-  <ellipse cx="256" cy="285" rx="90" ry="28" fill="#D4B55A" opacity="0.35"/>
+  <rect width="512" height="512" rx="112" fill="#C9A84C"/>
+  <text x="256" y="240" text-anchor="middle" dominant-baseline="middle" font-family="STSong, SimSun, serif" font-size="180" font-weight="bold" fill="#ffffff">文</text>
+  <text x="256" y="400" text-anchor="middle" dominant-baseline="middle" font-family="STSong, SimSun, serif" font-size="180" font-weight="bold" fill="#ffffff">心</text>
 </svg>
