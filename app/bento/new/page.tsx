@@ -24,6 +24,7 @@ export default function NewBentoOrder() {
     items: '',
     note: '',
     amount: '',
+    quantity: '1',
   })
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -45,6 +46,7 @@ export default function NewBentoOrder() {
       items: form.items,
       note: form.note,
       amount: parseFloat(form.amount),
+      quantity: parseInt(form.quantity) || 1,
       paid: false,
       status: 'pending',
     })
@@ -149,16 +151,30 @@ export default function NewBentoOrder() {
           />
         </div>
 
-        <div>
-          <label className="text-sm text-gray-600 mb-1 block">Amount (RM) *</label>
-          <input
-            type="number"
-            name="amount"
-            placeholder="Example: 25.50"
-            value={form.amount}
-            onChange={handleChange}
-            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
-          />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">Amount (RM) *</label>
+            <input
+              type="number"
+              name="amount"
+              placeholder="25.50"
+              value={form.amount}
+              onChange={handleChange}
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">Portions *</label>
+            <input
+              type="number"
+              name="quantity"
+              placeholder="1"
+              min="1"
+              value={form.quantity}
+              onChange={handleChange}
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+            />
+          </div>
         </div>
 
         <div>

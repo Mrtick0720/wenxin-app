@@ -24,6 +24,7 @@ type Order = {
   status: string
   date: string
   time_slot?: string
+  quantity?: number
 }
 
 const ALL = 'all'
@@ -361,6 +362,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     matchesOption(o.time_slot, filterTime, TIME_SLOTS)
   )
   const total = orders.length
+  const totalPortions = orders.reduce((sum, o) => sum + (o.quantity ?? 1), 0)
   const completed = orders.filter(o => o.status === 'completed').length
   const pending = orders.filter(o => o.status === 'pending').length
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
@@ -444,7 +446,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             </div>
             <div className="grid grid-cols-4 gap-2">
               <div className="text-center">
-                <div className="text-xl font-bold text-blue-500">{total}</div>
+                <div className="text-xl font-bold text-blue-500">{totalPortions}</div>
                 <div className="text-xs text-gray-400 mt-0.5">Portions</div>
               </div>
               <div className="text-center">
@@ -452,12 +454,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs text-gray-400 mt-0.5">Orders</div>
               </div>
               <div className="text-center">
-                <div className="text-xl font-bold text-green-500">{completed}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Done</div>
-              </div>
-              <div className="text-center">
                 <div className="text-xl font-bold text-orange-500">{pending}</div>
                 <div className="text-xs text-gray-400 mt-0.5">Pending</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-green-500">{completed}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Done</div>
               </div>
             </div>
           </div>
