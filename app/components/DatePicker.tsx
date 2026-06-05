@@ -85,7 +85,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
-    el.style.transition = animate ? 'transform 0.32s cubic-bezier(0.4, 0, 0.2, 1)' : 'none'
+    el.style.transition = animate ? 'transform 0.32s cubic-bezier(0.65, 0, 0.2, 1)' : 'none'
     el.style.transform = value
   }
 
