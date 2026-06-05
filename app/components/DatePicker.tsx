@@ -261,7 +261,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           onTransitionEnd={handleTransitionEnd}
         >
           {weeks.map((weekDays, wi) => (
-            <div key={`${wi}-${weekDays[0]}`} style={{ width: '33.333%' }}>
+            <div key={wi} style={{ width: '33.333%' }}>
               <div className="grid grid-cols-7">
                 {weekDays.map((dateStr) => {
                   const day = new Date(dateStr + 'T00:00:00').getDate()
