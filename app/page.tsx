@@ -157,22 +157,22 @@ export default async function Home() {
           <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block">
             <div className="text-xs text-gray-500 mb-0.5">Reservations</div>
             <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
-            <div className="text-xs text-gray-400 mt-0.5">Today</div>
+            <div className="text-[13px] text-gray-400 mt-0.5 whitespace-nowrap">Today</div>
           </Link>
           <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block">
             <div className="text-xs text-gray-500 mb-0.5">Complaints</div>
             <div className="text-lg font-bold text-red-500">{complaintCount}</div>
-            <div className="text-xs text-red-400 mt-0.5">Needs attention</div>
+            <div className="text-[13px] text-red-400 mt-0.5 whitespace-nowrap">! Attention</div>
           </Link>
           <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block">
             <div className="text-xs text-gray-500 mb-0.5">Incidents</div>
             <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
+            <div className="text-[13px] text-gray-400 mt-0.5 whitespace-nowrap">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
           </Link>
           <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block">
             <div className="text-xs text-gray-500 mb-0.5">Pending</div>
             <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
-            <div className="text-xs text-amber-400 mt-0.5">{pendingCount > 0 ? `Overdue 2` : 'Clear'}</div>
+            <div className="text-[13px] text-amber-400 mt-0.5 whitespace-nowrap">{pendingCount > 0 ? 'Overdue 2' : 'Clear'}</div>
           </Link>
         </div>
 
