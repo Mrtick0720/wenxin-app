@@ -42,7 +42,7 @@ export default function InventoryPage() {
   const lowCount = items.filter(i => i.status !== 'ok').length
 
   return (
-    <main className="min-h-screen bg-gray-50 w-full mx-auto">
+    <main className="page-slide-in min-h-screen bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <BackButton href="/" />

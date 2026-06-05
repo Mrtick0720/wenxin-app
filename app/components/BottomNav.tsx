@@ -17,12 +17,17 @@ const ApprovalIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const BentoIcon = ({ active }: { active: boolean }) => (
+const StaffIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="7" width="20" height="14" rx="2"/>
-    <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/>
-    <line x1="12" y1="12" x2="12" y2="16"/>
-    <line x1="10" y1="14" x2="14" y2="14"/>
+    <rect x="3" y="4" width="18" height="18" rx="2"/>
+    <line x1="16" y1="2" x2="16" y2="6"/>
+    <line x1="8" y1="2" x2="8" y2="6"/>
+    <line x1="3" y1="10" x2="21" y2="10"/>
+    <line x1="8" y1="14" x2="8" y2="14"/>
+    <line x1="12" y1="14" x2="12" y2="14"/>
+    <line x1="16" y1="14" x2="16" y2="14"/>
+    <line x1="8" y1="18" x2="8" y2="18"/>
+    <line x1="12" y1="18" x2="12" y2="18"/>
   </svg>
 )
 
@@ -44,7 +49,7 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
 const tabs = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
-  { href: '/bento', label: 'Bento', Icon: BentoIcon },
+  { href: '/staff', label: 'Schedule', Icon: StaffIcon },
   { href: '/reports', label: 'Reports', Icon: ReportIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
