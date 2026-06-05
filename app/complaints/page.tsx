@@ -37,7 +37,7 @@ export default function ComplaintsPage() {
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <BackButton href="/" />
-          <span className="font-semibold text-base">Complaints</span>
+          <span className="font-semibold text-base">Complaint</span>
         </div>
         <span className="text-xs text-red-400 font-medium">{unresolved} unresolved</span>
       </div>
