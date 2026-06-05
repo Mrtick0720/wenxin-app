@@ -31,11 +31,11 @@ const StaffIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const ReportIcon = ({ active }: { active: boolean }) => (
+const PurchaseIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="20" x2="18" y2="10"/>
-    <line x1="12" y1="20" x2="12" y2="4"/>
-    <line x1="6" y1="20" x2="6" y2="14"/>
+    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+    <line x1="3" y1="6" x2="21" y2="6"/>
+    <path d="M16 10a4 4 0 01-8 0"/>
   </svg>
 )
 
@@ -50,7 +50,7 @@ const tabs = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
   { href: '/staff', label: 'Schedule', Icon: StaffIcon },
-  { href: '/reports', label: 'Reports', Icon: ReportIcon },
+  { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
