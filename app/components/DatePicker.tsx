@@ -361,7 +361,7 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
                           className="relative text-sm font-medium"
                           style={{
                             transition: 'color 0.18s ease',
-                            color: isSelected ? '#fff' : isToday ? '#60a5fa' : '#374151',
+                            color: isSelected && isToday ? '#fff' : isSelected ? '#111827' : isToday ? '#60a5fa' : '#374151',
                             fontWeight: isToday ? 600 : 400,
                           }}
                         >
