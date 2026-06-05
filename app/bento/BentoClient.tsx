@@ -195,6 +195,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             <div className="text-center text-gray-400 py-8">暂无订单</div>
           )}
           {!fetching && filtered.map((order) => (
+
             <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -239,6 +240,18 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             </div>
           ))}
         </div>
+
+        {/* TODAY button — 浮于内容底部，不在日历卡片内 */}
+        {selectedDate !== today && (
+          <div className="flex justify-center pt-6 pb-2">
+            <button
+              onClick={() => handleDateChange(today)}
+              className="px-10 py-2 bg-blue-400 text-white text-sm font-semibold rounded-full shadow-md"
+            >
+              TODAY
+            </button>
+          </div>
+        )}
       </div>
     </>
   )

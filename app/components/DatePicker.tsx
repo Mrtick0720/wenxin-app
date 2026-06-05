@@ -36,8 +36,24 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const touchStartX = useRef(0)
   const isDragging = useRef(false)
   const hasDragged = useRef(false)
-  // Store target week directly so closures stay correct
   const pendingWeek = useRef<string | null>(null)
+  const navDirection = useRef<'next' | 'prev'>('next')
+
+  // Month flip animation: track when month/year changes
+  const refD = new Date(getWeekDays(viewWeekStart)[3] + 'T00:00:00')
+  const monthLabel = MONTHS_ZH[refD.getMonth()]
+  const yearLabel = refD.getFullYear()
+  const monthKey = `${refD.getFullYear()}-${refD.getMonth()}`
+
+  const [displayedMonthKey, setDisplayedMonthKey] = useState(monthKey)
+  const [flipClass, setFlipClass] = useState('')
+
+  useEffect(() => {
+    if (monthKey !== displayedMonthKey) {
+      setFlipClass(navDirection.current === 'next' ? 'month-flip-next' : 'month-flip-prev')
+      setDisplayedMonthKey(monthKey)
+    }
+  }, [monthKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync view when selectedDate jumps to a different week externally
   useEffect(() => {
@@ -52,11 +68,6 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const prevWeekStart = addDays(viewWeekStart, -7)
   const nextWeekStart = addDays(viewWeekStart, 7)
 
-  // Use Thursday to determine displayed month (handles week spanning two months)
-  const refD = new Date(getWeekDays(viewWeekStart)[3] + 'T00:00:00')
-  const monthLabel = MONTHS_ZH[refD.getMonth()]
-  const yearLabel = refD.getFullYear()
-
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
@@ -70,7 +81,6 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     return stripRef.current?.parentElement?.clientWidth ?? 300
   }
 
-  // ── Touch handlers ────────────────────────────────────────────
   function handleTouchStart(e: React.TouchEvent) {
     if (pendingWeek.current) return
     touchStartX.current = e.touches[0].clientX
@@ -93,13 +103,14 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     const threshold = getContainerWidth() * 0.22
 
     if (delta > threshold) {
+      navDirection.current = 'prev'
       pendingWeek.current = prevWeekStart
       applyTransform('translateX(0%)', true)
     } else if (delta < -threshold) {
+      navDirection.current = 'next'
       pendingWeek.current = nextWeekStart
       applyTransform('translateX(-66.666%)', true)
     } else {
-      // Spring back
       applyTransform('translateX(-33.333%)', true)
     }
   }
@@ -112,25 +123,14 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     setViewWeekStart(newWeekStart)
   }
 
-  // ── Arrow button navigation ───────────────────────────────────
   function navigate(dir: 'prev' | 'next') {
     if (pendingWeek.current || isDragging.current) return
+    navDirection.current = dir
     pendingWeek.current = dir === 'prev' ? prevWeekStart : nextWeekStart
     applyTransform('translateX(-33.333%)', false)
     requestAnimationFrame(() => {
       applyTransform(dir === 'prev' ? 'translateX(0%)' : 'translateX(-66.666%)', true)
     })
-  }
-
-  // ── TODAY button ──────────────────────────────────────────────
-  function goToday() {
-    const todayWeek = getMondayOfWeek(today)
-    onDateChange(today)
-    if (todayWeek !== viewWeekStart) {
-      pendingWeek.current = null
-      applyTransform('translateX(-33.333%)', false)
-      setViewWeekStart(todayWeek)
-    }
   }
 
   const weeks = [
@@ -141,7 +141,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
   return (
     <div>
-      {/* Header: calendar icon + month/year + navigation arrows */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -150,7 +150,13 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span className="text-sm font-semibold text-gray-700">{monthLabel} {yearLabel}</span>
+          {/* key triggers re-mount → CSS animation fires */}
+          <span
+            key={displayedMonthKey}
+            className={`text-sm font-semibold text-gray-700 ${flipClass}`}
+          >
+            {monthLabel} {yearLabel}
+          </span>
         </div>
         <div className="flex gap-1">
           <button
@@ -171,7 +177,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         ))}
       </div>
 
-      {/* Sliding strip: 3 weeks side by side, each 33.333% of strip = 100% of container */}
+      {/* Sliding strip */}
       <div className="overflow-hidden">
         <div
           ref={stripRef}
@@ -216,18 +222,6 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           ))}
         </div>
       </div>
-
-      {/* TODAY button — only when not on today */}
-      {selectedDate !== today && (
-        <div className="mt-3 flex justify-center">
-          <button
-            onClick={goToday}
-            className="px-8 py-1.5 bg-blue-400 text-white text-sm font-semibold rounded-full"
-          >
-            TODAY
-          </button>
-        </div>
-      )}
     </div>
   )
 }

@@ -36,3 +36,21 @@ body {
 .page-slide-out {
   animation: slideOutRight 0.25s ease-in forwards;
 }
+
+/* Month label flip animations */
+@keyframes month-flip-next {
+  from { transform: perspective(300px) rotateX(-90deg); opacity: 0; }
+  to   { transform: perspective(300px) rotateX(0deg);   opacity: 1; }
+}
+@keyframes month-flip-prev {
+  from { transform: perspective(300px) rotateX(90deg);  opacity: 0; }
+  to   { transform: perspective(300px) rotateX(0deg);   opacity: 1; }
+}
+.month-flip-next {
+  display: inline-block;
+  animation: month-flip-next 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.month-flip-prev {
+  display: inline-block;
+  animation: month-flip-prev 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
