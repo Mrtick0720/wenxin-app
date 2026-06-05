@@ -1,5 +1,4 @@
 import { supabase } from '@/lib/supabase'
-import Greeting from './components/Greeting'
 import Link from 'next/link'
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
@@ -75,36 +74,65 @@ export default async function Home() {
     <HomeRefresh>
     <main className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
-        <div className="flex items-center gap-2">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.8" strokeLinecap="round">
-            <line x1="3" y1="6" x2="21" y2="6"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-            <line x1="3" y1="18" x2="21" y2="18"/>
-          </svg>
-          <span className="font-semibold text-base">Wenxin Management</span>
-        </div>
-        <div className="flex items-center gap-3">
+      <div className="bg-white px-5 pt-4 pb-3 border-b border-gray-50">
+        {/* Row 1: Avatar + Greeting ··· Bell */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            {/* Avatar */}
+            <div className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+              B
+            </div>
+            {/* Greeting */}
+            <div className="flex items-center gap-1">
+              <span className="text-base font-medium text-gray-900">Hi, Bruce</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
+          </div>
+
+          {/* Bell */}
           <div className="relative">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
               <path d="M13.73 21a2 2 0 01-3.46 0"/>
             </svg>
             {anomalyCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{anomalyCount}</span>
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center leading-none">{anomalyCount}</span>
             )}
           </div>
-          <div className="flex items-center gap-1">
-            <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
-            <span className="text-sm font-medium">Bruce</span>
-            <span className="text-xs text-gray-400">▼</span>
-          </div>
+        </div>
+
+        {/* Row 2: Section title + Filter */}
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-400 tracking-wide">Business Summary</span>
+          <button className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14"/>
+              <line x1="4" y1="10" x2="4" y2="3"/>
+              <line x1="12" y1="21" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12" y2="3"/>
+              <line x1="20" y1="21" x2="20" y2="16"/>
+              <line x1="20" y1="12" x2="20" y2="3"/>
+              <line x1="1" y1="14" x2="7" y2="14"/>
+              <line x1="9" y1="8" x2="15" y2="8"/>
+              <line x1="17" y1="16" x2="23" y2="16"/>
+            </svg>
+          </button>
         </div>
       </div>
 
-      <div className="px-4 py-4 pb-28 space-y-4">
-        {/* Greeting */}
-        <Greeting />
+      <div className="px-5 py-4 pb-28 space-y-4">
+        {/* Date + Status */}
+        <div className="text-xs text-gray-400 flex items-center gap-1">
+          {(() => {
+            const now = new Date()
+            const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            return `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
+          })()}
+          <span className="text-green-500 font-medium">· ● Open</span>
+        </div>
 
         {/* Revenue Card */}
         <div className="py-2">
