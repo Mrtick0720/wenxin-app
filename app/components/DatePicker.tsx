@@ -112,13 +112,41 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       animRef.current.cancel()
       animRef.current = null
     }
-    // Read actual pixel offset via DOMMatrix to avoid calc(%+px) unit-mismatch across platforms
+
     const matrix = new DOMMatrix(window.getComputedStyle(el).transform)
-    const from = `translateX(${matrix.m41}px)`
-    const anim = el.animate(
-      [{ transform: from }, { transform: target }],
-      { duration: 500, easing: 'cubic-bezier(0, 0, 0.15, 1)', fill: 'forwards' }
-    )
+    const fromPx = matrix.m41
+
+    const containerW = getContainerWidth()
+    const targetPx =
+      target === 'translateX(0%)' ? 0 :
+      target === 'translateX(-66.666%)' ? -containerW * 2 :
+      -containerW  // -33.333% snap-back
+
+    const totalDist = Math.abs(targetPx - fromPx)
+    const GLIDE_PX = Math.round(containerW / 7 / 5)  // 1/5 of one day cell
+    const dir = Math.sign(targetPx - fromPx)
+
+    // Two-phase animation: fast run → sudden stop → slow glide to exact position
+    // Only apply to actual week changes, not snap-back
+    const FAST_RATIO = 0.68  // fast phase uses 68% of total duration
+    const duration = 430
+
+    let keyframes: Keyframe[]
+    if (totalDist > GLIDE_PX * 2 && target !== 'translateX(-33.333%)') {
+      const glideStartPx = targetPx - dir * GLIDE_PX
+      keyframes = [
+        { transform: `translateX(${fromPx}px)`, easing: 'linear', offset: 0 },
+        { transform: `translateX(${glideStartPx}px)`, easing: 'linear', offset: FAST_RATIO },
+        { transform: `translateX(${targetPx}px)`, offset: 1 },
+      ]
+    } else {
+      keyframes = [
+        { transform: `translateX(${fromPx}px)` },
+        { transform: `translateX(${targetPx}px)` },
+      ]
+    }
+
+    const anim = el.animate(keyframes, { duration, easing: 'ease-out', fill: 'forwards' })
     animRef.current = anim
     anim.onfinish = () => {
       if (animRef.current !== anim) return
