@@ -55,8 +55,7 @@ export default function NewCustomerPage() {
       active: true,
     })
     setSaving(false)
-    router.push('/bento/customers')
-    router.refresh()
+    window.location.href = '/bento/customers'
   }
 
   return (

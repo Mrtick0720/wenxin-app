@@ -16,7 +16,7 @@ export default function BackButton({ href }: BackButtonProps) {
     const snapshot = getSnapshot()
     const bgEl = document.createElement('div')
     bgEl.style.cssText =
-      'position:fixed;inset:0;z-index:0;overflow:hidden;background:#f9fafb;pointer-events:none;'
+      'position:fixed;inset:0;z-index:8;overflow:hidden;background:#f9fafb;pointer-events:none;'
     if (snapshot) bgEl.appendChild(snapshot)
     document.body.prepend(bgEl)
 
