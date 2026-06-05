@@ -46,15 +46,15 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const touchStartX = useRef(0)
   const isDragging = useRef(false)
   const hasDragged = useRef(false)
-  const pendingWeek = useRef<{ weekStart: string; transform: string } | null>(null)
+  const animRef = useRef<Animation | null>(null)
   const navDirection = useRef<'next' | 'prev'>('next')
   const resetTransformAfterRender = useRef(false)
 
-  // After React commits new week content to DOM, reset transform before browser paints
+  // After React commits new week content, reset transform before browser paints
   useLayoutEffect(() => {
     if (resetTransformAfterRender.current) {
       resetTransformAfterRender.current = false
-      applyTransform('translateX(-33.333%)', false)
+      setTransform('translateX(-33.333%)')
     }
   }, [viewWeekStart]) // eslint-disable-line
 
@@ -82,8 +82,8 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   // Sync view when selectedDate changes externally
   useEffect(() => {
     const monday = getMondayOfWeek(selectedDate)
-    if (monday !== viewWeekStart && !isDragging.current && !pendingWeek.current) {
-      applyTransform('translateX(-33.333%)', false)
+    if (monday !== viewWeekStart && !isDragging.current && !animRef.current) {
+      setTransform('translateX(-33.333%)')
       setViewWeekStart(monday)
     }
   }, [selectedDate]) // eslint-disable-line
@@ -91,11 +91,40 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const prevWeekStart = addDays(viewWeekStart, -7)
   const nextWeekStart = addDays(viewWeekStart, 7)
 
-  function applyTransform(value: string, animate: boolean) {
+  // Instant transform, no animation
+  function setTransform(value: string) {
     const el = stripRef.current
     if (!el) return
-    el.style.transition = animate ? 'transform 0.5s cubic-bezier(0.4, 0, 0.05, 1)' : 'none'
+    if (animRef.current) {
+      try { animRef.current.commitStyles() } catch {}
+      animRef.current.cancel()
+      animRef.current = null
+    }
     el.style.transform = value
+  }
+
+  // Animated transform via Web Animations API — consistent across iOS/Android
+  function animateTransform(target: string, onDone?: () => void) {
+    const el = stripRef.current
+    if (!el) return
+    if (animRef.current) {
+      try { animRef.current.commitStyles() } catch {}
+      animRef.current.cancel()
+      animRef.current = null
+    }
+    const from = el.style.transform || 'translateX(-33.333%)'
+    const anim = el.animate(
+      [{ transform: from }, { transform: target }],
+      { duration: 500, easing: 'cubic-bezier(0, 0, 0.15, 1)', fill: 'forwards' }
+    )
+    animRef.current = anim
+    anim.onfinish = () => {
+      if (animRef.current !== anim) return
+      try { anim.commitStyles() } catch {}
+      anim.cancel()
+      animRef.current = null
+      onDone?.()
+    }
   }
 
   function getContainerWidth() {
@@ -109,20 +138,20 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     return addDays(newWeekStart, idx)
   }
 
-  // Touch handlers — strip follows finger directly, snaps on release
   function handleTouchStart(e: React.TouchEvent) {
-    if (pendingWeek.current) return
+    if (animRef.current) return
     touchStartX.current = e.touches[0].clientX
     isDragging.current = true
     hasDragged.current = false
-    applyTransform('translateX(-33.333%)', false)
+    setTransform('translateX(-33.333%)')
   }
 
   function handleTouchMove(e: React.TouchEvent) {
     if (!isDragging.current) return
     const delta = e.touches[0].clientX - touchStartX.current
     if (Math.abs(delta) > 3) hasDragged.current = true
-    applyTransform(`translateX(calc(-33.333% + ${delta}px))`, false)
+    const el = stripRef.current
+    if (el) el.style.transform = `translateX(calc(-33.333% + ${delta}px))`
   }
 
   function handleTouchEnd(e: React.TouchEvent) {
@@ -133,27 +162,23 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
 
     if (delta > threshold) {
       navDirection.current = 'prev'
-      pendingWeek.current = { weekStart: prevWeekStart, transform: 'translateX(0%)' }
-      onDateChange(getRepDate(prevWeekStart))
-      applyTransform('translateX(0%)', true)
+      const targetWeek = prevWeekStart
+      onDateChange(getRepDate(targetWeek))
+      animateTransform('translateX(0%)', () => {
+        resetTransformAfterRender.current = true
+        setViewWeekStart(targetWeek)
+      })
     } else if (delta < -threshold) {
       navDirection.current = 'next'
-      pendingWeek.current = { weekStart: nextWeekStart, transform: 'translateX(-66.666%)' }
-      onDateChange(getRepDate(nextWeekStart))
-      applyTransform('translateX(-66.666%)', true)
+      const targetWeek = nextWeekStart
+      onDateChange(getRepDate(targetWeek))
+      animateTransform('translateX(-66.666%)', () => {
+        resetTransformAfterRender.current = true
+        setViewWeekStart(targetWeek)
+      })
     } else {
-      applyTransform('translateX(-33.333%)', true)
+      animateTransform('translateX(-33.333%)')
     }
-  }
-
-  function handleTransitionEnd() {
-    if (!pendingWeek.current) return
-    const { weekStart } = pendingWeek.current
-    pendingWeek.current = null
-    // useLayoutEffect will reset the transform after React commits new content,
-    // before the browser paints — no intermediate flash frame
-    resetTransformAfterRender.current = true
-    setViewWeekStart(weekStart)
   }
 
   // Calendar popup handlers
@@ -173,9 +198,12 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const calendarModal = showCalendar && (
     <div
       onClick={() => setShowCalendar(false)}
-      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}
+      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 99999 }}
     >
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', padding: '20px 16px', width: '100%' }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 16px 40px' }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) } else setCalMonth(calMonth - 1) }}
             style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
@@ -269,7 +297,6 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onTransitionEnd={handleTransitionEnd}
         >
           {weeks.map((weekDays, wi) => (
             <div key={wi} style={{ width: '33.333%' }}>
@@ -282,14 +309,17 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                     <button
                       key={dateStr}
                       onClick={() => {
-                        if (hasDragged.current || pendingWeek.current) return
+                        if (hasDragged.current || animRef.current) return
                         onDateChange(dateStr)
                         if (wi !== 1) {
                           const dir = wi === 0 ? 'prev' : 'next'
                           navDirection.current = dir
                           const targetWeek = dir === 'prev' ? prevWeekStart : nextWeekStart
-                          pendingWeek.current = { weekStart: targetWeek, transform: dir === 'prev' ? 'translateX(0%)' : 'translateX(-66.666%)' }
-                          applyTransform(pendingWeek.current.transform, true)
+                          const targetTransform = dir === 'prev' ? 'translateX(0%)' : 'translateX(-66.666%)'
+                          animateTransform(targetTransform, () => {
+                            resetTransformAfterRender.current = true
+                            setViewWeekStart(targetWeek)
+                          })
                         }
                       }}
                       className="flex justify-center items-center py-1"
