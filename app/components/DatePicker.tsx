@@ -112,7 +112,9 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       animRef.current.cancel()
       animRef.current = null
     }
-    const from = el.style.transform || 'translateX(-33.333%)'
+    // Read actual pixel offset via DOMMatrix to avoid calc(%+px) unit-mismatch across platforms
+    const matrix = new DOMMatrix(window.getComputedStyle(el).transform)
+    const from = `translateX(${matrix.m41}px)`
     const anim = el.animate(
       [{ transform: from }, { transform: target }],
       { duration: 500, easing: 'cubic-bezier(0, 0, 0.15, 1)', fill: 'forwards' }
