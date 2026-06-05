@@ -194,6 +194,24 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     setRefreshing(false)
   }, [fetchDate, refreshing, router, selectedDate])
 
+  // ── Stop touch events from the scrollable order list ──
+  // Critical for Android: prevents passive:false deadlock by stopping
+  // touch events from bubbling up to the document gesture handler.
+  // The browser handles scroll natively without any JS interference.
+  useEffect(() => {
+    const el = scrollAreaRef.current
+    if (!el) return
+    function stop(e: TouchEvent) { e.stopPropagation() }
+    el.addEventListener('touchstart', stop)
+    el.addEventListener('touchmove', stop)
+    el.addEventListener('touchend', stop)
+    return () => {
+      el.removeEventListener('touchstart', stop)
+      el.removeEventListener('touchmove', stop)
+      el.removeEventListener('touchend', stop)
+    }
+  }, [])
+
   // ── Gesture listeners on document ──
   useEffect(() => {
     let sx = 0, sy = 0
@@ -238,11 +256,11 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
 
-      // ── Detail panel is open: only intercept clear right-swipes ──
-      // Anything else (vertical scroll, diagonal, left-swipe) passes through
-      // so the browser handles native scroll without deadlock.
+      // ── Detail panel is open: right-swipe to close ──
+      // Scroll-area touches are stopped at source, so only header/filter
+      // touches reach here. Any right-swipe with horizontal intent → close.
       if (mode === 'close') {
-        if (dx > 30 && dx > Math.abs(dy) * 3) {
+        if (dx > 20 && dx > Math.abs(dy) * 1.5) {
           e.preventDefault()
           const el = panelRef.current
           if (el) el.style.transform = `translateX(${dx}px)`
