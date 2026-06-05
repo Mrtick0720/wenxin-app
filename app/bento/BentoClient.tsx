@@ -133,14 +133,24 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         {/* 快速入口 */}
         <div className="flex gap-2">
           <Link href="/bento/unpaid" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
-            <span className="text-xl">💰</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="7" width="20" height="14" rx="2"/>
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+              <line x1="12" y1="12" x2="12" y2="16"/>
+              <line x1="10" y1="14" x2="14" y2="14"/>
+            </svg>
             <div>
               <div className="text-xs font-medium text-gray-700">未付款</div>
               <div className="text-xs text-gray-400">后付费客户</div>
             </div>
           </Link>
           <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
-            <span className="text-xl">📋</span>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2"/>
+              <line x1="9" y1="7" x2="15" y2="7"/>
+              <line x1="9" y1="11" x2="15" y2="11"/>
+              <line x1="9" y1="15" x2="13" y2="15"/>
+            </svg>
             <div>
               <div className="text-xs font-medium text-gray-700">周菜单</div>
               <div className="text-xs text-gray-400">本周菜品</div>
@@ -153,21 +163,21 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           <select
             value={filterArea}
             onChange={e => setFilterArea(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 outline-none"
+            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
           >
             {AREAS.map(a => <option key={a} value={a}>{a === '全部' ? '全部地区' : a}</option>)}
           </select>
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 outline-none"
+            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
           >
             {MENU_TYPES.map(t => <option key={t} value={t}>{t === '全部' ? '全部类型' : t}</option>)}
           </select>
           <select
             value={filterTime}
             onChange={e => setFilterTime(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 outline-none"
+            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
           >
             {TIME_SLOTS.map(t => <option key={t} value={t}>{t === '全部' ? '全时段' : t}</option>)}
           </select>

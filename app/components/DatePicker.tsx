@@ -1,190 +1,141 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useEffect, useRef } from 'react'
+
+const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
+
+function getMondayOfWeek(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return d.toISOString().split('T')[0]
+}
+
+function addDays(dateStr: string, n: number): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  d.setDate(d.getDate() + n)
+  return d.toISOString().split('T')[0]
+}
+
+function getWeekDays(mondayStr: string): string[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(mondayStr, i))
+}
 
 interface DatePickerProps {
   selectedDate: string
   onDateChange: (date: string) => void
 }
 
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month + 1, 0).getDate()
-}
-
-function getFirstDayOfMonth(year: number, month: number) {
-  return new Date(year, month, 1).getDay()
-}
-
 export default function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
-  const today = new Date()
-  const todayStr = today.toISOString().split('T')[0]
-  const [showCalendar, setShowCalendar] = useState(false)
-  const [mounted, setMounted] = useState(false)
-  const [viewYear, setViewYear] = useState(new Date(selectedDate).getFullYear())
-  const [viewMonth, setViewMonth] = useState(new Date(selectedDate).getMonth())
-
-  const months = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
-  const weekdays = ['日', '一', '二', '三', '四', '五', '六']
-  const daysInMonth = getDaysInMonth(viewYear, viewMonth)
-  const firstDay = getFirstDayOfMonth(viewYear, viewMonth)
-
-  useEffect(() => { setMounted(true) }, [])
+  const today = new Date().toISOString().split('T')[0]
+  const [viewWeekStart, setViewWeekStart] = useState(getMondayOfWeek(selectedDate))
+  const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
-    if (showCalendar) {
-      document.body.style.overflow = 'hidden'
-      document.body.style.position = 'fixed'
-      document.body.style.width = '100%'
-    } else {
-      document.body.style.overflow = ''
-      document.body.style.position = ''
-      document.body.style.width = ''
-    }
-    return () => {
-      document.body.style.overflow = ''
-      document.body.style.position = ''
-      document.body.style.width = ''
-    }
-  }, [showCalendar])
+    setViewWeekStart(getMondayOfWeek(selectedDate))
+  }, [selectedDate])
 
-  function formatDisplay(dateStr: string) {
-    const d = new Date(dateStr + 'T00:00:00')
-    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][d.getDay()]
-    return `${d.getMonth() + 1}月${d.getDate()}日 ${weekday}`
-  }
+  const weekDays = getWeekDays(viewWeekStart)
+  // use Thursday to determine which month to display (handles week spanning two months)
+  const thursdayDate = weekDays[3]
+  const refDate = new Date(thursdayDate + 'T00:00:00')
+  const monthLabel = MONTHS_ZH[refDate.getMonth()]
+  const yearLabel = refDate.getFullYear()
 
-  function handleDayClick(day: number) {
-    const m = String(viewMonth + 1).padStart(2, '0')
-    const d = String(day).padStart(2, '0')
-    onDateChange(`${viewYear}-${m}-${d}`)
-    setShowCalendar(false)
-  }
+  function prevWeek() { setViewWeekStart(addDays(viewWeekStart, -7)) }
+  function nextWeek() { setViewWeekStart(addDays(viewWeekStart, 7)) }
 
-  function prevMonth() {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1) }
-    else setViewMonth(viewMonth - 1)
-  }
-
-  function nextMonth() {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1) }
-    else setViewMonth(viewMonth + 1)
+  function handleDayTap(dateStr: string) {
+    onDateChange(dateStr)
+    setViewWeekStart(getMondayOfWeek(dateStr))
   }
 
   function goToday() {
-    setViewYear(today.getFullYear())
-    setViewMonth(today.getMonth())
-    onDateChange(todayStr)
-    setShowCalendar(false)
+    onDateChange(today)
+    setViewWeekStart(getMondayOfWeek(today))
   }
 
-  const calendar = showCalendar && (
-    <div
-      onClick={() => setShowCalendar(false)}
-      style={{
-        position: 'fixed',
-        top: 0, left: 0, right: 0, bottom: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'rgba(0,0,0,0.45)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 99999,
-        padding: '0 24px',
-        boxSizing: 'border-box',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          backgroundColor: '#fff',
-          borderRadius: 24,
-          padding: 20,
-          width: '100%',
-          maxWidth: 340,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-        }}
-      >
-        {/* 月份导航 */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <button onClick={prevMonth} style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-          <span style={{ fontWeight: 600, fontSize: 15, color: '#111' }}>{viewYear}年 {months[viewMonth]}</span>
-          <button onClick={nextMonth} style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
-        </div>
+  function handleTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX
+  }
 
-        {/* 星期 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
-          {weekdays.map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>{d}</div>
-          ))}
-        </div>
-
-        {/* 日期 */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
-          {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1
-            const m = String(viewMonth + 1).padStart(2, '0')
-            const d = String(day).padStart(2, '0')
-            const dateStr = `${viewYear}-${m}-${d}`
-            const isSelected = dateStr === selectedDate
-            const isToday = dateStr === todayStr
-            return (
-              <div key={day} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '3px 0' }}>
-                <button
-                  onClick={() => handleDayClick(day)}
-                  style={{
-                    width: 34, height: 34,
-                    borderRadius: '50%',
-                    border: isToday && !isSelected ? '1.5px solid #f97316' : 'none',
-                    background: isSelected ? '#f97316' : 'transparent',
-                    color: isSelected ? '#fff' : isToday ? '#f97316' : '#374151',
-                    fontWeight: isSelected || isToday ? 700 : 400,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                  }}
-                >
-                  {day}
-                </button>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Today + 取消 */}
-        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button onClick={goToday} style={{ flex: 1, padding: 12, background: '#f97316', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>
-            Today
-          </button>
-          <button onClick={() => setShowCalendar(false)} style={{ flex: 1, padding: 12, background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 14, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>
-            取消
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+  function handleTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current === null) return
+    const diff = touchStartX.current - e.changedTouches[0].clientX
+    if (Math.abs(diff) > 40) {
+      diff > 0 ? nextWeek() : prevWeek()
+    }
+    touchStartX.current = null
+  }
 
   return (
-    <>
-      <div className="flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-700">
-          {selectedDate === todayStr ? `今日 · ${formatDisplay(selectedDate)}` : formatDisplay(selectedDate)}
-        </div>
-        <button
-          onClick={() => setShowCalendar(true)}
-          className="flex items-center justify-center w-9 h-9 rounded-xl border border-gray-200 bg-white text-gray-500"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+    <div>
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-1.5 text-gray-600">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/>
             <line x1="16" y1="2" x2="16" y2="6"/>
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-        </button>
+          <span className="text-sm font-semibold text-gray-700">{monthLabel} {yearLabel}</span>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={prevWeek} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-base leading-none">‹</button>
+          <button onClick={nextWeek} className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-base leading-none">›</button>
+        </div>
       </div>
 
-      {mounted && createPortal(calendar, document.body)}
-    </>
+      {/* Week strip */}
+      <div
+        className="grid grid-cols-7"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
+        {/* Weekday labels */}
+        {WEEKDAY_LABELS.map((label, i) => (
+          <div key={i} className="text-center text-xs text-gray-300 pb-1.5 font-medium">{label}</div>
+        ))}
+
+        {/* Day numbers */}
+        {weekDays.map((dateStr) => {
+          const day = new Date(dateStr + 'T00:00:00').getDate()
+          const isSelected = dateStr === selectedDate
+          const isToday = dateStr === today
+          return (
+            <button
+              key={dateStr}
+              onClick={() => handleDayTap(dateStr)}
+              className="flex justify-center items-center py-0.5"
+            >
+              <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-colors ${
+                isSelected
+                  ? 'bg-blue-400 text-white'
+                  : isToday
+                  ? 'text-blue-400 font-semibold'
+                  : 'text-gray-700'
+              }`}>
+                {day}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* TODAY button — only shows when not on today */}
+      {selectedDate !== today && (
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={goToday}
+            className="px-8 py-1.5 bg-blue-400 text-white text-sm font-semibold rounded-full"
+          >
+            TODAY
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
