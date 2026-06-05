@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import AnimateLayout from "./components/AnimateLayout";
 import LayoutCapture from "./components/LayoutCapture";
 
 export const metadata: Metadata = {
@@ -15,9 +14,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" style={{ colorScheme: 'light' }}>
-      <body className="min-h-full bg-gray-50" style={{ colorScheme: 'light' }}>
+      <body className="min-h-full" style={{ colorScheme: 'light', background: '#f9fafb' }}>
         <LayoutCapture />
-        <AnimateLayout>{children}</AnimateLayout>
+        {children}
       </body>
     </html>
   );

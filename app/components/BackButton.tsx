@@ -11,17 +11,14 @@ export default function BackButton({ href }: BackButtonProps) {
   const router = useRouter()
 
   const handleBack = () => {
-    // 1. Place the captured home page snapshot as a fixed background layer
+    // 1. Always place a background layer (with snapshot if available)
+    //    so there is NEVER a white gap during or after the back animation
     const snapshot = getSnapshot()
-    let bgEl: HTMLElement | null = null
-
-    if (snapshot) {
-      bgEl = document.createElement('div')
-      bgEl.style.cssText =
-        'position:fixed;inset:0;z-index:0;overflow:hidden;background:#f9fafb;pointer-events:none;'
-      bgEl.appendChild(snapshot)
-      document.body.prepend(bgEl)
-    }
+    const bgEl = document.createElement('div')
+    bgEl.style.cssText =
+      'position:fixed;inset:0;z-index:0;overflow:hidden;background:#f9fafb;pointer-events:none;'
+    if (snapshot) bgEl.appendChild(snapshot)
+    document.body.prepend(bgEl)
 
     // 2. Fix the current page on top and slide it out to the right
     const pageEl = document.querySelector('.page-slide-in') as HTMLElement | null
@@ -37,14 +34,12 @@ export default function BackButton({ href }: BackButtonProps) {
     // 3. Navigate immediately — real parent page renders behind the animation
     router.push(href)
 
-    // 4. Fade snapshot out slowly so the real page has time to fully paint
-    //    before the snapshot disappears — prevents white flash on home page return
+    // 4. Fade background out after home page has had time to fully paint
     setTimeout(() => {
-      if (!bgEl) return
-      bgEl.style.transition = 'opacity 0.25s ease'
+      bgEl.style.transition = 'opacity 0.3s ease'
       bgEl.style.opacity = '0'
-      setTimeout(() => bgEl?.remove(), 260)
-    }, 500)
+      setTimeout(() => bgEl.remove(), 320)
+    }, 700)
   }
 
   return (
