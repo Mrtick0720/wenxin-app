@@ -65,12 +65,96 @@ function sortItems(items: PurchaseItem[]) {
   })
 }
 
-function fmtAmt(n: number) {
-  return `RM ${n.toFixed(2)}`
+// ── Donut chart ──
+function DonutChart({ items }: { items: PurchaseItem[] }) {
+  const total = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
+  if (total === 0) return <div className="text-center text-gray-400 text-sm py-8">No data</div>
+
+  const r = 58, cx = 80, cy = 80, strokeW = 22
+  const circ = 2 * Math.PI * r
+
+  const catData = CATEGORY_ORDER.map(cat => ({
+    cat, color: CATEGORY_COLOR[cat] ?? '#9ca3af',
+    amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
+  })).filter(d => d.amt > 0)
+
+  let cumLen = 0
+  const segments = catData.map(d => {
+    const segLen = (d.amt / total) * circ
+    const seg = { ...d, dashoffset: -cumLen, segLen }
+    cumLen += segLen
+    return seg
+  })
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg width={160} height={160} viewBox="0 0 160 160">
+        <g transform={`rotate(-90, ${cx}, ${cy})`}>
+          {segments.map((seg, i) => (
+            <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+              stroke={seg.color} strokeWidth={strokeW}
+              strokeDasharray={`${seg.segLen} ${circ}`}
+              strokeDashoffset={seg.dashoffset} />
+          ))}
+        </g>
+        <text x={cx} y={cy - 8} textAnchor="middle" fontSize="11" fill="#9ca3af">Total</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="15" fontWeight="700" fill="#111">
+          {`RM ${total.toFixed(0)}`}
+        </text>
+      </svg>
+      {/* Legend */}
+      <div className="w-full space-y-2 mt-2 px-2">
+        {catData.map(d => (
+          <div key={d.cat} className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+              <span className="text-gray-700">{d.cat}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400 text-xs">{Math.round(d.amt / total * 100)}%</span>
+              <span className="font-semibold text-gray-900">RM {d.amt.toFixed(2)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
 }
 
-const emptyForm = { name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' }
+// ── Supplier list ──
+function SupplierList({ items }: { items: PurchaseItem[] }) {
+  const map: Record<string, { items: PurchaseItem[]; total: number }> = {}
+  for (const item of items) {
+    const key = item.supplier?.trim() || '(No Supplier)'
+    if (!map[key]) map[key] = { items: [], total: 0 }
+    map[key].items.push(item)
+    map[key].total += item.total_price ?? 0
+  }
+  const suppliers = Object.entries(map).sort((a, b) => b[1].total - a[1].total)
+  if (suppliers.length === 0) return null
+  return (
+    <div className="space-y-3">
+      {suppliers.map(([name, data]) => (
+        <div key={name} className="bg-white rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-semibold text-gray-900 text-sm">🏪 {name}</span>
+            <span className="font-bold text-gray-900 text-sm">RM {data.total.toFixed(2)}</span>
+          </div>
+          <div className="space-y-1">
+            {data.items.map(i => (
+              <div key={i.id} className="flex justify-between text-xs text-gray-500">
+                <span>{i.name} · {i.quantity} {i.unit}</span>
+                <span>RM {(i.total_price ?? 0).toFixed(2)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
+// ── Inline picker & name input ──
 function InlinePicker({ value, options, onChange, label }: {
   value: string; options: string[]; onChange: (v: string) => void; label: string
 }) {
@@ -102,9 +186,8 @@ function InlinePicker({ value, options, onChange, label }: {
   )
 }
 
-function NameInput({ value, category, onChange, onCategoryChange }: {
-  value: string; category: string
-  onChange: (v: string) => void; onCategoryChange: (c: string) => void
+function NameInput({ value, onChange, onCategoryChange }: {
+  value: string; onChange: (v: string) => void; onCategoryChange: (c: string) => void
 }) {
   const [open, setOpen] = useState(false)
   const filtered = value.length > 0
@@ -113,43 +196,26 @@ function NameInput({ value, category, onChange, onCategoryChange }: {
   return (
     <div className="relative">
       <label className="text-xs text-gray-400 mb-1 block">Item Name *</label>
-      <input
-        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
-        style={{ fontSize: 16 }} placeholder="Type or search..."
-        value={value} autoFocus
+      <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
+        style={{ fontSize: 16 }} placeholder="Type or search..." value={value} autoFocus
         onChange={e => {
-          onChange(e.target.value)
-          setOpen(true)
-          // Auto-match category if exact match
+          onChange(e.target.value); setOpen(true)
           const auto = ITEM_CATEGORY[e.target.value]
           if (auto) onCategoryChange(auto)
         }}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-      />
+        onBlur={() => setTimeout(() => setOpen(false), 150)} />
       {open && filtered.length > 0 && (
         <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-y-auto" style={{ maxHeight: 160 }}>
           {filtered.map(item => (
             <button key={item} type="button" onMouseDown={e => e.preventDefault()}
-              onClick={() => {
-                onChange(item); setOpen(false)
-                const auto = ITEM_CATEGORY[item]
-                if (auto) onCategoryChange(auto)
-              }}
-              className="w-full text-left px-3 py-2.5 hover:bg-orange-50"
+              onClick={() => { onChange(item); setOpen(false); const auto = ITEM_CATEGORY[item]; if (auto) onCategoryChange(auto) }}
+              className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center justify-between"
               style={{ fontSize: 16, color: item === value ? '#f97316' : '#374151', fontWeight: item === value ? 600 : 400 }}>
               <span>{item}</span>
-              {ITEM_CATEGORY[item] && (
-                <span className="ml-2 text-xs text-gray-400">{ITEM_CATEGORY[item]}</span>
-              )}
+              {ITEM_CATEGORY[item] && <span className="text-xs text-gray-400 ml-2">{ITEM_CATEGORY[item]}</span>}
             </button>
           ))}
-        </div>
-      )}
-      {/* Show auto-matched category */}
-      {ITEM_CATEGORY[value] && (
-        <div className="text-xs mt-1" style={{ color: getCatColor(ITEM_CATEGORY[value]) }}>
-          ● Auto-matched: {ITEM_CATEGORY[value]}
         </div>
       )}
     </div>
@@ -164,10 +230,9 @@ function CheckIcon() {
   )
 }
 
-// Pull-to-refresh for fixed inner scroll container
+// ── Pull-to-refresh for inner scroll container ──
 function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onRefresh: () => Promise<void>) {
-  const startY = useRef(0)
-  const pulling = useRef(false)
+  const startY = useRef(0), pulling = useRef(false)
   const [pullDist, setPullDist] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
   const THRESHOLD = 60
@@ -175,7 +240,6 @@ function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onR
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
-
     const onStart = (e: TouchEvent) => {
       if (el.scrollTop <= 0) { startY.current = e.touches[0].clientY; pulling.current = true }
     }
@@ -207,6 +271,8 @@ function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onR
   return { pullDist, refreshing, THRESHOLD }
 }
 
+type Filter = 'all' | 'pending' | 'done'
+
 export default function PurchaseClient({ initialItems, initialDate }: {
   initialItems: PurchaseItem[]; initialDate: string
 }) {
@@ -215,87 +281,139 @@ export default function PurchaseClient({ initialItems, initialDate }: {
   const [selectedDate, setSelectedDate] = useState(initialDate)
   const [fetching, setFetching] = useState(false)
   const [toggling, setToggling] = useState<number | null>(null)
-  const [showCompleted, setShowCompleted] = useState(false)
+  const [filter, setFilter] = useState<Filter>('all')
   const cache = useRef<Record<string, PurchaseItem[]>>({ [initialDate]: initialItems })
   const scrollRef = useRef<HTMLDivElement>(null)
 
   const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState({ name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' })
   const [saving, setSaving] = useState(false)
 
+  // ── Slide panel (stats detail) ──
+  const panelRef = useRef<HTMLDivElement>(null)
+  const panelAnimRef = useRef<Animation | null>(null)
+  const panelIsOpen = useRef(false)
+  const [panelOpen, setPanelOpen] = useState(false)
+
+  const setPanelRefCb = useCallback((el: HTMLDivElement | null) => {
+    panelRef.current = el
+    if (el) el.style.transform = `translateX(${window.innerWidth}px)`
+  }, [])
+
+  function getPanelX() {
+    const el = panelRef.current; if (!el) return window.innerWidth
+    const t = el.style.transform
+    if (t && t !== 'none') { const m = t.match(/translateX\(([-\d.]+)px\)/); if (m) return parseFloat(m[1]) }
+    const mat = window.getComputedStyle(el).transform
+    return (!mat || mat === 'none') ? 0 : new DOMMatrix(mat).m41
+  }
+
+  function animatePanel(toX: number, onDone?: () => void) {
+    const el = panelRef.current; if (!el) return
+    if (panelAnimRef.current) { panelAnimRef.current.cancel(); panelAnimRef.current = null; el.style.transform = `translateX(${getPanelX()}px)` }
+    const fromX = getPanelX()
+    const dist = Math.abs(toX - fromX)
+    if (dist < 1) { el.style.transform = `translateX(${toX}px)`; onDone?.(); return }
+    const anim = el.animate(
+      [{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }],
+      { duration: Math.max(200, Math.min(320, dist * 0.7)), easing: 'cubic-bezier(0.3,0,0.1,1)', fill: 'none' }
+    )
+    panelAnimRef.current = anim
+    anim.onfinish = () => { if (panelAnimRef.current !== anim) return; panelAnimRef.current = null; el.style.transform = `translateX(${toX}px)`; onDone?.() }
+  }
+
+  function openPanel() { if (panelIsOpen.current) return; panelIsOpen.current = true; setPanelOpen(true); animatePanel(0) }
+  function closePanel() { panelIsOpen.current = false; setPanelOpen(false); animatePanel(window.innerWidth) }
+
+  // Gesture: left swipe on main → open panel; right swipe on panel → close
+  useEffect(() => {
+    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false, mode: 'open' | 'close' | null = null
+    function onStart(e: TouchEvent) {
+      const t = e.touches[0]; sx = t.clientX; sy = t.clientY; axis = null; tracking = false; mode = null
+      if (panelIsOpen.current) { tracking = true; mode = 'close'; return }
+      if (panelAnimRef.current) return
+      tracking = true; mode = 'open'
+    }
+    function onMove(e: TouchEvent) {
+      if (!tracking) return
+      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
+      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (axis !== 'h') return
+      const el = panelRef.current
+      if (mode === 'open' && dx < 0) {
+        e.preventDefault()
+        if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
+      } else if (mode === 'close') {
+        e.preventDefault()
+        if (dx > 0 && el) el.style.transform = `translateX(${Math.max(0, dx)}px)`
+      }
+    }
+    function onEnd(e: TouchEvent) {
+      if (!tracking) return; tracking = false
+      if (axis !== 'h') return
+      const dx = e.changedTouches[0].clientX - sx, thresh = window.innerWidth * 0.22
+      if (mode === 'open' && dx < -thresh) openPanel()
+      else if (mode === 'open' && dx < 0) animatePanel(window.innerWidth)
+      else if (mode === 'close' && dx > thresh) closePanel()
+      else if (mode === 'close') animatePanel(0)
+    }
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+    }
+  }, []) // eslint-disable-line
+
+  // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<PurchaseItem[]> => {
     const { data } = await supabase.from('purchase_items').select('*').eq('date', date).order('id', { ascending: true })
     const result = (data || []) as PurchaseItem[]
-    cache.current[date] = result
-    return result
+    cache.current[date] = result; return result
   }, [])
 
-  const doRefresh = useCallback(async () => {
-    const result = await fetchDate(selectedDate)
-    setItems(result)
-  }, [fetchDate, selectedDate])
-
+  const doRefresh = useCallback(async () => { setItems(await fetchDate(selectedDate)) }, [fetchDate, selectedDate])
   const { pullDist, refreshing, THRESHOLD } = usePullToRefresh(scrollRef, doRefresh)
 
   async function handleDateChange(date: string) {
     setSelectedDate(date)
-    if (cache.current[date] !== undefined) {
-      setItems(cache.current[date])
-    } else {
-      setFetching(true)
-      setItems(await fetchDate(date))
-      setFetching(false)
-    }
+    if (cache.current[date] !== undefined) { setItems(cache.current[date]) }
+    else { setFetching(true); setItems(await fetchDate(date)); setFetching(false) }
   }
 
   async function toggleComplete(item: PurchaseItem) {
     const newStatus = item.status === 'completed' ? 'pending' : 'completed'
     const updated = items.map(i => i.id === item.id ? { ...i, status: newStatus } : i)
-    setItems(updated); cache.current[selectedDate] = updated
-    setToggling(item.id)
+    setItems(updated); cache.current[selectedDate] = updated; setToggling(item.id)
     const { error } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
-    if (error) {
-      const reverted = items.map(i => i.id === item.id ? { ...i, status: item.status } : i)
-      setItems(reverted); cache.current[selectedDate] = reverted
-    }
+    if (error) { const rev = items.map(i => i.id === item.id ? { ...i, status: item.status } : i); setItems(rev); cache.current[selectedDate] = rev }
     setToggling(null)
   }
 
   async function handleAdd() {
-    if (!form.name.trim()) return
-    setSaving(true)
-    const qty = parseFloat(form.quantity) || 0
-    const up = parseFloat(form.unit_price) || 0
-    const row = {
-      date: selectedDate, name: form.name.trim(), category: form.category,
-      unit: form.unit, quantity: qty, unit_price: up, total_price: qty * up,
-      status: 'pending',
-    }
+    if (!form.name.trim()) return; setSaving(true)
+    const qty = parseFloat(form.quantity) || 0, up = parseFloat(form.unit_price) || 0
+    const row = { date: selectedDate, name: form.name.trim(), category: form.category, unit: form.unit, quantity: qty, unit_price: up, total_price: qty * up, status: 'pending' }
     const { data, error } = await supabase.from('purchase_items').insert(row).select().single()
-    if (data) {
-      const updated = [...items, data as PurchaseItem]
-      setItems(updated); cache.current[selectedDate] = updated
-    } else {
-      const temp = { ...row, id: Date.now(), supplier: null, note: null, purchase_method: null } as PurchaseItem
-      const updated = [...items, temp]
-      setItems(updated); cache.current[selectedDate] = updated
-      if (error) console.error(error)
-    }
-    setForm(emptyForm); setSaving(false); setShowAdd(false)
+    if (data) { const upd = [...items, data as PurchaseItem]; setItems(upd); cache.current[selectedDate] = upd }
+    else { const temp = { ...row, id: Date.now(), supplier: null, note: null, purchase_method: null } as PurchaseItem; const upd = [...items, temp]; setItems(upd); cache.current[selectedDate] = upd; if (error) console.error(error) }
+    setForm({ name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' }); setSaving(false); setShowAdd(false)
   }
 
-  const isCompleted = (i: PurchaseItem) => i.status === 'completed'
-  const pending = sortItems(items.filter(i => !isCompleted(i)))
-  const completed = sortItems(items.filter(i => isCompleted(i)))
-  const totalAmt = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
+  const pendingItems = sortItems(items.filter(i => i.status !== 'completed'))
+  const doneItems = sortItems(items.filter(i => i.status === 'completed'))
+  const allSorted = [...pendingItems, ...doneItems]
 
-  // Category breakdown (all items)
+  const displayItems = filter === 'pending' ? pendingItems : filter === 'done' ? doneItems : allSorted
+  const totalAmt = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
   const catTotals = CATEGORY_ORDER.map(cat => ({
-    cat,
-    amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
-    color: CATEGORY_COLOR[cat],
-    bg: CATEGORY_BG[cat],
+    cat, amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
+    color: CATEGORY_COLOR[cat], bg: CATEGORY_BG[cat],
   })).filter(c => c.amt > 0)
+
+  function toggleFilter(f: Filter) { setFilter(prev => prev === f ? 'all' : f) }
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
@@ -306,7 +424,7 @@ export default function PurchaseClient({ initialItems, initialDate }: {
           <BackButton href="/" />
           <span className="font-semibold text-base">Purchase</span>
         </div>
-        <button onClick={() => { setShowAdd(true); setForm(emptyForm) }}
+        <button onClick={() => { setShowAdd(true) }}
           className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -321,95 +439,103 @@ export default function PurchaseClient({ initialItems, initialDate }: {
 
       {/* Stats */}
       <div className="bg-white px-4 py-3 border-b" style={{ flexShrink: 0 }}>
-        <div className="flex items-end justify-between mb-3">
+        <div className="flex items-end justify-between mb-2.5">
           <div>
-            <div className="text-2xl font-bold text-gray-900">{fmtAmt(totalAmt)}</div>
-            <div className="text-xs text-gray-400 mt-0.5">Total · {items.length} items</div>
+            <div className="text-2xl font-bold text-gray-900">RM {totalAmt.toFixed(2)}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{items.length} items total</div>
           </div>
-          <div className="flex gap-4 text-right">
-            <div>
-              <div className="text-xl font-bold text-orange-500">{pending.length}</div>
-              <div className="text-xs text-gray-400">Pending</div>
-            </div>
-            <div>
-              <div className="text-xl font-bold text-green-500">{completed.length}</div>
-              <div className="text-xs text-gray-400">Done</div>
-            </div>
+          <div className="flex gap-3 text-right">
+            <button onClick={() => toggleFilter('pending')}
+              className="px-3 py-1.5 rounded-xl transition-all"
+              style={{ background: filter === 'pending' ? '#fff7ed' : 'transparent' }}>
+              <div className="text-xl font-bold text-orange-500">{pendingItems.length}</div>
+              <div className="text-xs" style={{ color: filter === 'pending' ? '#f97316' : '#9ca3af' }}>Pending</div>
+            </button>
+            <button onClick={() => toggleFilter('done')}
+              className="px-3 py-1.5 rounded-xl transition-all"
+              style={{ background: filter === 'done' ? '#f0fdf4' : 'transparent' }}>
+              <div className="text-xl font-bold text-green-500">{doneItems.length}</div>
+              <div className="text-xs" style={{ color: filter === 'done' ? '#22c55e' : '#9ca3af' }}>Done</div>
+            </button>
           </div>
         </div>
-        {/* Category breakdown */}
         {catTotals.length > 0 && (
           <div className="flex gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
             {catTotals.map(({ cat, amt, color, bg }) => (
-              <div key={cat} className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs"
-                style={{ background: bg, color }}>
+              <div key={cat} className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs" style={{ background: bg, color }}>
                 <span className="font-semibold">{cat}</span>
                 <span className="ml-1.5 opacity-80">RM {amt.toFixed(0)}</span>
               </div>
             ))}
+            <div className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs bg-gray-50 text-gray-400 flex items-center gap-1"
+              onClick={openPanel} style={{ cursor: 'pointer' }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+              Details
+            </div>
+          </div>
+        )}
+        {filter !== 'all' && (
+          <div className="text-xs text-center text-gray-400 mt-1.5">
+            Showing {filter} items · <button onClick={() => setFilter('all')} className="text-orange-500">Show all</button>
           </div>
         )}
       </div>
 
-      {/* Scrollable list with pull-to-refresh */}
+      {/* List */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ background: '#fff' }}>
         {/* Pull indicator */}
-        <div style={{
-          height: refreshing ? THRESHOLD : pullDist,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: refreshing || pullDist === 0 ? 'height 0.3s ease' : 'none',
-          overflow: 'hidden',
-        }}>
+        <div style={{ height: refreshing ? THRESHOLD : pullDist, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: refreshing || pullDist === 0 ? 'height 0.3s ease' : 'none', overflow: 'hidden' }}>
           {(pullDist > 5 || refreshing) && (
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%',
-              border: '2.5px solid #f97316', borderTopColor: 'transparent',
-              animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none',
-              transform: !refreshing ? `rotate(${(pullDist / THRESHOLD) * 300}deg)` : undefined,
-            }} />
+            <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2.5px solid #f97316', borderTopColor: 'transparent', animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none', transform: !refreshing ? `rotate(${(pullDist / THRESHOLD) * 300}deg)` : undefined }} />
           )}
         </div>
-        <style>{`@keyframes ptr-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+        <style>{`@keyframes ptr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
 
         {fetching && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
-
-        {/* Pending */}
-        {!fetching && pending.length > 0 && (
-          <>
-            <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b">
-              To Order ({pending.length})
-            </div>
-            {pending.map((item, idx) => (
-              <ItemRow key={item.id} item={item} isLast={idx === pending.length - 1}
-                toggling={toggling === item.id} onToggle={() => toggleComplete(item)} />
-            ))}
-          </>
-        )}
-
-        {!fetching && pending.length === 0 && completed.length === 0 && (
+        {!fetching && displayItems.length === 0 && (
           <div className="text-center text-gray-400 py-16">
             <div className="text-4xl mb-3">🛒</div>
-            <div className="text-sm">No items — tap + to add</div>
+            <div className="text-sm">{filter === 'all' ? 'No items — tap + to add' : `No ${filter} items`}</div>
           </div>
         )}
+        {!fetching && displayItems.map((item, idx) => (
+          <ItemRow key={item.id} item={item} isLast={idx === displayItems.length - 1}
+            toggling={toggling === item.id} onToggle={() => toggleComplete(item)} />
+        ))}
+      </div>
 
-        {/* Completed */}
-        {!fetching && completed.length > 0 && (
-          <>
-            <button onClick={() => setShowCompleted(s => !s)}
-              className="w-full px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-t flex items-center justify-between">
-              <span>Done ({completed.length})</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: showCompleted ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                <polyline points="6 9 12 15 18 9"/>
+      {/* Stats Detail Panel */}
+      <div ref={setPanelRefCb} className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: 20 }}>
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
+          <div className="flex items-center gap-3">
+            <button onClick={closePanel} className="text-gray-500">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
               </svg>
             </button>
-            {showCompleted && completed.map((item, idx) => (
-              <ItemRow key={item.id} item={item} isLast={idx === completed.length - 1}
-                toggling={toggling === item.id} onToggle={() => toggleComplete(item)} />
-            ))}
-          </>
-        )}
+            <span className="font-semibold text-base">Purchase Summary</span>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
+          {/* Total */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
+            <div className="text-xs text-gray-400 mb-1">Today's Total</div>
+            <div className="text-3xl font-bold text-gray-900">RM {totalAmt.toFixed(2)}</div>
+            <div className="text-xs text-gray-400 mt-1">{items.length} items · {doneItems.length} done</div>
+          </div>
+          {/* Donut chart */}
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="text-sm font-semibold text-gray-700 mb-3">Category Breakdown</div>
+            {panelOpen && <DonutChart items={items} />}
+          </div>
+          {/* Supplier list */}
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-3">Suppliers</div>
+            {panelOpen && <SupplierList items={items} />}
+          </div>
+        </div>
       </div>
 
       {/* Add Panel */}
@@ -423,16 +549,10 @@ export default function PurchaseClient({ initialItems, initialDate }: {
               <button onClick={() => setShowAdd(false)} className="text-gray-400 text-xl leading-none">×</button>
             </div>
             <div className="px-4 py-4 overflow-y-auto flex-1 space-y-3">
-              <NameInput
-                value={form.name} category={form.category}
-                onChange={v => setForm(f => ({ ...f, name: v }))}
-                onCategoryChange={c => setForm(f => ({ ...f, category: c }))}
-              />
+              <NameInput value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} onCategoryChange={c => setForm(f => ({ ...f, category: c }))} />
               <div className="grid grid-cols-2 gap-3">
-                <InlinePicker label="Category" value={form.category} options={CATEGORIES}
-                  onChange={v => setForm(f => ({ ...f, category: v }))} />
-                <InlinePicker label="Unit" value={form.unit} options={UNITS}
-                  onChange={v => setForm(f => ({ ...f, unit: v }))} />
+                <InlinePicker label="Category" value={form.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
+                <InlinePicker label="Unit" value={form.unit} options={UNITS} onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -473,12 +593,11 @@ function ItemRow({ item, isLast, toggling, onToggle }: {
   const catColor = getCatColor(item.category)
   const total = item.total_price ?? 0
   const unitPrice = item.unit_price ?? 0
-
   return (
     <div className={`flex items-center px-4 py-2.5 ${!isLast ? 'border-b border-gray-100' : ''}`}
       style={{ borderLeft: `3px solid ${done ? '#e5e7eb' : catColor}`, minHeight: 52 }}>
       <button onClick={onToggle} disabled={toggling}
-        className="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center mr-3 transition-all"
+        className="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center mr-3"
         style={{ borderColor: done ? '#9ca3af' : catColor, background: done ? '#9ca3af' : 'transparent', color: '#fff', opacity: toggling ? 0.5 : 1 }}>
         {done && <CheckIcon />}
       </button>
