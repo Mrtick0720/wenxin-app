@@ -80,6 +80,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
   const datepickerAreaRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   const mainPullOffsetRef = useRef(0)
   const pullRefreshThreshold = 70
 
@@ -223,6 +224,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       axis = null; tracking = false; mode = null
 
       if (panelIsOpen.current) {
+        // If touch starts inside the scrollable order list, let the browser
+        // handle it natively — avoids Android passive:false deadlock that
+        // kills vertical scrolling when the thumb has any horizontal drift.
+        const scrollEl = scrollAreaRef.current
+        if (scrollEl && e.target instanceof Node && scrollEl.contains(e.target)) {
+          return
+        }
         tracking = true; mode = 'close'
         return
       }
@@ -474,7 +482,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div data-scroll className="min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+        <div ref={scrollAreaRef} data-scroll className="min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {
