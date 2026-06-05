@@ -184,7 +184,7 @@ export default function PurchaseClient({ initialItems, initialDate }: {
     const row = {
       date: selectedDate, name: form.name.trim(), category: form.category,
       unit: form.unit, quantity: qty, unit_price: up, total_price: qty * up,
-      status: 'pending', purchase_method: 'Supplier Delivery',
+      status: 'pending',
     }
     const { data, error } = await supabase.from('purchase_items').insert(row).select().single()
     if (data) {
