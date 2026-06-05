@@ -206,7 +206,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         resetTransformAfterRender.current = true
         setViewWeekStart(targetWeek)
       })
-    } else {
+    } else if (hasDragged.current) {
       animateTransform('translateX(-33.333%)')
     }
   }
