@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase'
-import { todayLocalStr } from '@/lib/dateUtils'
 
 const SUB_TYPES = [
   { value: 'weekly', label: 'Weekly' },
@@ -17,6 +17,7 @@ const DELIVERY_METHODS = [
 const AREAS = ['Likas', 'Luyang', 'Lintas', 'Other']
 
 export default function NewCustomerPage() {
+  const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     name: '',
@@ -27,7 +28,7 @@ export default function NewCustomerPage() {
     area: '',
     menu_preference: '',
     taste_notes: '',
-    start_date: todayLocalStr(),
+    start_date: new Date().toISOString().split('T')[0],
     total_portions: '',
     note: '',
   })
@@ -131,7 +132,7 @@ export default function NewCustomerPage() {
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Taste Notes</label>
           <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
-            placeholder="e.g. mild, no spicy, extra rice, no pork" value={form.taste_notes} onChange={e => set('taste_notes', e.target.value)} />
+            placeholder="e.g. 清淡, 不辣, 饭多, no pork" value={form.taste_notes} onChange={e => set('taste_notes', e.target.value)} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">

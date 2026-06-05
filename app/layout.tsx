@@ -3,13 +3,13 @@ import "./globals.css";
 import LayoutCapture from "./components/LayoutCapture";
 
 export const metadata: Metadata = {
-  title: "Wenxin Ops",
-  description: "Wenxin restaurant operations system",
+  title: "文心管理",
+  description: "文心砂锅餐厅管理系统",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Wenxin",
+    title: "文心",
   },
   icons: {
     icon: "/icon-192.png",

@@ -1,7 +1,5 @@
 'use client'
 
-/* eslint-disable react-hooks/refs */
-
 import { useState, useCallback, useEffect, useRef } from 'react'
 import BackButton from '../components/BackButton'
 import { supabase } from '@/lib/supabase'
@@ -371,6 +369,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const totalPortions = orders.reduce((sum, o) => sum + (o.quantity ?? 1), 0)
   const completed = orders.filter(o => o.status === 'completed').length
   const pending = orders.filter(o => o.status === 'pending').length
+  const percent = total > 0 ? Math.round((completed / total) * 100) : 0
   const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
   const unpaidCount = orders.filter(o => !o.paid).length
 

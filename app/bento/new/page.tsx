@@ -4,7 +4,6 @@ import { useState } from 'react'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
-import { todayLocalStr } from '@/lib/dateUtils'
 
 const AREAS = ['Likas', 'Luyang', 'Lintas']
 const MENU_TYPES = [
@@ -36,7 +35,7 @@ export default function NewBentoOrder() {
     e.preventDefault()
     if (!form.customer_name || !form.items || !form.amount) return
     setLoading(true)
-    const today = todayLocalStr()
+    const today = new Date().toISOString().split('T')[0]
     await supabase.from('bento_orders').insert({
       date: today,
       customer_name: form.customer_name,

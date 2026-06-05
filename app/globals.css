@@ -39,10 +39,6 @@ body {
   animation: slideInRight 0.25s ease-out forwards;
 }
 
-.nav-back .page-slide-in {
-  animation: none;
-}
-
 .page-slide-out {
   animation: slideOutRight 0.25s ease-in forwards;
 }

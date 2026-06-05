@@ -7,8 +7,8 @@ export function toLocalDateStr(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
-export function todayLocalStr(now: Date = new Date()): string {
-  return toLocalDateStr(now)
+export function todayLocalStr(): string {
+  return toLocalDateStr(new Date())
 }
 
 export function addDays(dateStr: string, n: number): string {

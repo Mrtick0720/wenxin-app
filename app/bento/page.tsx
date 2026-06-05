@@ -1,15 +1,13 @@
 import { supabase } from '@/lib/supabase'
 import BentoClient from './BentoClient'
 import PageTransition from '../components/PageTransition'
-import { todayLocalStr } from '@/lib/dateUtils'
 
 async function getBentoOrders() {
-  const today = todayLocalStr()
+  const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('bento_orders')
     .select('*')
     .eq('date', today)
-    .neq('status', 'canceled')
     .order('id', { ascending: true })
   return data || []
 }

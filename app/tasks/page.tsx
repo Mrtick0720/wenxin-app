@@ -1,10 +1,9 @@
 import { supabase } from '@/lib/supabase'
-import { todayLocalStr } from '@/lib/dateUtils'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 
 async function getTasks() {
-  const today = todayLocalStr()
+  const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('tasks')
     .select('*')

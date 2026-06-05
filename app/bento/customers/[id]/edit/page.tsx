@@ -151,7 +151,7 @@ export default function EditCustomerPage() {
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Taste Notes</label>
           <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
-            placeholder="e.g. mild, no spicy, extra rice, no pork" value={form.taste_notes} onChange={e => set('taste_notes', e.target.value)} />
+            placeholder="e.g. 清淡, 不辣, 饭多, no pork" value={form.taste_notes} onChange={e => set('taste_notes', e.target.value)} />
         </div>
 
         <div className="grid grid-cols-2 gap-3">
