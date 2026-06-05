@@ -11,21 +11,21 @@ export default function BackButton({ href }: BackButtonProps) {
 
   const handleBack = () => {
     const html = document.documentElement
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished: Promise<void> }
+    }
 
-    // View Transitions API: captures screenshot of current page, navigates,
-    // captures screenshot of new page, animates between them — no white flash
-    if ('startViewTransition' in document) {
+    if (doc.startViewTransition) {
       html.dataset.navBack = ''
       delete html.dataset.navForward
-      // @ts-expect-error View Transitions API not yet in TS lib
-      document.startViewTransition(() => {
+      doc.startViewTransition(() => {
         router.push(href)
       }).finished.finally(() => {
         delete html.dataset.navBack
       })
     } else {
       // Fallback: fix current page on top, navigate immediately
-      const el = document.querySelector('.page-slide-in') as HTMLElement | null
+      const el = (document as Document).querySelector('.page-slide-in') as HTMLElement | null
       if (el) {
         el.style.position = 'fixed'
         el.style.inset = '0'
