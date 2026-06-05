@@ -214,8 +214,10 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                       className="flex justify-center items-center py-1"
                     >
                       <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${
-                        isSelected
+                        isSelected && isToday
                           ? 'bg-blue-400 text-white'
+                          : isSelected
+                          ? 'bg-gray-200 text-gray-800'
                           : isToday
                           ? 'text-blue-400 font-semibold'
                           : 'text-gray-700'
