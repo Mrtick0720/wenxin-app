@@ -10,18 +10,32 @@ export default function BackButton({ href }: BackButtonProps) {
   const router = useRouter()
 
   const handleBack = () => {
-    const el = document.querySelector('.page-slide-in') as HTMLElement | null
-    if (el) {
-      // Fix current page on top so parent page renders underneath during slide-out
-      el.style.position = 'fixed'
-      el.style.inset = '0'
-      el.style.width = '100%'
-      el.style.zIndex = '50'
-      el.style.backgroundColor = 'white'
-      el.style.animation = 'slideOutRight 0.25s ease-in forwards'
+    const html = document.documentElement
+
+    // View Transitions API: captures screenshot of current page, navigates,
+    // captures screenshot of new page, animates between them — no white flash
+    if ('startViewTransition' in document) {
+      html.dataset.navBack = ''
+      delete html.dataset.navForward
+      // @ts-expect-error View Transitions API not yet in TS lib
+      document.startViewTransition(() => {
+        router.push(href)
+      }).finished.finally(() => {
+        delete html.dataset.navBack
+      })
+    } else {
+      // Fallback: fix current page on top, navigate immediately
+      const el = document.querySelector('.page-slide-in') as HTMLElement | null
+      if (el) {
+        el.style.position = 'fixed'
+        el.style.inset = '0'
+        el.style.width = '100%'
+        el.style.zIndex = '50'
+        el.style.backgroundColor = 'white'
+        el.style.animation = 'slideOutRight 0.25s ease-in forwards'
+      }
+      router.push(href)
     }
-    // Navigate immediately — parent page renders beneath the sliding overlay
-    router.push(href)
   }
 
   return (
