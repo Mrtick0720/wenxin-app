@@ -132,9 +132,6 @@ function SimpleDatePicker({ selectedDate, onDateChange }: { selectedDate: string
           <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
         </svg>
         <span className="text-sm font-medium text-gray-700">{formatDateLabel(selectedDate)}</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
       </button>
       {mounted && createPortal(modal, document.body)}
     </>
@@ -404,7 +401,7 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
   function toggleFilter(f: Filter) { setFilter(prev => prev === f ? 'all' : f) }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+    <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
 
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
@@ -421,11 +418,10 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
 
       {/* Stats card (dine-in style) */}
       <div className="px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
+        <div className="flex justify-center mb-3">
+          <SimpleDatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
+        </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <SimpleDatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
-            <span className="text-xs text-blue-500 font-medium">● {pendingItems.length > 0 ? 'In Progress' : 'All Done'}</span>
-          </div>
           <div className="text-3xl font-bold text-gray-900 mb-3">RM {totalAmt.toFixed(2)}</div>
           <div className="grid grid-cols-2 gap-3">
             <button onClick={() => toggleFilter('pending')} className="text-center rounded-xl py-2 transition-all"
