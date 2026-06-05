@@ -50,8 +50,20 @@ async function getPendingCount() {
   return data?.length ?? 0
 }
 
+// Placeholder — real data will come from Supabase `reservations` table
+async function getReservationCount() {
+  // TODO: Replace with Supabase query when reservations table is created
+  return 8
+}
+
 export default async function Home() {
-  const [stats, bentoStats, anomalyCount, pendingCount] = await Promise.all([getStats(), getBentoStats(), getAnomalyCount(), getPendingCount()])
+  const [stats, bentoStats, anomalyCount, pendingCount, reservationCount] = await Promise.all([
+    getStats(),
+    getBentoStats(),
+    getAnomalyCount(),
+    getPendingCount(),
+    getReservationCount(),
+  ])
 
   const revenueTotal = stats?.revenue_total ?? 0
   const revenueDineIn = stats?.revenue_dine_in ?? 0
@@ -78,7 +90,9 @@ export default async function Home() {
               <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
               <path d="M13.73 21a2 2 0 01-3.46 0"/>
             </svg>
-            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">8</span>
+            {anomalyCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{anomalyCount}</span>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <div className="w-8 h-8 bg-gray-300 rounded-full"></div>
@@ -89,8 +103,10 @@ export default async function Home() {
       </div>
 
       <div className="px-4 py-4 pb-28 space-y-4">
+        {/* Greeting */}
         <Greeting />
 
+        {/* Revenue Card */}
         <div className="py-2">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm text-gray-500">Today&apos;s Revenue</span>
@@ -98,27 +114,30 @@ export default async function Home() {
           </div>
           <div className="text-5xl font-bold tracking-tight">RM {revenueTotal.toLocaleString()}</div>
           <div className="text-sm text-gray-400 mt-2">
-            Dine-in + Bento · <span className="text-green-500">+10.8%</span> vs yesterday
+            Dine-in + Bento · <span className="text-green-500">● Open</span>
           </div>
         </div>
 
+        {/* Alert Cards — Incidents / Reservations / Pending */}
         <div className="grid grid-cols-3 gap-2">
           <Link href="/incidents" className="bg-red-50 rounded-2xl p-3 text-center block">
-            <div className="text-sm text-gray-500 mb-1">Incidents</div>
+            <div className="text-xs text-gray-500 mb-1">Incidents</div>
             <div className="text-2xl font-bold text-red-500">{anomalyCount}</div>
-            <div className="text-xs text-gray-400">items</div>
+            <div className="text-xs text-gray-400">Items</div>
+          </Link>
+          <Link href="/reservations" className="bg-blue-50 rounded-2xl p-3 text-center block">
+            <div className="text-xs text-gray-500 mb-1">Reservations</div>
+            <div className="text-2xl font-bold text-blue-500">{reservationCount}</div>
+            <div className="text-xs text-gray-400">Bookings</div>
           </Link>
           <Link href="/tasks" className="bg-orange-50 rounded-2xl p-3 text-center block">
-            <div className="text-sm text-gray-500 mb-1">Pending</div>
+            <div className="text-xs text-gray-500 mb-1">Pending</div>
             <div className="text-2xl font-bold text-orange-500">{pendingCount}</div>
-            <div className="text-xs text-gray-400">items</div>
-          </Link>
-          <Link href="/bento" className="bg-green-50 rounded-2xl p-3 text-center block">
-            <div className="text-sm text-gray-500 mb-1">Bento</div>
-            <div className="text-lg font-bold text-green-500">In Progress</div>
+            <div className="text-xs text-gray-400">Items</div>
           </Link>
         </div>
 
+        {/* Core Business Cards — Dine-in / Bento */}
         <div className="grid grid-cols-2 gap-2">
           <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold mb-1">Dine-in</div>
@@ -134,6 +153,29 @@ export default async function Home() {
           </Link>
         </div>
 
+        {/* Quick Access */}
+        <div>
+          <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
+          <div className="grid grid-cols-3 gap-2">
+            <Link href="/reservations" className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 block">
+              <div className="text-xs font-medium text-gray-700 mb-1">Reservation</div>
+              <div className="text-xs text-gray-400">Today</div>
+              <div className="text-sm font-semibold text-blue-500 mt-1">{reservationCount} Bookings</div>
+            </Link>
+            <Link href="/complaints" className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 block">
+              <div className="text-xs font-medium text-gray-700 mb-1">Complaint</div>
+              <div className="text-xs text-gray-400">1 Unresolved</div>
+              <div className="text-sm font-semibold text-red-400 mt-1">→</div>
+            </Link>
+            <Link href="/procurement" className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 block">
+              <div className="text-xs font-medium text-gray-700 mb-1">Procurement</div>
+              <div className="text-xs text-gray-400">5 Pending</div>
+              <div className="text-sm font-semibold text-orange-400 mt-1">→</div>
+            </Link>
+          </div>
+        </div>
+
+        {/* Today's Notes */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold">Today&apos;s Notes</span>
