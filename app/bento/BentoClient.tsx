@@ -60,15 +60,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     if (el) el.style.transform = `translateX(${window.innerWidth}px)`
   }, [])
 
-  // ── Lock body scroll (Android needs this even with position:fixed container) ──
-  useEffect(() => {
-    // Only lock body overflow — do NOT touch html overflow or position:fixed on body,
-    // as that blocks child element scrolling on Android.
-    // The position:fixed container already prevents page scroll.
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = prev }
-  }, [])
+  // No body/html manipulation — position:fixed container is sufficient.
+  // Setting overflow:hidden on body/html blocks child scroll on both iOS and Android.
 
   // ── Panel animation ──
   function getPanelX(): number {
@@ -120,9 +113,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     animatePanel(window.innerWidth)
   }
 
-  // ── Gesture listeners on document — works reliably on both platforms ──
-  // Attaching to document avoids all ref-timing issues.
-  // { passive: false } on touchmove lets us call e.preventDefault() to stop Android rubber-band.
+  // ── Gesture listeners on document ──
   useEffect(() => {
     let sx = 0, sy = 0
     let axis: 'h' | 'v' | null = null
@@ -130,42 +121,47 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     let mode: 'open' | 'close' | null = null
 
     function onStart(e: TouchEvent) {
-      const touch = e.touches[0]
-      sx = touch.clientX; sy = touch.clientY
+      const t = e.touches[0]
+      sx = t.clientX; sy = t.clientY
       axis = null; tracking = false; mode = null
 
       if (panelIsOpen.current) {
-        // Potential close gesture
         tracking = true; mode = 'close'
-      } else if (!panelAnimRef.current) {
-        // Potential open gesture — skip if touch is inside DatePicker area
-        if (datepickerAreaRef.current?.contains(e.target as Node)) return
-        tracking = true; mode = 'open'
+        return
       }
+      if (panelAnimRef.current) return
+
+      // Exclude DatePicker by bounding-rect Y (more reliable than DOM contains on Android)
+      const dp = datepickerAreaRef.current
+      if (dp) {
+        const r = dp.getBoundingClientRect()
+        if (t.clientY >= r.top && t.clientY <= r.bottom) return
+      }
+      tracking = true; mode = 'open'
     }
 
     function onMove(e: TouchEvent) {
       if (!tracking) return
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
-      // Determine axis on first significant movement
-      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
         axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
       }
-      if (axis !== 'h') return
+      if (axis !== 'h') return  // vertical → don't prevent, let pull-to-refresh work
 
-      // Allow vertical scroll in designated scroll areas
-      const target = e.target as Element | null
-      const inScrollArea = !!target?.closest('[data-scroll]')
-
+      const el = panelRef.current
       if (mode === 'open' && dx < 0) {
+        // Left swipe: slide panel in from right
         e.preventDefault()
-        const el = panelRef.current
         if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-      } else if (mode === 'close' && dx > 0 && !inScrollArea) {
+      } else if (mode === 'close') {
+        // Detail open: block ALL horizontal browser navigation (left=forward, right=back)
         e.preventDefault()
-        const el = panelRef.current
-        if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`
+        if (dx > 0 && el) {
+          // Only move panel when swiping right (closing)
+          const inScroll = !!(e.target as Element | null)?.closest('[data-scroll]')
+          if (!inScroll) el.style.transform = `translateX(${Math.max(0, dx)}px)`
+        }
       }
     }
 
@@ -178,13 +174,14 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
       if (mode === 'open' && dx < -thresh) {
         openPanel()
-      } else if (mode === 'open') {
-        animatePanel(window.innerWidth)
+      } else if (mode === 'open' && dx < 0) {
+        animatePanel(window.innerWidth)  // didn't reach threshold, close back
       } else if (mode === 'close' && dx > thresh) {
         closePanel()
       } else if (mode === 'close') {
-        animatePanel(0)
+        animatePanel(0)  // didn't reach threshold, keep open
       }
+      // mode=open + dx≥0: right swipe on main page → allow browser back navigation, do nothing
     }
 
     document.addEventListener('touchstart', onStart, { passive: true })
