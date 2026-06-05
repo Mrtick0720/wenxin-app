@@ -94,7 +94,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
-    el.style.transition = animate ? 'transform 0.55s cubic-bezier(0.22, 0, 0.5, 1.4)' : 'none'
+    el.style.transition = animate ? 'transform 0.5s cubic-bezier(0.4, 0, 0.05, 1)' : 'none'
     el.style.transform = value
   }
 
@@ -173,19 +173,19 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const calendarModal = showCalendar && (
     <div
       onClick={() => setShowCalendar(false)}
-      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '0 24px', boxSizing: 'border-box' }}
+      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999 }}
     >
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: 24, padding: 20, width: '100%', maxWidth: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+      <div onClick={e => e.stopPropagation()} style={{ backgroundColor: '#fff', padding: '20px 16px', width: '100%' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) } else setCalMonth(calMonth - 1) }}
-            style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-          <span style={{ fontWeight: 600, fontSize: 15, color: '#111' }}>{calYear}年 {MONTHS_ZH[calMonth]}</span>
+            style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+          <span style={{ fontWeight: 600, fontSize: 17, color: '#111' }}>{calYear}年 {MONTHS_ZH[calMonth]}</span>
           <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1) } else setCalMonth(calMonth + 1) }}
-            style={{ width: 36, height: 36, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 20, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+            style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 8 }}>
           {['日','一','二','三','四','五','六'].map(d => (
-            <div key={d} style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af' }}>{d}</div>
+            <div key={d} style={{ textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>{d}</div>
           ))}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
@@ -198,14 +198,14 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
             const isSel = dateStr === selectedDate
             const isTod = dateStr === today
             return (
-              <div key={day} style={{ display: 'flex', justifyContent: 'center', padding: '3px 0' }}>
+              <div key={day} style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
                 <button onClick={() => handleCalendarSelect(day)} style={{
-                  width: 34, height: 34, borderRadius: '50%',
+                  width: 38, height: 38, borderRadius: '50%',
                   border: isTod && !isSel ? '1.5px solid #60a5fa' : 'none',
                   background: isSel ? '#60a5fa' : 'transparent',
                   color: isSel ? '#fff' : isTod ? '#60a5fa' : '#374151',
                   fontWeight: isSel || isTod ? 700 : 400,
-                  fontSize: 14, cursor: 'pointer'
+                  fontSize: 16, cursor: 'pointer'
                 }}>{day}</button>
               </div>
             )
