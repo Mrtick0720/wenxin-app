@@ -3,6 +3,8 @@ import Link from 'next/link'
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
 
+export const dynamic = 'force-dynamic'
+
 type BentoOrder = {
   status: string
 }
