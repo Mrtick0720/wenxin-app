@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase'
 
@@ -150,11 +151,19 @@ export default function CustomerDetailPage() {
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <BackButton href="/bento/customers" />
-          <span className="font-semibold text-base">{customer.name}</span>
+          <div>
+            <span className="font-semibold text-base">{customer.name}</span>
+            <span className="ml-2 text-xs font-mono text-gray-400">C{String(customer.id).padStart(3, '0')}</span>
+          </div>
         </div>
-        <button onClick={toggleActive} className={`text-xs px-3 py-1 rounded-full border font-medium ${customer.active ? 'text-green-500 border-green-200 bg-green-50' : 'text-gray-400 border-gray-200 bg-gray-50'}`}>
-          {customer.active ? 'Active' : 'Inactive'}
-        </button>
+        <div className="flex items-center gap-2">
+          <Link href={`/bento/customers/${id}/edit`} className="text-xs px-3 py-1 rounded-full border font-medium text-orange-500 border-orange-200 bg-orange-50">
+            Edit
+          </Link>
+          <button onClick={toggleActive} className={`text-xs px-3 py-1 rounded-full border font-medium ${customer.active ? 'text-green-500 border-green-200 bg-green-50' : 'text-gray-400 border-gray-200 bg-gray-50'}`}>
+            {customer.active ? 'Active' : 'Inactive'}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">

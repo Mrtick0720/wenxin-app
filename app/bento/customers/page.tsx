@@ -90,7 +90,10 @@ export default async function CustomersPage() {
                   return (
                     <Link key={c.id} href={`/bento/customers/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="font-semibold text-gray-900">{c.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-gray-900">{c.name}</span>
+                          <span className="text-xs font-mono text-gray-400">C{String(c.id).padStart(3, '0')}</span>
+                        </div>
                         <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color }}>
                           {c.delivery_method === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'}
                         </span>
