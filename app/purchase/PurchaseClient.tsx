@@ -163,10 +163,17 @@ export default function PurchaseClient({ initialItems, initialDate }: {
 
   async function toggleComplete(item: PurchaseItem) {
     const newStatus = item.status === 'completed' ? 'pending' : 'completed'
-    setToggling(item.id)
-    await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
+    // Optimistic update
     const updated = items.map(i => i.id === item.id ? { ...i, status: newStatus } : i)
-    setItems(updated); cache.current[selectedDate] = updated; setToggling(null)
+    setItems(updated); cache.current[selectedDate] = updated
+    setToggling(item.id)
+    const { error } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
+    if (error) {
+      // Revert on failure
+      const reverted = items.map(i => i.id === item.id ? { ...i, status: item.status } : i)
+      setItems(reverted); cache.current[selectedDate] = reverted
+    }
+    setToggling(null)
   }
 
   async function handleAdd() {
