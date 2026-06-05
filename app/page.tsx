@@ -154,25 +154,25 @@ export default async function Home() {
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-4 gap-1.5">
-          <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block">
-            <div className="text-xs text-gray-500 mb-0.5 whitespace-nowrap">Booking</div>
+          <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-xs text-gray-500 mb-0.5 truncate">Booking</div>
             <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
-            <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">Today</div>
+            <div className="text-xs text-gray-400 mt-0.5 truncate">Today</div>
           </Link>
-          <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block">
-            <div className="text-xs text-gray-500 mb-0.5 whitespace-nowrap">Complaints</div>
+          <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-xs text-gray-500 mb-0.5 truncate">Complaint</div>
             <div className="text-lg font-bold text-red-500">{complaintCount}</div>
-            <div className="text-xs text-red-400 mt-0.5 whitespace-nowrap">! Attention</div>
+            <div className="text-xs text-red-400 mt-0.5 truncate">! Urgent</div>
           </Link>
-          <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block">
-            <div className="text-xs text-gray-500 mb-0.5 whitespace-nowrap">Incidents</div>
+          <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-xs text-gray-500 mb-0.5 truncate">Incident</div>
             <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
-            <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
+            <div className="text-xs text-gray-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
           </Link>
-          <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block">
-            <div className="text-xs text-gray-500 mb-0.5 whitespace-nowrap">Pending</div>
+          <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
+            <div className="text-xs text-gray-500 mb-0.5 truncate">Pending</div>
             <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
-            <div className="text-xs text-amber-400 mt-0.5 whitespace-nowrap">{pendingCount > 0 ? 'Overdue 2' : 'Clear'}</div>
+            <div className="text-xs text-amber-400 mt-0.5 truncate">{pendingCount > 0 ? 'Overdue' : 'Clear'}</div>
           </Link>
         </div>
 

@@ -69,7 +69,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
   const showIndicator = indicatorHeight > 5
 
   return (
-    <div className="page-slide-in" style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
       <div
         ref={containerRef}
         style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}
