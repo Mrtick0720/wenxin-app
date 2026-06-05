@@ -58,11 +58,11 @@ export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number 
   const pathname = usePathname()
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex justify-around py-2 z-40">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-40">
       {tabs.map(({ href, label, Icon, badge }) => {
         const active = pathname === href
         return (
-          <Link key={label} href={href} className="flex flex-col items-center relative px-3 py-1">
+          <Link key={label} href={href} className="flex-1 flex flex-col items-center justify-center relative py-1">
             <Icon active={active} />
             <span className={`text-xs mt-0.5 ${active ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>
               {label}
