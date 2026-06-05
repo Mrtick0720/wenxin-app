@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
-import { todayLocalStr, addDays } from '@/lib/dateUtils'
-import Link from 'next/link'
+import { todayLocalStr } from '@/lib/dateUtils'
 import DatePicker from '../components/DatePicker'
+import BackButton from '../components/BackButton'
 
 type PurchaseItem = {
   id: number
@@ -28,14 +28,24 @@ type PurchaseItem = {
 type StatusTab = 'pending' | 'ordered' | 'receiving' | 'received'
 
 const STATUS_TABS: { key: StatusTab; label: string; color: string; bg: string }[] = [
-  { key: 'pending',   label: '待采购', color: '#f97316', bg: '#fff7ed' },
-  { key: 'ordered',   label: '已下单', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'receiving', label: '待验收', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'received',  label: '已收货', color: '#22c55e', bg: '#f0fdf4' },
+  { key: 'pending',   label: 'To Order',  color: '#f97316', bg: '#fff7ed' },
+  { key: 'ordered',   label: 'Ordered',   color: '#3b82f6', bg: '#eff6ff' },
+  { key: 'receiving', label: 'Receiving', color: '#8b5cf6', bg: '#f5f3ff' },
+  { key: 'received',  label: 'Received',  color: '#22c55e', bg: '#f0fdf4' },
 ]
 
-const CATEGORIES = ['肉类', '海鲜', '蔬菜', '调料', '主食', '耗材', '其他']
-const UNITS = ['kg', 'g', '个', '包', '箱', '瓶', '袋', '条', '份']
+const CATEGORIES = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
+const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'portion']
+
+const COMMON_ITEMS = [
+  'Chicken Thigh', 'Chicken Breast', 'Whole Chicken', 'Pork Belly', 'Pork Ribs', 'Pork Shoulder',
+  'Beef', 'Lamb', 'Fish Fillet', 'Shrimp', 'Squid', 'Crab', 'Tofu', 'Eggs',
+  'Garlic', 'Ginger', 'Green Onion', 'Cabbage', 'Spinach', 'Potato', 'Tomato',
+  'Mushroom', 'Bean Sprouts', 'Corn', 'Carrot', 'Celery', 'Eggplant',
+  'Soy Sauce', 'Oyster Sauce', 'Cooking Oil', 'Salt', 'Sugar', 'Vinegar',
+  'Cornstarch', 'Sesame Oil', 'Chili', 'Sichuan Pepper', 'Star Anise',
+  'Rice', 'Noodles', 'Bread', 'Packaging Box', 'Disposable Gloves', 'Cling Wrap',
+]
 
 const STATUS_NEXT: Record<StatusTab, StatusTab | null> = {
   pending: 'ordered',
@@ -45,15 +55,15 @@ const STATUS_NEXT: Record<StatusTab, StatusTab | null> = {
 }
 
 const STATUS_NEXT_LABEL: Record<StatusTab, string> = {
-  pending: '标记已下单',
-  ordered: '确认待验收',
-  receiving: '确认收货',
+  pending: 'Mark Ordered',
+  ordered: 'Mark Receiving',
+  receiving: 'Confirm Received',
   received: '',
 }
 
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   return `${months[d.getMonth()]} ${d.getDate()} ${weekdays[d.getDay()]}`
 }
@@ -64,8 +74,91 @@ function fmtAmt(n: number | null | undefined) {
 }
 
 const emptyForm = {
-  name: '', category: '蔬菜', unit: 'kg',
+  name: '', category: 'Vegetables', unit: 'kg',
   quantity: '', unit_price: '', supplier: '', note: '',
+}
+
+// Inline dropdown picker
+function InlinePicker({
+  value, options, onChange, label,
+}: {
+  value: string
+  options: string[]
+  onChange: (v: string) => void
+  label: string
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <label className="text-xs text-gray-400 mb-1 block">{label}</label>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-left flex items-center justify-between bg-white"
+        style={{ outline: 'none' }}
+      >
+        <span className="text-gray-800">{value}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-10 overflow-hidden">
+          {options.map(opt => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => { onChange(opt); setOpen(false) }}
+              className="w-full text-left px-3 py-2.5 text-sm hover:bg-orange-50"
+              style={{ color: opt === value ? '#f97316' : '#374151', fontWeight: opt === value ? 600 : 400 }}
+            >
+              {opt}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Searchable item name input with dropdown suggestions
+function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const filtered = value.length > 0
+    ? COMMON_ITEMS.filter(i => i.toLowerCase().includes(value.toLowerCase()))
+    : COMMON_ITEMS
+
+  return (
+    <div className="relative">
+      <label className="text-xs text-gray-400 mb-1 block">Item Name *</label>
+      <input
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
+        placeholder="Type or search..."
+        value={value}
+        autoFocus
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-10 overflow-y-auto" style={{ maxHeight: 180 }}>
+          {filtered.map(item => (
+            <button
+              key={item}
+              type="button"
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => { onChange(item); setOpen(false) }}
+              className="w-full text-left px-3 py-2.5 text-sm hover:bg-orange-50"
+              style={{ color: item === value ? '#f97316' : '#374151', fontWeight: item === value ? 600 : 400 }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function PurchaseClient({
@@ -82,12 +175,10 @@ export default function PurchaseClient({
   const [loading, setLoading] = useState<number | null>(null)
   const cache = useRef<Record<string, PurchaseItem[]>>({ [initialDate]: initialItems })
 
-  // Add panel
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
 
-  // Receive confirm panel
   const [confirmItem, setConfirmItem] = useState<PurchaseItem | null>(null)
   const [actualPrice, setActualPrice] = useState('')
   const [receivedBy, setReceivedBy] = useState('')
@@ -117,7 +208,6 @@ export default function PurchaseClient({
 
   const filtered = items.filter(i => i.status === activeTab)
 
-  // Stats
   const totalAmount = items
     .filter(i => i.status === 'received')
     .reduce((s, i) => s + (i.actual_total_price ?? i.total_price ?? 0), 0)
@@ -125,17 +215,16 @@ export default function PurchaseClient({
     .filter(i => i.status !== 'received')
     .reduce((s, i) => s + (i.total_price ?? 0), 0)
   const counts = {
-    pending: items.filter(i => i.status === 'pending').length,
-    ordered: items.filter(i => i.status === 'ordered').length,
+    pending:   items.filter(i => i.status === 'pending').length,
+    ordered:   items.filter(i => i.status === 'ordered').length,
     receiving: items.filter(i => i.status === 'receiving').length,
-    received: items.filter(i => i.status === 'received').length,
+    received:  items.filter(i => i.status === 'received').length,
   }
 
   async function advanceStatus(item: PurchaseItem) {
     const next = STATUS_NEXT[item.status]
     if (!next) return
     if (next === 'received') {
-      // Open confirm panel instead
       setConfirmItem(item)
       setActualPrice(item.unit_price ? String(item.unit_price) : '')
       setReceivedBy('')
@@ -188,11 +277,18 @@ export default function PurchaseClient({
       note: form.note.trim() || null,
       status: 'pending',
     }
-    const { data } = await supabase.from('purchase_items').insert(row).select().single()
+    const { data, error } = await supabase.from('purchase_items').insert(row).select().single()
     if (data) {
       const updated = [...items, data as PurchaseItem]
       setItems(updated)
       cache.current[selectedDate] = updated
+    } else {
+      // Optimistic fallback with temp id
+      const tempItem = { ...row, id: Date.now(), ordered_at: null, received_at: null, received_by: null, actual_unit_price: null, actual_total_price: null } as PurchaseItem
+      const updated = [...items, tempItem]
+      setItems(updated)
+      cache.current[selectedDate] = updated
+      if (error) console.error('Insert error:', error)
     }
     setForm(emptyForm)
     setSaving(false)
@@ -201,7 +297,7 @@ export default function PurchaseClient({
   }
 
   async function deleteItem(item: PurchaseItem) {
-    if (!confirm(`删除「${item.name}」？`)) return
+    if (!confirm(`Delete "${item.name}"?`)) return
     await supabase.from('purchase_items').delete().eq('id', item.id)
     const updated = items.filter(i => i.id !== item.id)
     setItems(updated)
@@ -216,14 +312,16 @@ export default function PurchaseClient({
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-gray-500 text-xl">←</Link>
+          <BackButton href="/" />
           <span className="font-semibold text-base tracking-wide">Purchase</span>
         </div>
         <button
           onClick={() => { setShowAdd(true); setForm(emptyForm) }}
-          className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full"
+          className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center"
         >
-          + 新增
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
         </button>
       </div>
 
@@ -234,14 +332,12 @@ export default function PurchaseClient({
 
       {/* Stats */}
       <div className="bg-white px-4 py-3 border-b" style={{ flexShrink: 0 }}>
-        <div className="flex items-start justify-between mb-2">
+        <div className="flex items-start justify-between">
           <div>
-            <div className="text-xs text-gray-400">{formatDate(selectedDate)} 采购</div>
-            <div className="text-2xl font-bold text-gray-900 mt-0.5">
-              {fmtAmt(totalAmount + pendingAmt)}
-            </div>
+            <div className="text-xs text-gray-400">{formatDate(selectedDate)}</div>
+            <div className="text-2xl font-bold text-gray-900 mt-0.5">{fmtAmt(totalAmount + pendingAmt)}</div>
             <div className="text-xs text-gray-400 mt-0.5">
-              已收 {fmtAmt(totalAmount)} · 待付 {fmtAmt(pendingAmt)}
+              Received {fmtAmt(totalAmount)} · Pending {fmtAmt(pendingAmt)}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-right">
@@ -266,23 +362,17 @@ export default function PurchaseClient({
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
-            className="flex-1 py-2.5 text-sm font-medium relative"
+            className="flex-1 py-2.5 text-xs font-medium relative"
             style={{ color: activeTab === t.key ? t.color : '#9ca3af' }}
           >
             {t.label}
             {counts[t.key] > 0 && (
-              <span
-                className="ml-1 text-xs px-1.5 py-0.5 rounded-full"
-                style={{ background: t.bg, color: t.color }}
-              >
+              <span className="ml-1 text-xs px-1.5 py-0.5 rounded-full" style={{ background: t.bg, color: t.color }}>
                 {counts[t.key]}
               </span>
             )}
             {activeTab === t.key && (
-              <span
-                className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                style={{ background: t.color }}
-              />
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full" style={{ background: t.color }} />
             )}
           </button>
         ))}
@@ -290,13 +380,13 @@ export default function PurchaseClient({
 
       {/* Item List */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-8">
-        {fetching && <div className="text-center text-gray-400 py-8">加载中...</div>}
+        {fetching && <div className="text-center text-gray-400 py-8">Loading...</div>}
         {!fetching && filtered.length === 0 && (
           <div className="text-center text-gray-400 py-12">
             <div className="text-4xl mb-3">
               {activeTab === 'pending' ? '🛒' : activeTab === 'ordered' ? '📋' : activeTab === 'receiving' ? '📦' : '✅'}
             </div>
-            <div className="text-sm">暂无{STATUS_TABS.find(t => t.key === activeTab)?.label}项目</div>
+            <div className="text-sm">No {STATUS_TABS.find(t => t.key === activeTab)?.label} items</div>
           </div>
         )}
         {!fetching && filtered.map(item => {
@@ -305,60 +395,44 @@ export default function PurchaseClient({
           return (
             <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm">
               <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-semibold text-gray-900">{item.name}</span>
-                    <span
-                      className="text-xs px-2 py-0.5 rounded-full"
-                      style={{ background: tab.bg, color: tab.color }}
-                    >
-                      {tab.label}
-                    </span>
-                    {item.category && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                        {item.category}
-                      </span>
-                    )}
-                  </div>
+                <div className="flex-1 flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-900">{item.name}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: tab.bg, color: tab.color }}>{tab.label}</span>
+                  {item.category && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{item.category}</span>
+                  )}
                 </div>
                 {item.status === 'pending' && (
-                  <button
-                    onClick={() => deleteItem(item)}
-                    className="text-gray-300 text-lg leading-none px-1"
-                  >×</button>
+                  <button onClick={() => deleteItem(item)} className="text-gray-300 text-lg leading-none px-1">×</button>
                 )}
               </div>
 
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-gray-600 mb-3">
                 <div>
-                  <span className="text-gray-400 text-xs">数量</span>
+                  <div className="text-gray-400 text-xs">Qty</div>
                   <div className="font-medium">{item.quantity} {item.unit}</div>
                 </div>
                 <div>
-                  <span className="text-gray-400 text-xs">单价</span>
+                  <div className="text-gray-400 text-xs">Unit Price</div>
                   <div className="font-medium">{fmtAmt(item.unit_price)}/{item.unit}</div>
                 </div>
                 <div>
-                  <span className="text-gray-400 text-xs">预计总价</span>
+                  <div className="text-gray-400 text-xs">Est. Total</div>
                   <div className="font-medium">{fmtAmt(item.total_price)}</div>
                 </div>
                 {item.status === 'received' && (
                   <div>
-                    <span className="text-gray-400 text-xs">实际总价</span>
+                    <div className="text-gray-400 text-xs">Actual Total</div>
                     <div className="font-medium text-green-600">{fmtAmt(item.actual_total_price)}</div>
                   </div>
                 )}
               </div>
 
-              {item.supplier && (
-                <div className="text-xs text-gray-400 mb-1">🏪 {item.supplier}</div>
-              )}
-              {item.note && (
-                <div className="text-xs text-orange-500 mb-1">📝 {item.note}</div>
-              )}
+              {item.supplier && <div className="text-xs text-gray-400 mb-1">🏪 {item.supplier}</div>}
+              {item.note && <div className="text-xs text-orange-500 mb-1">📝 {item.note}</div>}
               {item.status === 'received' && item.received_at && (
                 <div className="text-xs text-gray-400 mb-1">
-                  ✅ {new Date(item.received_at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  ✅ {new Date(item.received_at).toLocaleString('en-MY', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                   {item.received_by && ` · ${item.received_by}`}
                 </div>
               )}
@@ -368,13 +442,9 @@ export default function PurchaseClient({
                   onClick={() => advanceStatus(item)}
                   disabled={loading === item.id}
                   className="mt-2 w-full py-2 rounded-xl text-sm font-medium"
-                  style={{
-                    background: tab.bg,
-                    color: tab.color,
-                    opacity: loading === item.id ? 0.6 : 1,
-                  }}
+                  style={{ background: tab.bg, color: tab.color, opacity: loading === item.id ? 0.6 : 1 }}
                 >
-                  {loading === item.id ? '更新中...' : STATUS_NEXT_LABEL[item.status]}
+                  {loading === item.id ? 'Updating...' : STATUS_NEXT_LABEL[item.status]}
                 </button>
               )}
             </div>
@@ -390,52 +460,28 @@ export default function PurchaseClient({
           onClick={() => setShowAdd(false)}
         >
           <div
-            className="bg-white rounded-t-3xl px-4 pt-5 pb-10"
+            className="bg-white rounded-t-3xl flex flex-col"
+            style={{ maxHeight: '90vh' }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold text-base">添加采购项目</span>
+            {/* Fixed header */}
+            <div className="px-4 pt-5 pb-3 flex items-center justify-between flex-shrink-0">
+              <span className="font-semibold text-base">Add Item</span>
               <button onClick={() => setShowAdd(false)} className="text-gray-400 text-lg">×</button>
             </div>
 
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-400 mb-1 block">物品名称 *</label>
-                <input
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-                  placeholder="如：鸡腿肉"
-                  value={form.name}
-                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                  autoFocus
-                />
+            {/* Scrollable form */}
+            <div className="px-4 pb-8 overflow-y-auto flex-1 space-y-3">
+              <NameInput value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
+
+              <div className="grid grid-cols-2 gap-3">
+                <InlinePicker label="Category" value={form.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
+                <InlinePicker label="Unit" value={form.unit} options={UNITS} onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">类别</label>
-                  <select
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 bg-white"
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  >
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">单位</label>
-                  <select
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 bg-white"
-                    value={form.unit}
-                    onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
-                  >
-                    {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">数量</label>
+                  <label className="text-xs text-gray-400 mb-1 block">Qty</label>
                   <input
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
                     placeholder="0"
@@ -446,7 +492,7 @@ export default function PurchaseClient({
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-400 mb-1 block">单价 (RM)</label>
+                  <label className="text-xs text-gray-400 mb-1 block">Unit Price (RM)</label>
                   <input
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
                     placeholder="0.00"
@@ -460,25 +506,25 @@ export default function PurchaseClient({
 
               {form.quantity && form.unit_price && (
                 <div className="text-xs text-gray-500 text-right">
-                  预计总价：RM {(parseFloat(form.quantity) * parseFloat(form.unit_price) || 0).toFixed(2)}
+                  Est. Total: RM {(parseFloat(form.quantity) * parseFloat(form.unit_price) || 0).toFixed(2)}
                 </div>
               )}
 
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">供应商</label>
+                <label className="text-xs text-gray-400 mb-1 block">Supplier</label>
                 <input
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-                  placeholder="如：KK Meat Supply"
+                  placeholder="e.g. KK Meat Supply"
                   value={form.supplier}
                   onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
                 />
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">备注</label>
+                <label className="text-xs text-gray-400 mb-1 block">Note</label>
                 <input
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400"
-                  placeholder="如：Bento 用"
+                  placeholder="e.g. For Bento"
                   value={form.note}
                   onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
                 />
@@ -487,10 +533,10 @@ export default function PurchaseClient({
               <button
                 onClick={handleAdd}
                 disabled={saving || !form.name.trim()}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-white mt-1"
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
                 style={{ background: form.name.trim() ? '#f97316' : '#d1d5db' }}
               >
-                {saving ? '保存中...' : '添加到待采购'}
+                {saving ? 'Saving...' : 'Add to To Order'}
               </button>
             </div>
           </div>
@@ -509,20 +555,20 @@ export default function PurchaseClient({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <span className="font-semibold text-base">确认收货</span>
+              <span className="font-semibold text-base">Confirm Receipt</span>
               <button onClick={() => setConfirmItem(null)} className="text-gray-400 text-lg">×</button>
             </div>
 
             <div className="bg-gray-50 rounded-2xl p-3 mb-4 text-sm">
               <div className="font-medium text-gray-900 mb-1">{confirmItem.name}</div>
               <div className="text-gray-500">
-                预计：{confirmItem.quantity} {confirmItem.unit} × RM {confirmItem.unit_price} = {fmtAmt(confirmItem.total_price)}
+                Expected: {confirmItem.quantity} {confirmItem.unit} × RM {confirmItem.unit_price} = {fmtAmt(confirmItem.total_price)}
               </div>
             </div>
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">实际单价 (RM/{confirmItem.unit})</label>
+                <label className="text-xs text-gray-400 mb-1 block">Actual Unit Price (RM/{confirmItem.unit})</label>
                 <input
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-green-400"
                   type="number"
@@ -532,16 +578,16 @@ export default function PurchaseClient({
                 />
                 {actualPrice && (
                   <div className="text-xs text-gray-400 mt-1 text-right">
-                    实际总价：RM {((parseFloat(actualPrice) || 0) * (confirmItem.quantity || 0)).toFixed(2)}
+                    Actual Total: RM {((parseFloat(actualPrice) || 0) * (confirmItem.quantity || 0)).toFixed(2)}
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="text-xs text-gray-400 mb-1 block">收货人</label>
+                <label className="text-xs text-gray-400 mb-1 block">Received By</label>
                 <input
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-green-400"
-                  placeholder="可选"
+                  placeholder="Optional"
                   value={receivedBy}
                   onChange={e => setReceivedBy(e.target.value)}
                 />
@@ -553,7 +599,7 @@ export default function PurchaseClient({
                 className="w-full py-3 rounded-2xl text-sm font-semibold text-white"
                 style={{ background: '#22c55e' }}
               >
-                {confirming ? '确认中...' : '✓ 确认收货'}
+                {confirming ? 'Confirming...' : '✓ Confirm Received'}
               </button>
             </div>
           </div>
