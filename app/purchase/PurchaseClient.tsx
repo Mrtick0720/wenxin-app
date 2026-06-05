@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr } from '@/lib/dateUtils'
 import DatePicker from '../components/DatePicker'
@@ -24,19 +24,34 @@ export type PurchaseItem = {
 
 const CATEGORIES = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'portion']
-const COMMON_ITEMS = [
-  'Chicken Thigh', 'Chicken Breast', 'Whole Chicken', 'Pork Belly', 'Pork Ribs', 'Pork Shoulder',
-  'Beef', 'Lamb', 'Fish Fillet', 'Shrimp', 'Squid', 'Crab', 'Tofu', 'Eggs',
-  'Garlic', 'Ginger', 'Green Onion', 'Cabbage', 'Bok Choy', 'Spinach', 'Potato', 'Tomato',
-  'Mushroom', 'Bean Sprouts', 'Corn', 'Carrot', 'Celery', 'Eggplant',
-  'Soy Sauce', 'Oyster Sauce', 'Cooking Oil', 'Salt', 'Sugar', 'Vinegar',
-  'Cornstarch', 'Sesame Oil', 'Chili', 'Star Anise',
-  'Rice', 'Noodles', 'Packaging Box', 'Disposable Gloves', 'Cling Wrap',
-]
+
+const ITEM_CATEGORY: Record<string, string> = {
+  'Chicken Thigh': 'Meat', 'Chicken Breast': 'Meat', 'Whole Chicken': 'Meat',
+  'Pork Belly': 'Meat', 'Pork Ribs': 'Meat', 'Pork Shoulder': 'Meat',
+  'Beef': 'Meat', 'Lamb': 'Meat',
+  'Fish Fillet': 'Seafood', 'Shrimp': 'Seafood', 'Squid': 'Seafood', 'Crab': 'Seafood',
+  'Tofu': 'Vegetables', 'Garlic': 'Vegetables', 'Ginger': 'Vegetables',
+  'Green Onion': 'Vegetables', 'Cabbage': 'Vegetables', 'Bok Choy': 'Vegetables',
+  'Spinach': 'Vegetables', 'Potato': 'Vegetables', 'Tomato': 'Vegetables',
+  'Mushroom': 'Vegetables', 'Bean Sprouts': 'Vegetables', 'Corn': 'Vegetables',
+  'Carrot': 'Vegetables', 'Celery': 'Vegetables', 'Eggplant': 'Vegetables',
+  'Soy Sauce': 'Condiments', 'Oyster Sauce': 'Condiments', 'Cooking Oil': 'Condiments',
+  'Salt': 'Condiments', 'Sugar': 'Condiments', 'Vinegar': 'Condiments',
+  'Cornstarch': 'Condiments', 'Sesame Oil': 'Condiments', 'Chili': 'Condiments',
+  'Star Anise': 'Condiments',
+  'Rice': 'Staples', 'Noodles': 'Staples', 'Eggs': 'Staples',
+  'Packaging Box': 'Supplies', 'Disposable Gloves': 'Supplies', 'Cling Wrap': 'Supplies',
+}
+
+const COMMON_ITEMS = Object.keys(ITEM_CATEGORY).concat(['Bread'])
 
 const CATEGORY_COLOR: Record<string, string> = {
   'Meat': '#ef4444', 'Seafood': '#3b82f6', 'Vegetables': '#22c55e',
   'Condiments': '#f59e0b', 'Staples': '#8b5cf6', 'Supplies': '#64748b', 'Other': '#9ca3af',
+}
+const CATEGORY_BG: Record<string, string> = {
+  'Meat': '#fff1f1', 'Seafood': '#eff6ff', 'Vegetables': '#f0fdf4',
+  'Condiments': '#fffbeb', 'Staples': '#faf5ff', 'Supplies': '#f8fafc', 'Other': '#f9fafb',
 }
 const CATEGORY_ORDER = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
 
@@ -50,9 +65,8 @@ function sortItems(items: PurchaseItem[]) {
   })
 }
 
-function fmtAmt(n: number | null | undefined) {
-  if (n == null || n === 0) return 'RM —'
-  return `RM ${Number(n).toFixed(2)}`
+function fmtAmt(n: number) {
+  return `RM ${n.toFixed(2)}`
 }
 
 const emptyForm = { name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' }
@@ -88,7 +102,10 @@ function InlinePicker({ value, options, onChange, label }: {
   )
 }
 
-function NameInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function NameInput({ value, category, onChange, onCategoryChange }: {
+  value: string; category: string
+  onChange: (v: string) => void; onCategoryChange: (c: string) => void
+}) {
   const [open, setOpen] = useState(false)
   const filtered = value.length > 0
     ? COMMON_ITEMS.filter(i => i.toLowerCase().includes(value.toLowerCase()))
@@ -100,7 +117,13 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
         className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
         style={{ fontSize: 16 }} placeholder="Type or search..."
         value={value} autoFocus
-        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onChange={e => {
+          onChange(e.target.value)
+          setOpen(true)
+          // Auto-match category if exact match
+          const auto = ITEM_CATEGORY[e.target.value]
+          if (auto) onCategoryChange(auto)
+        }}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
       />
@@ -108,12 +131,25 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
         <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-y-auto" style={{ maxHeight: 160 }}>
           {filtered.map(item => (
             <button key={item} type="button" onMouseDown={e => e.preventDefault()}
-              onClick={() => { onChange(item); setOpen(false) }}
+              onClick={() => {
+                onChange(item); setOpen(false)
+                const auto = ITEM_CATEGORY[item]
+                if (auto) onCategoryChange(auto)
+              }}
               className="w-full text-left px-3 py-2.5 hover:bg-orange-50"
               style={{ fontSize: 16, color: item === value ? '#f97316' : '#374151', fontWeight: item === value ? 600 : 400 }}>
-              {item}
+              <span>{item}</span>
+              {ITEM_CATEGORY[item] && (
+                <span className="ml-2 text-xs text-gray-400">{ITEM_CATEGORY[item]}</span>
+              )}
             </button>
           ))}
+        </div>
+      )}
+      {/* Show auto-matched category */}
+      {ITEM_CATEGORY[value] && (
+        <div className="text-xs mt-1" style={{ color: getCatColor(ITEM_CATEGORY[value]) }}>
+          ● Auto-matched: {ITEM_CATEGORY[value]}
         </div>
       )}
     </div>
@@ -122,10 +158,53 @@ function NameInput({ value, onChange }: { value: string; onChange: (v: string) =
 
 function CheckIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12"/>
     </svg>
   )
+}
+
+// Pull-to-refresh for fixed inner scroll container
+function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onRefresh: () => Promise<void>) {
+  const startY = useRef(0)
+  const pulling = useRef(false)
+  const [pullDist, setPullDist] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+  const THRESHOLD = 60
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const onStart = (e: TouchEvent) => {
+      if (el.scrollTop <= 0) { startY.current = e.touches[0].clientY; pulling.current = true }
+    }
+    const onMove = (e: TouchEvent) => {
+      if (!pulling.current || refreshing) return
+      const dist = e.touches[0].clientY - startY.current
+      if (dist > 0) { e.preventDefault(); setPullDist(Math.min(dist * 0.45, THRESHOLD + 20)) }
+    }
+    const onEnd = async () => {
+      if (!pulling.current) return
+      pulling.current = false
+      if (pullDist >= THRESHOLD && !refreshing) {
+        setRefreshing(true); setPullDist(THRESHOLD)
+        await onRefresh()
+        setRefreshing(false)
+      }
+      setPullDist(0)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+  }, [pullDist, refreshing, onRefresh, scrollRef])
+
+  return { pullDist, refreshing, THRESHOLD }
 }
 
 export default function PurchaseClient({ initialItems, initialDate }: {
@@ -138,6 +217,7 @@ export default function PurchaseClient({ initialItems, initialDate }: {
   const [toggling, setToggling] = useState<number | null>(null)
   const [showCompleted, setShowCompleted] = useState(false)
   const cache = useRef<Record<string, PurchaseItem[]>>({ [initialDate]: initialItems })
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState(emptyForm)
@@ -149,6 +229,13 @@ export default function PurchaseClient({ initialItems, initialDate }: {
     cache.current[date] = result
     return result
   }, [])
+
+  const doRefresh = useCallback(async () => {
+    const result = await fetchDate(selectedDate)
+    setItems(result)
+  }, [fetchDate, selectedDate])
+
+  const { pullDist, refreshing, THRESHOLD } = usePullToRefresh(scrollRef, doRefresh)
 
   async function handleDateChange(date: string) {
     setSelectedDate(date)
@@ -163,13 +250,11 @@ export default function PurchaseClient({ initialItems, initialDate }: {
 
   async function toggleComplete(item: PurchaseItem) {
     const newStatus = item.status === 'completed' ? 'pending' : 'completed'
-    // Optimistic update
     const updated = items.map(i => i.id === item.id ? { ...i, status: newStatus } : i)
     setItems(updated); cache.current[selectedDate] = updated
     setToggling(item.id)
     const { error } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
     if (error) {
-      // Revert on failure
       const reverted = items.map(i => i.id === item.id ? { ...i, status: item.status } : i)
       setItems(reverted); cache.current[selectedDate] = reverted
     }
@@ -191,7 +276,7 @@ export default function PurchaseClient({ initialItems, initialDate }: {
       const updated = [...items, data as PurchaseItem]
       setItems(updated); cache.current[selectedDate] = updated
     } else {
-      const temp = { ...row, id: Date.now(), supplier: null, note: null, purchase_method: 'Supplier Delivery' } as PurchaseItem
+      const temp = { ...row, id: Date.now(), supplier: null, note: null, purchase_method: null } as PurchaseItem
       const updated = [...items, temp]
       setItems(updated); cache.current[selectedDate] = updated
       if (error) console.error(error)
@@ -202,9 +287,15 @@ export default function PurchaseClient({ initialItems, initialDate }: {
   const isCompleted = (i: PurchaseItem) => i.status === 'completed'
   const pending = sortItems(items.filter(i => !isCompleted(i)))
   const completed = sortItems(items.filter(i => isCompleted(i)))
-
   const totalAmt = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
-  const pendingAmt = pending.reduce((s, i) => s + (i.total_price ?? 0), 0)
+
+  // Category breakdown (all items)
+  const catTotals = CATEGORY_ORDER.map(cat => ({
+    cat,
+    amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
+    color: CATEGORY_COLOR[cat],
+    bg: CATEGORY_BG[cat],
+  })).filter(c => c.amt > 0)
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
@@ -230,10 +321,10 @@ export default function PurchaseClient({ initialItems, initialDate }: {
 
       {/* Stats */}
       <div className="bg-white px-4 py-3 border-b" style={{ flexShrink: 0 }}>
-        <div className="flex items-end justify-between">
+        <div className="flex items-end justify-between mb-3">
           <div>
             <div className="text-2xl font-bold text-gray-900">{fmtAmt(totalAmt)}</div>
-            <div className="text-xs text-gray-400 mt-0.5">Pending {fmtAmt(pendingAmt)}</div>
+            <div className="text-xs text-gray-400 mt-0.5">Total · {items.length} items</div>
           </div>
           <div className="flex gap-4 text-right">
             <div>
@@ -246,13 +337,43 @@ export default function PurchaseClient({ initialItems, initialDate }: {
             </div>
           </div>
         </div>
+        {/* Category breakdown */}
+        {catTotals.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+            {catTotals.map(({ cat, amt, color, bg }) => (
+              <div key={cat} className="flex-shrink-0 rounded-lg px-2.5 py-1.5 text-xs"
+                style={{ background: bg, color }}>
+                <span className="font-semibold">{cat}</span>
+                <span className="ml-1.5 opacity-80">RM {amt.toFixed(0)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-y-auto" style={{ background: '#fff' }}>
+      {/* Scrollable list with pull-to-refresh */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ background: '#fff' }}>
+        {/* Pull indicator */}
+        <div style={{
+          height: refreshing ? THRESHOLD : pullDist,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: refreshing || pullDist === 0 ? 'height 0.3s ease' : 'none',
+          overflow: 'hidden',
+        }}>
+          {(pullDist > 5 || refreshing) && (
+            <div style={{
+              width: 22, height: 22, borderRadius: '50%',
+              border: '2.5px solid #f97316', borderTopColor: 'transparent',
+              animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none',
+              transform: !refreshing ? `rotate(${(pullDist / THRESHOLD) * 300}deg)` : undefined,
+            }} />
+          )}
+        </div>
+        <style>{`@keyframes ptr-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
+
         {fetching && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
 
-        {/* Pending items */}
+        {/* Pending */}
         {!fetching && pending.length > 0 && (
           <>
             <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b">
@@ -268,17 +389,15 @@ export default function PurchaseClient({ initialItems, initialDate }: {
         {!fetching && pending.length === 0 && completed.length === 0 && (
           <div className="text-center text-gray-400 py-16">
             <div className="text-4xl mb-3">🛒</div>
-            <div className="text-sm">No items for this date</div>
+            <div className="text-sm">No items — tap + to add</div>
           </div>
         )}
 
-        {/* Completed items */}
+        {/* Completed */}
         {!fetching && completed.length > 0 && (
           <>
-            <button
-              onClick={() => setShowCompleted(s => !s)}
-              className="w-full px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-t flex items-center justify-between"
-            >
+            <button onClick={() => setShowCompleted(s => !s)}
+              className="w-full px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-t flex items-center justify-between">
               <span>Done ({completed.length})</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                 style={{ transform: showCompleted ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
@@ -304,10 +423,16 @@ export default function PurchaseClient({ initialItems, initialDate }: {
               <button onClick={() => setShowAdd(false)} className="text-gray-400 text-xl leading-none">×</button>
             </div>
             <div className="px-4 py-4 overflow-y-auto flex-1 space-y-3">
-              <NameInput value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} />
+              <NameInput
+                value={form.name} category={form.category}
+                onChange={v => setForm(f => ({ ...f, name: v }))}
+                onCategoryChange={c => setForm(f => ({ ...f, category: c }))}
+              />
               <div className="grid grid-cols-2 gap-3">
-                <InlinePicker label="Category" value={form.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                <InlinePicker label="Unit" value={form.unit} options={UNITS} onChange={v => setForm(f => ({ ...f, unit: v }))} />
+                <InlinePicker label="Category" value={form.category} options={CATEGORIES}
+                  onChange={v => setForm(f => ({ ...f, category: v }))} />
+                <InlinePicker label="Unit" value={form.unit} options={UNITS}
+                  onChange={v => setForm(f => ({ ...f, unit: v }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -352,22 +477,15 @@ function ItemRow({ item, isLast, toggling, onToggle }: {
   return (
     <div className={`flex items-center px-4 py-2.5 ${!isLast ? 'border-b border-gray-100' : ''}`}
       style={{ borderLeft: `3px solid ${done ? '#e5e7eb' : catColor}`, minHeight: 52 }}>
-      {/* Checkbox */}
       <button onClick={onToggle} disabled={toggling}
         className="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center mr-3 transition-all"
-        style={{
-          borderColor: done ? '#9ca3af' : catColor,
-          background: done ? '#9ca3af' : 'transparent',
-          color: '#fff',
-          opacity: toggling ? 0.5 : 1,
-        }}>
+        style={{ borderColor: done ? '#9ca3af' : catColor, background: done ? '#9ca3af' : 'transparent', color: '#fff', opacity: toggling ? 0.5 : 1 }}>
         {done && <CheckIcon />}
       </button>
-
-      {/* Name → detail link */}
       <Link href={`/purchase/${item.id}`} className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm truncate" style={{ color: done ? '#9ca3af' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
+          <span className="font-medium text-sm truncate"
+            style={{ color: done ? '#9ca3af' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
             {item.name}
           </span>
           <span className="text-sm font-semibold flex-shrink-0" style={{ color: done ? '#9ca3af' : '#111827' }}>
