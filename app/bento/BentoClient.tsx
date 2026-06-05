@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import DatePicker from '../components/DatePicker'
+import Dropdown from '../components/Dropdown'
 
 type Order = {
   id: number
@@ -161,29 +162,23 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </Link>
         </div>
 
-        {/* 筛选 - 下拉 */}
+        {/* 筛选 - 自定义下拉 */}
         <div className="flex gap-2">
-          <select
+          <Dropdown
             value={filterArea}
-            onChange={e => setFilterArea(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
-          >
-            {AREAS.map(a => <option key={a} value={a}>{a === '全部' ? '全部地区' : a}</option>)}
-          </select>
-          <select
+            onChange={setFilterArea}
+            options={AREAS.map(a => ({ value: a, label: a === '全部' ? '全部地区' : a }))}
+          />
+          <Dropdown
             value={filterType}
-            onChange={e => setFilterType(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
-          >
-            {MENU_TYPES.map(t => <option key={t} value={t}>{t === '全部' ? '全部类型' : t}</option>)}
-          </select>
-          <select
+            onChange={setFilterType}
+            options={MENU_TYPES.map(t => ({ value: t, label: t === '全部' ? '全部类型' : t }))}
+          />
+          <Dropdown
             value={filterTime}
-            onChange={e => setFilterTime(e.target.value)}
-            className="flex-1 bg-white border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-gray-600 outline-none"
-          >
-            {TIME_SLOTS.map(t => <option key={t} value={t}>{t === '全部' ? '全时段' : t}</option>)}
-          </select>
+            onChange={setFilterTime}
+            options={TIME_SLOTS.map(t => ({ value: t, label: t === '全部' ? '全时段' : t }))}
+          />
         </div>
 
         {/* 订单列表 */}
