@@ -4,7 +4,21 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import BackButton from '../../components/BackButton'
 import { useRouter } from 'next/navigation'
-import type { PurchaseItem } from '../PurchaseClient'
+
+type PurchaseItem = {
+  id: number
+  date: string
+  name: string
+  category: string
+  unit: string
+  quantity: number
+  unit_price: number
+  total_price: number
+  supplier: string | null
+  note: string | null
+  purchase_method: string | null
+  status: string
+}
 
 const CATEGORIES = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'portion']
