@@ -62,14 +62,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
   // ── Lock body scroll (Android needs this even with position:fixed container) ──
   useEffect(() => {
-    const prevBodyOverflow = document.body.style.overflow
-    const prevHtmlOverflow = document.documentElement.style.overflow
+    // Only lock body overflow — do NOT touch html overflow or position:fixed on body,
+    // as that blocks child element scrolling on Android.
+    // The position:fixed container already prevents page scroll.
+    const prev = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    document.documentElement.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prevBodyOverflow
-      document.documentElement.style.overflow = prevHtmlOverflow
-    }
+    return () => { document.body.style.overflow = prev }
   }, [])
 
   // ── Panel animation ──
@@ -179,8 +177,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const thresh = window.innerWidth * 0.22
 
       if (mode === 'open' && dx < -thresh) {
-        panelIsOpen.current = true
-        animatePanel(0)
+        openPanel()
       } else if (mode === 'open') {
         animatePanel(window.innerWidth)
       } else if (mode === 'close' && dx > thresh) {
