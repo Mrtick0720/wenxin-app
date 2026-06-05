@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 
 async function getIncidents() {
@@ -43,7 +43,7 @@ export default async function IncidentsPage() {
     <main className="min-h-screen bg-gray-50 w-full mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
-        <Link href="/" className="flex items-center text-gray-500"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></Link>
+        <BackButton href="/" />
         <span className="font-semibold text-base">Today&apos;s Incidents</span>
       </div>
 
