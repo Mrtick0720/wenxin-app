@@ -47,39 +47,51 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   useEffect(() => { setPortalMounted(true) }, [])
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
-
-  // ── Layout refs ──
-  const mainContainerRef = useRef<HTMLDivElement>(null)
   const datepickerAreaRef = useRef<HTMLDivElement>(null)
 
-  // ── Panel animation ──
+  // ── Panel: always rendered, starts hidden via inline style ──
   const panelRef = useRef<HTMLDivElement>(null)
   const panelAnimRef = useRef<Animation | null>(null)
   const panelIsOpen = useRef(false)
-
-  // Ref callback: runs synchronously on mount, before first paint — fixes Android blank flash
+  // Ref callback sets off-screen BEFORE first paint, avoiding Android blank flash
   const setPanelRef = useCallback((el: HTMLDivElement | null) => {
     panelRef.current = el
     if (el) el.style.transform = `translateX(${window.innerWidth}px)`
   }, [])
 
+  // ── Lock body scroll (Android needs this even with position:fixed container) ──
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow
+    const prevBodyPosition = document.body.style.position
+    const prevBodyWidth = document.body.style.width
+    const prevHtmlOverflow = document.documentElement.style.overflow
+    document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    document.documentElement.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prevBodyOverflow
+      document.body.style.position = prevBodyPosition
+      document.body.style.width = prevBodyWidth
+      document.documentElement.style.overflow = prevHtmlOverflow
+    }
+  }, [])
+
+  // ── Panel animation ──
   function getPanelX(): number {
     const el = panelRef.current
     if (!el) return window.innerWidth
     const t = el.style.transform
-    // Prefer inline style (faster) over computed
     if (t && t !== 'none') {
-      const match = t.match(/translateX\(([-\d.]+)px\)/)
-      if (match) return parseFloat(match[1])
+      const m = t.match(/translateX\(([-\d.]+)px\)/)
+      if (m) return parseFloat(m[1])
     }
-    const m = new DOMMatrix(window.getComputedStyle(el).transform)
-    return m.m41
+    return new DOMMatrix(window.getComputedStyle(el).transform).m41
   }
 
   function animatePanel(toX: number, onDone?: () => void) {
     const el = panelRef.current
     if (!el) return
-    // Interrupt any running animation, locking current position
     if (panelAnimRef.current) {
       const mid = getPanelX()
       panelAnimRef.current.cancel()
@@ -89,16 +101,15 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     const fromX = getPanelX()
     const dist = Math.abs(toX - fromX)
     if (dist < 1) { el.style.transform = `translateX(${toX}px)`; onDone?.(); return }
-    const duration = Math.max(200, Math.min(350, dist * 0.75))
     const anim = el.animate(
       [{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }],
-      { duration, easing: 'cubic-bezier(0.3, 0, 0.1, 1)', fill: 'none' }
+      { duration: Math.max(200, Math.min(350, dist * 0.75)), easing: 'cubic-bezier(0.3,0,0.1,1)', fill: 'none' }
     )
     panelAnimRef.current = anim
     anim.onfinish = () => {
       if (panelAnimRef.current !== anim) return
       panelAnimRef.current = null
-      el.style.transform = `translateX(${toX}px)` // explicitly commit
+      el.style.transform = `translateX(${toX}px)`
       onDone?.()
     }
   }
@@ -114,91 +125,83 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     animatePanel(window.innerWidth)
   }
 
-  // ── Open gesture — native listeners on main container, excludes DatePicker area ──
+  // ── Gesture listeners on document — works reliably on both platforms ──
+  // Attaching to document avoids all ref-timing issues.
+  // { passive: false } on touchmove lets us call e.preventDefault() to stop Android rubber-band.
   useEffect(() => {
-    const container = mainContainerRef.current
-    if (!container) return
-    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false
+    let sx = 0, sy = 0
+    let axis: 'h' | 'v' | null = null
+    let tracking = false
+    let mode: 'open' | 'close' | null = null
 
     function onStart(e: TouchEvent) {
-      if (panelIsOpen.current || panelAnimRef.current) return
-      if (datepickerAreaRef.current?.contains(e.target as Node)) return
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY
-      axis = null; tracking = true
-    }
-    function onMove(e: TouchEvent) {
-      if (!tracking) return
-      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5))
-        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-      if (axis !== 'h' || dx > 0) return   // only left swipe
-      e.preventDefault()                    // prevent Android scroll/rubber-band
-      const el = panelRef.current
-      if (!el) return
-      el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-    }
-    function onEnd(e: TouchEvent) {
-      if (!tracking) { tracking = false; return }
-      tracking = false
-      if (axis !== 'h') return
-      const dx = e.changedTouches[0].clientX - sx
-      if (dx < -(window.innerWidth * 0.25)) {
-        panelIsOpen.current = true
-        animatePanel(0)
-      } else {
-        animatePanel(window.innerWidth)
+      const touch = e.touches[0]
+      sx = touch.clientX; sy = touch.clientY
+      axis = null; tracking = false; mode = null
+
+      if (panelIsOpen.current) {
+        // Potential close gesture
+        tracking = true; mode = 'close'
+      } else if (!panelAnimRef.current) {
+        // Potential open gesture — skip if touch is inside DatePicker area
+        if (datepickerAreaRef.current?.contains(e.target as Node)) return
+        tracking = true; mode = 'open'
       }
     }
 
-    container.addEventListener('touchstart', onStart, { passive: true })
-    container.addEventListener('touchmove', onMove, { passive: false })
-    container.addEventListener('touchend', onEnd, { passive: true })
-    return () => {
-      container.removeEventListener('touchstart', onStart)
-      container.removeEventListener('touchmove', onMove)
-      container.removeEventListener('touchend', onEnd)
-    }
-  }, []) // eslint-disable-line
-
-  // ── Close gesture — native listeners so we can preventDefault on Android ──
-  useEffect(() => {
-    const el = panelRef.current
-    if (!el) return
-    const panelEl = el
-    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false
-
-    function onStart(e: TouchEvent) {
-      sx = e.touches[0].clientX; sy = e.touches[0].clientY
-      axis = null; tracking = true
-    }
     function onMove(e: TouchEvent) {
       if (!tracking) return
-      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5))
+      const dx = e.touches[0].clientX - sx
+      const dy = e.touches[0].clientY - sy
+      // Determine axis on first significant movement
+      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
         axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-      if (axis !== 'h' || dx < 0) return
-      e.preventDefault()                                    // blocks Android overscroll
-      panelEl.style.transform = `translateX(${Math.max(0, dx)}px)`
+      }
+      if (axis !== 'h') return
+
+      // Allow vertical scroll in designated scroll areas
+      const target = e.target as Element | null
+      const inScrollArea = !!target?.closest('[data-scroll]')
+
+      if (mode === 'open' && dx < 0) {
+        e.preventDefault()
+        const el = panelRef.current
+        if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
+      } else if (mode === 'close' && dx > 0 && !inScrollArea) {
+        e.preventDefault()
+        const el = panelRef.current
+        if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`
+      }
     }
+
     function onEnd(e: TouchEvent) {
-      if (!tracking) { tracking = false; return }
+      if (!tracking) return
       tracking = false
       if (axis !== 'h') return
       const dx = e.changedTouches[0].clientX - sx
-      if (dx < 0) return
-      if (dx > window.innerWidth * 0.2) closePanel()
-      else animatePanel(0)
+      const thresh = window.innerWidth * 0.22
+
+      if (mode === 'open' && dx < -thresh) {
+        panelIsOpen.current = true
+        animatePanel(0)
+      } else if (mode === 'open') {
+        animatePanel(window.innerWidth)
+      } else if (mode === 'close' && dx > thresh) {
+        closePanel()
+      } else if (mode === 'close') {
+        animatePanel(0)
+      }
     }
 
-    el.addEventListener('touchstart', onStart, { passive: true })
-    el.addEventListener('touchmove', onMove, { passive: false })
-    el.addEventListener('touchend', onEnd, { passive: true })
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd, { passive: true })
     return () => {
-      el.removeEventListener('touchstart', onStart)
-      el.removeEventListener('touchmove', onMove)
-      el.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
     }
-  }, []) // eslint-disable-line — closes over refs only, no stale state
+  }, []) // eslint-disable-line
 
   // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
@@ -212,10 +215,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     const monday = getMondayOfWeek(date)
     const d = new Date(date + 'T00:00:00')
     const idx = d.getDay() === 0 ? 6 : d.getDay() - 1
-    const prevRep = addDays(addDays(monday, -7), idx)
-    const nextRep = addDays(addDays(monday, 7), idx)
-    if (!cache.current[prevRep]) fetchDate(prevRep)
-    if (!cache.current[nextRep]) fetchDate(nextRep)
+    if (!cache.current[addDays(addDays(monday, -7), idx)]) fetchDate(addDays(addDays(monday, -7), idx))
+    if (!cache.current[addDays(addDays(monday, 7), idx)]) fetchDate(addDays(addDays(monday, 7), idx))
   }, [fetchDate])
 
   async function handleDateChange(date: string) {
@@ -224,8 +225,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       setOrders(cache.current[date])
     } else {
       setFetching(true)
-      const result = await fetchDate(date)
-      setOrders(result)
+      setOrders(await fetchDate(date))
       setFetching(false)
     }
     prefetchAdjacent(date)
@@ -238,9 +238,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     setLoading(order.id)
     await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
     const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
-    setOrders(updated)
-    cache.current[selectedDate] = updated
-    setLoading(null)
+    setOrders(updated); cache.current[selectedDate] = updated; setLoading(null)
   }
 
   async function togglePaid(order: Order) {
@@ -248,18 +246,14 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     setLoading(order.id)
     await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
     const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
-    setOrders(updated)
-    cache.current[selectedDate] = updated
-    setLoading(null)
+    setOrders(updated); cache.current[selectedDate] = updated; setLoading(null)
   }
 
-  const filtered = orders.filter(o => {
-    const areaMatch = filterArea === '全部' || o.area === filterArea
-    const typeMatch = filterType === '全部' || o.menu_type === filterType
-    const timeMatch = filterTime === '全部' || o.time_slot === filterTime
-    return areaMatch && typeMatch && timeMatch
-  })
-
+  const filtered = orders.filter(o =>
+    (filterArea === '全部' || o.area === filterArea) &&
+    (filterType === '全部' || o.menu_type === filterType) &&
+    (filterTime === '全部' || o.time_slot === filterTime)
+  )
   const total = orders.length
   const completed = orders.filter(o => o.status === 'completed').length
   const pending = orders.filter(o => o.status === 'pending').length
@@ -269,24 +263,18 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const isToday = selectedDate === today
 
   return (
-    // position:fixed inset:0 — most reliable way to prevent Android scroll (dvh unreliable)
-    <div ref={mainContainerRef} style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
 
       {/* Header */}
-      <div
-        className="bg-white px-4 py-3 flex items-center justify-between border-b"
-        style={{ flexShrink: 0 }}
-      >
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-500 text-xl">←</Link>
           <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
         </div>
-        <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">
-          + 新增
-        </Link>
+        <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
       </div>
 
-      {/* DatePicker — excluded from open-swipe via datepickerAreaRef */}
+      {/* DatePicker — ref used to exclude it from open-swipe */}
       <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
         <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
       </div>
@@ -295,22 +283,17 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
         <div className="border-t border-gray-100 pt-3">
           <div className="grid grid-cols-4 gap-2 mb-3">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{total}</div>
-              <div className="text-xs text-gray-400 mt-0.5">总订单</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-green-500">{completed}</div>
-              <div className="text-xs text-gray-400 mt-0.5">已完成</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-500">{pending}</div>
-              <div className="text-xs text-gray-400 mt-0.5">待处理</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-500">{totalAmount > 0 ? totalAmount : '—'}</div>
-              <div className="text-xs text-gray-400 mt-0.5">总金额</div>
-            </div>
+            {[
+              { val: total, label: '总订单', color: 'text-gray-900' },
+              { val: completed, label: '已完成', color: 'text-green-500' },
+              { val: pending, label: '待处理', color: 'text-orange-500' },
+              { val: totalAmount > 0 ? totalAmount : '—', label: '总金额', color: 'text-blue-500' },
+            ].map(({ val, label, color }) => (
+              <div key={label} className="text-center">
+                <div className={`text-2xl font-bold ${color}`}>{val}</div>
+                <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+              </div>
+            ))}
           </div>
           <div className="w-full bg-gray-100 rounded-full h-2">
             <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
@@ -341,10 +324,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </Link>
         </div>
 
-        <button
-          onClick={openPanel}
-          className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm"
-        >
+        <button onClick={openPanel} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
           <span className="text-sm text-gray-600">
             {fetching ? '加载中...' : total > 0 ? `查看 ${formatDate(selectedDate)} 全部订单` : '暂无订单'}
           </span>
@@ -352,12 +332,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </button>
       </div>
 
-      {/* Detail Panel — always rendered, controlled by transform */}
-      <div
-        ref={setPanelRef}
-        className="fixed inset-0 bg-white flex flex-col"
-        style={{ zIndex: 20, touchAction: 'pan-y' }}
-      >
+      {/* Detail Panel */}
+      <div ref={setPanelRef} className="fixed inset-0 bg-white flex flex-col" style={{ zIndex: 20 }}>
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
@@ -378,7 +354,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-3">
+        {/* data-scroll lets gesture handler allow vertical scroll here */}
+        <div data-scroll className="flex-1 overflow-y-auto px-4 pb-8 space-y-3">
           {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">暂无订单</div>}
           {!fetching && filtered.map((order) => {
@@ -390,9 +367,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                   <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
                     {isDelivery ? '配送' : '自取'}
                   </span>
-                  {order.menu_type && (
-                    <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>
-                  )}
+                  {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>}
                 </div>
                 {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
                 <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
@@ -403,23 +378,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                   <span className="font-semibold text-gray-900">RM {order.amount}</span>
                 </div>
                 {isToday && (
-                  <button
-                    onClick={() => toggleStatus(order)}
-                    disabled={loading === order.id}
-                    className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${
-                      order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'
-                    }`}
-                  >
+                  <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
+                    className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
                     {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
                   </button>
                 )}
-                <button
-                  onClick={() => togglePaid(order)}
-                  disabled={loading === order.id}
-                  className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${
-                    order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'
-                  }`}
-                >
+                <button onClick={() => togglePaid(order)} disabled={loading === order.id}
+                  className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
                   {order.paid ? '✓ 已付款' : '未付款 — 点击标记'}
                 </button>
               </div>
@@ -430,10 +395,10 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
       {portalMounted && selectedDate !== today && createPortal(
         <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
-          <button
-            onClick={() => handleDateChange(today)}
-            style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}
-          >TODAY</button>
+          <button onClick={() => handleDateChange(today)}
+            style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}>
+            TODAY
+          </button>
         </div>,
         document.body
       )}
