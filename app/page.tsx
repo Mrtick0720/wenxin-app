@@ -220,7 +220,7 @@ export default async function Home() {
           <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
           <div className="grid grid-cols-4 gap-2">
             {[
-              { href: '/procurement', label: 'Purchase' },
+              { href: '/purchase', label: 'Purchase' },
               { href: '/staff',       label: 'Staff' },
               { href: '/inventory',   label: 'Inventory' },
               { href: '/finance',     label: 'Finance' },
