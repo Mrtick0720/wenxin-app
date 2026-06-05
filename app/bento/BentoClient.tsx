@@ -44,31 +44,29 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [filterType, setFilterType] = useState('全部')
   const [filterTime, setFilterTime] = useState('全部')
   const [fetching, setFetching] = useState(false)
-  const [detailOpen, setDetailOpen] = useState(false)
   useEffect(() => { setPortalMounted(true) }, [])
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
 
-  // ─── Panel slide via WAA ───
+  // ── Panel animation ──
   const panelRef = useRef<HTMLDivElement>(null)
   const panelAnimRef = useRef<Animation | null>(null)
   const panelIsOpen = useRef(false)
 
-  // Touch tracking (shared for both open and close gestures)
-  const swipeStartX = useRef(0)
-  const swipeStartY = useRef(0)
-  const swipeActive = useRef(false)
-  const swipeDir = useRef<'h' | 'v' | null>(null)
-
-  // Set panel off-screen on mount
   useEffect(() => {
-    const el = panelRef.current
-    if (el) el.style.transform = `translateX(${window.innerWidth}px)`
+    // Start off-screen; do this once on mount before any paint
+    if (panelRef.current) panelRef.current.style.transform = `translateX(${window.innerWidth}px)`
   }, [])
 
-  function getPanelCurrentX(): number {
+  function getPanelX(): number {
     const el = panelRef.current
     if (!el) return window.innerWidth
+    const t = el.style.transform
+    // Prefer inline style (faster) over computed
+    if (t && t !== 'none') {
+      const match = t.match(/translateX\(([-\d.]+)px\)/)
+      if (match) return parseFloat(match[1])
+    }
     const m = new DOMMatrix(window.getComputedStyle(el).transform)
     return m.m41
   }
@@ -76,116 +74,118 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   function animatePanel(toX: number, onDone?: () => void) {
     const el = panelRef.current
     if (!el) return
+    // Interrupt any running animation, locking current position
     if (panelAnimRef.current) {
-      try { panelAnimRef.current.commitStyles() } catch {}
+      const mid = getPanelX()
       panelAnimRef.current.cancel()
       panelAnimRef.current = null
+      el.style.transform = `translateX(${mid}px)`
     }
-    const fromX = getPanelCurrentX()
+    const fromX = getPanelX()
     const dist = Math.abs(toX - fromX)
-    const duration = Math.max(180, Math.min(340, dist * 0.7))
+    if (dist < 1) { el.style.transform = `translateX(${toX}px)`; onDone?.(); return }
+    const duration = Math.max(200, Math.min(350, dist * 0.75))
     const anim = el.animate(
       [{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }],
-      { duration, easing: 'cubic-bezier(0.3, 0, 0.1, 1)', fill: 'forwards' }
+      { duration, easing: 'cubic-bezier(0.3, 0, 0.1, 1)', fill: 'none' }
     )
     panelAnimRef.current = anim
     anim.onfinish = () => {
       if (panelAnimRef.current !== anim) return
-      try { anim.commitStyles() } catch {}
-      anim.cancel()
       panelAnimRef.current = null
+      el.style.transform = `translateX(${toX}px)` // explicitly commit
       onDone?.()
     }
   }
 
   function openPanel() {
-    const el = panelRef.current
-    if (!el) return
-    // If not yet positioned off-screen, force it
-    const cur = getPanelCurrentX()
-    if (cur < window.innerWidth * 0.5) el.style.transform = `translateX(${window.innerWidth}px)`
+    if (panelIsOpen.current) return
     panelIsOpen.current = true
-    setDetailOpen(true)
     animatePanel(0)
   }
 
   function closePanel() {
     panelIsOpen.current = false
-    animatePanel(window.innerWidth, () => setDetailOpen(false))
+    animatePanel(window.innerWidth)
   }
 
-  // ─── Lower area touch (swipe left to open) ───
-  function onLowerTouchStart(e: React.TouchEvent) {
+  // ── Shared swipe state ──
+  const swipeStartX = useRef(0)
+  const swipeStartY = useRef(0)
+  const swipeAxis = useRef<'h' | 'v' | null>(null)
+  const swipeActive = useRef(false)
+
+  // ── Open gesture (left swipe on header/lower area) ──
+  function onOpenTouchStart(e: React.TouchEvent) {
     if (panelIsOpen.current || panelAnimRef.current) return
     swipeStartX.current = e.touches[0].clientX
     swipeStartY.current = e.touches[0].clientY
+    swipeAxis.current = null
     swipeActive.current = true
-    swipeDir.current = null
   }
 
-  function onLowerTouchMove(e: React.TouchEvent) {
+  function onOpenTouchMove(e: React.TouchEvent) {
     if (!swipeActive.current) return
     const dx = e.touches[0].clientX - swipeStartX.current
     const dy = e.touches[0].clientY - swipeStartY.current
-    if (!swipeDir.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      swipeDir.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+    if (!swipeAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      swipeAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
     }
-    if (swipeDir.current !== 'h') return
-    // Move panel with finger (only when swiping left, dx < 0)
+    if (swipeAxis.current !== 'h') return
     const el = panelRef.current
     if (!el) return
     const x = Math.max(0, window.innerWidth + dx)
     el.style.transform = `translateX(${x}px)`
   }
 
-  function onLowerTouchEnd(e: React.TouchEvent) {
-    if (!swipeActive.current || swipeDir.current !== 'h') { swipeActive.current = false; return }
+  function onOpenTouchEnd(e: React.TouchEvent) {
+    if (!swipeActive.current) { swipeActive.current = false; return }
     swipeActive.current = false
+    if (swipeAxis.current !== 'h') return
     const dx = e.changedTouches[0].clientX - swipeStartX.current
-    if (dx < -(window.innerWidth * 0.28)) {
+    if (dx < -(window.innerWidth * 0.25)) {
       panelIsOpen.current = true
-      setDetailOpen(true)
       animatePanel(0)
     } else {
       animatePanel(window.innerWidth)
     }
   }
 
-  // ─── Detail panel touch (edge right-swipe to close) ───
-  function onDetailTouchStart(e: React.TouchEvent) {
-    // Only trigger from left edge (first 52px) — mimics native back gesture
-    if (e.touches[0].clientX > 52) return
+  // ── Close gesture (right swipe anywhere on detail panel) ──
+  function onCloseTouchStart(e: React.TouchEvent) {
     swipeStartX.current = e.touches[0].clientX
     swipeStartY.current = e.touches[0].clientY
+    swipeAxis.current = null
     swipeActive.current = true
-    swipeDir.current = null
   }
 
-  function onDetailTouchMove(e: React.TouchEvent) {
+  function onCloseTouchMove(e: React.TouchEvent) {
     if (!swipeActive.current) return
     const dx = e.touches[0].clientX - swipeStartX.current
     const dy = e.touches[0].clientY - swipeStartY.current
-    if (!swipeDir.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      swipeDir.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+    if (!swipeAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      swipeAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
     }
-    if (swipeDir.current !== 'h' || dx < 0) return
+    if (swipeAxis.current !== 'h' || dx < 0) return
     const el = panelRef.current
     if (!el) return
     el.style.transform = `translateX(${dx}px)`
   }
 
-  function onDetailTouchEnd(e: React.TouchEvent) {
-    if (!swipeActive.current || swipeDir.current !== 'h') { swipeActive.current = false; return }
+  function onCloseTouchEnd(e: React.TouchEvent) {
+    if (!swipeActive.current) { swipeActive.current = false; return }
     swipeActive.current = false
+    if (swipeAxis.current !== 'h') return
     const dx = e.changedTouches[0].clientX - swipeStartX.current
-    if (dx > window.innerWidth * 0.28) {
+    if (dx < 0) return
+    if (dx > window.innerWidth * 0.25) {
       closePanel()
     } else {
       animatePanel(0)
     }
   }
 
-  // ─── Data ───
+  // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
     const { data } = await supabase.from('bento_orders').select('*').eq('date', date).order('id', { ascending: true })
     const result = data || []
@@ -256,8 +256,14 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   return (
     <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
 
-      {/* ── Header ── */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
+      {/* Header — swipe-left zone */}
+      <div
+        className="bg-white px-4 py-3 flex items-center justify-between border-b"
+        style={{ flexShrink: 0 }}
+        onTouchStart={onOpenTouchStart}
+        onTouchMove={onOpenTouchMove}
+        onTouchEnd={onOpenTouchEnd}
+      >
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-500 text-xl">←</Link>
           <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
@@ -267,20 +273,18 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </Link>
       </div>
 
-      {/* ── DatePicker ── */}
+      {/* DatePicker — NOT a swipe zone */}
       <div className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
         <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
       </div>
 
-      {/* ── Lower area — swipe left anywhere here to open detail ── */}
+      {/* Lower area — swipe-left zone */}
       <div
         className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden"
-        style={{ touchAction: 'none' }}
-        onTouchStart={onLowerTouchStart}
-        onTouchMove={onLowerTouchMove}
-        onTouchEnd={onLowerTouchEnd}
+        onTouchStart={onOpenTouchStart}
+        onTouchMove={onOpenTouchMove}
+        onTouchEnd={onOpenTouchEnd}
       >
-        {/* Stats */}
         <div className="border-t border-gray-100 pt-3">
           <div className="grid grid-cols-4 gap-2 mb-3">
             <div className="text-center">
@@ -306,7 +310,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
         </div>
 
-        {/* Quick links */}
         <div className="flex gap-2">
           <Link href="/bento/unpaid" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -330,7 +333,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </Link>
         </div>
 
-        {/* Open detail tap target */}
         <button
           onClick={openPanel}
           className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm"
@@ -342,27 +344,23 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </button>
       </div>
 
-      {/* ── Detail Panel ── */}
+      {/* Detail Panel — always rendered, controlled by transform */}
       <div
         ref={panelRef}
         className="fixed inset-0 bg-white flex flex-col"
-        style={{ zIndex: 20 }}
-        onTouchStart={onDetailTouchStart}
-        onTouchMove={onDetailTouchMove}
-        onTouchEnd={onDetailTouchEnd}
+        style={{ zIndex: 20, touchAction: 'pan-y' }}
+        onTouchStart={onCloseTouchStart}
+        onTouchMove={onCloseTouchMove}
+        onTouchEnd={onCloseTouchEnd}
       >
-        {/* Detail header */}
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
             <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">
-            + 新增
-          </Link>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">+ 新增</Link>
         </div>
 
-        {/* Filters */}
         <div className="px-4 pt-3 pb-2 flex gap-2" style={{ flexShrink: 0 }}>
           <Dropdown value={filterArea} onChange={setFilterArea} options={AREAS.map(a => ({ value: a, label: a === '全部' ? '全部地区' : a }))} />
           <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPES.map(t => ({ value: t, label: t === '全部' ? '全部类型' : t }))} />
@@ -375,8 +373,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        {/* Scrollable order list — touch-action pan-y so vertical scroll works */}
-        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-3" style={{ touchAction: 'pan-y' }}>
+        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-3">
           {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">暂无订单</div>}
           {!fetching && filtered.map((order) => {
@@ -426,15 +423,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </div>
       </div>
 
-      {/* TODAY button */}
       {portalMounted && selectedDate !== today && createPortal(
         <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
           <button
             onClick={() => handleDateChange(today)}
             style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}
-          >
-            TODAY
-          </button>
+          >TODAY</button>
         </div>,
         document.body
       )}
