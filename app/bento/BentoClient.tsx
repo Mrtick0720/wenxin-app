@@ -104,7 +104,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       <div className="px-4 py-4 pb-8 space-y-4">
         {/* 概况卡片 + 日期选择 */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
+          <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} isLoading={fetching} />
           <div className="border-t border-gray-100 mt-3 pt-3">
             <div className="grid grid-cols-3 gap-3 mb-4">
               <div className="text-center">
