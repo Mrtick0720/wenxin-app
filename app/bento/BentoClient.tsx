@@ -66,6 +66,8 @@ function formatDate(dateStr: string) {
   return `${month} ${d.getDate()} ${weekday}`
 }
 
+type PanelMode = 'orders' | 'portions' | 'pending' | 'done'
+
 export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
   const router = useRouter()
   const today = todayLocalStr()
@@ -77,6 +79,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [filterTime, setFilterTime] = useState(ALL)
   const [fetching, setFetching] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [panelMode, setPanelMode] = useState<PanelMode>('orders')
   const [mainPullOffset, setMainPullOffsetState] = useState(0)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -143,8 +146,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     }
   }
 
-  function openPanel() {
+  function openPanel(mode: PanelMode = 'orders') {
     if (panelIsOpen.current) return
+    setPanelMode(mode)
     panelIsOpen.current = true
     setDetailOpen(true)
     animatePanel(0)
@@ -368,6 +372,19 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
   const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
   const unpaidCount = orders.filter(o => !o.paid).length
+
+  const portionsBreakdown = (() => {
+    const groups: Record<string, { qty: number; items: Order[]; menuLabel: string; slotLabel: string }> = {}
+    for (const o of orders) {
+      const mt = MENU_TYPES.find(t => t.aliases.includes(o.menu_type || ''))
+      const ts = TIME_SLOTS.find(t => t.aliases.includes(o.time_slot || ''))
+      const key = `${mt?.value ?? 'other'}__${ts?.value ?? 'other'}`
+      if (!groups[key]) groups[key] = { qty: 0, items: [], menuLabel: mt?.label ?? (o.menu_type || 'Other'), slotLabel: ts?.label ?? (o.time_slot || '') }
+      groups[key].qty += (o.quantity ?? 1)
+      groups[key].items.push(o)
+    }
+    return Object.values(groups).sort((a, b) => b.qty - a.qty)
+  })()
   const isToday = selectedDate === today
   const showTodayShortcut = shouldShowBentoTodayShortcut(selectedDate, today, detailOpen)
   const mainPullActive = mainPullOffset !== 0 || refreshing
@@ -445,27 +462,22 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
               RM {totalAmount > 0 ? totalAmount.toFixed(2) : '0.00'}
             </div>
             <div className="grid grid-cols-4 gap-2">
-              <div className="text-center">
-                <div className="text-xl font-bold text-blue-500">{totalPortions}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Portions</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-gray-700">{total}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Orders</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-orange-500">{pending}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Pending</div>
-              </div>
-              <div className="text-center">
-                <div className="text-xl font-bold text-green-500">{completed}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Done</div>
-              </div>
+              {([
+                { mode: 'portions' as PanelMode, val: totalPortions, label: 'Portions', color: 'text-blue-500' },
+                { mode: 'orders' as PanelMode, val: total, label: 'Orders', color: 'text-gray-700' },
+                { mode: 'pending' as PanelMode, val: pending, label: 'Pending', color: 'text-orange-500' },
+                { mode: 'done' as PanelMode, val: completed, label: 'Done', color: 'text-green-500' },
+              ]).map(({ mode, val, label, color }) => (
+                <button key={mode} onClick={() => openPanel(mode)} className="text-center rounded-xl py-1.5 active:bg-gray-50 transition-colors">
+                  <div className={`text-xl font-bold ${color}`}>{val}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{label}</div>
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <Link href="/bento/unpaid" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+          <div className="grid grid-cols-2 gap-2">
+            <Link href="/bento/unpaid" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
                 <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
@@ -475,7 +487,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} pending` : 'All paid'}</div>
               </div>
             </Link>
-            <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            <Link href="/bento/weekly-menu" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="5" y="2" width="14" height="20" rx="2"/>
                 <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>
@@ -485,9 +497,28 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs text-gray-400">This week</div>
               </div>
             </Link>
+            <Link href="/bento/customers" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+              <div>
+                <div className="text-xs font-medium text-gray-700">Customers</div>
+                <div className="text-xs text-gray-400">Subscriptions</div>
+              </div>
+            </Link>
+            <Link href={`/bento/production?date=${selectedDate}`} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/>
+              </svg>
+              <div>
+                <div className="text-xs font-medium text-gray-700">Production</div>
+                <div className="text-xs text-gray-400">Kitchen sheet</div>
+              </div>
+            </Link>
           </div>
 
-          <button onClick={openPanel} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
+          <button onClick={() => openPanel('orders')} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
             <span className="text-sm text-gray-600">
               {fetching ? 'Loading...' : total > 0 ? `View all orders for ${formatDate(selectedDate)}` : 'No orders'}
             </span>
@@ -510,57 +541,98 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <button onClick={closePanel} className="flex items-center text-gray-500"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
-            <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
+            <span className="font-semibold text-base">
+              {panelMode === 'portions' ? 'Portions Breakdown' :
+               panelMode === 'pending' ? 'Pending Orders' :
+               panelMode === 'done' ? 'Completed Orders' :
+               `All Orders · ${formatDate(selectedDate)}`}
+            </span>
           </div>
         </div>
 
-        <div className="px-4 pt-3 pb-2 flex gap-2" style={{ flexShrink: 0 }}>
-          <Dropdown value={filterArea} onChange={setFilterArea} options={AREA_OPTIONS} />
-          <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPE_OPTIONS} />
-          <Dropdown value={filterTime} onChange={setFilterTime} options={TIME_SLOT_OPTIONS} />
-        </div>
+        {panelMode !== 'portions' && (
+          <div className="px-4 pt-3 pb-2 flex gap-2" style={{ flexShrink: 0 }}>
+            <Dropdown value={filterArea} onChange={setFilterArea} options={AREA_OPTIONS} />
+            <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPE_OPTIONS} />
+            <Dropdown value={filterTime} onChange={setFilterTime} options={TIME_SLOT_OPTIONS} />
+          </div>
+        )}
 
-        <div className="px-4 pb-2" style={{ flexShrink: 0 }}>
-          <span className="text-sm font-semibold text-gray-700">
-            Orders {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length})</span>}
-          </span>
-        </div>
+        <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+          {fetching && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
-        <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
-          {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
-          {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
-          {!fetching && filtered.map((order) => {
-            const isDelivery = !!order.address
+          {/* Portions breakdown */}
+          {!fetching && panelMode === 'portions' && (
+            <div className="pt-4 space-y-3">
+              {portionsBreakdown.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
+              {portionsBreakdown.map((group) => (
+                <div key={`${group.menuLabel}-${group.slotLabel}`} className="bg-white rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <span className="font-semibold text-gray-900">{group.menuLabel}</span>
+                      {group.slotLabel && <span className="text-xs text-gray-400 ml-2">· {group.slotLabel}</span>}
+                    </div>
+                    <span className="text-2xl font-bold text-blue-500">{group.qty}</span>
+                  </div>
+                  {group.items.filter(o => o.note).map(o => (
+                    <div key={o.id} className="text-xs text-orange-500 bg-orange-50 rounded-lg px-3 py-1.5 mb-1">
+                      📝 {o.customer_name}: {o.note}
+                    </div>
+                  ))}
+                  <div className="text-xs text-gray-400 mt-2">
+                    {group.items.map(o => o.customer_name).join(' · ')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Orders / Pending / Done */}
+          {!fetching && panelMode !== 'portions' && (() => {
+            const panelOrders = panelMode === 'pending'
+              ? filtered.filter(o => o.status !== 'completed')
+              : panelMode === 'done'
+              ? filtered.filter(o => o.status === 'completed')
+              : filtered
             return (
-              <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span className="font-semibold text-gray-900">{order.customer_name}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
-                    {isDelivery ? 'Delivery' : 'Pickup'}
-                  </span>
-                  {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
-                </div>
-                {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
-                <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
-                {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
-                {order.address && <div className="text-sm text-gray-400 mb-1">{order.address}</div>}
-                <div className="flex items-center justify-between mt-2">
-                  <span className="text-sm text-gray-400">📞 {order.phone}</span>
-                  <span className="font-semibold text-gray-900">RM {order.amount}</span>
-                </div>
-                {isToday && (
-                  <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
-                    className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
-                    {loading === order.id ? 'Updating...' : order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
-                  </button>
-                )}
-                <button onClick={() => togglePaid(order)} disabled={loading === order.id}
-                  className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
-                  {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
-                </button>
+              <div className="pt-3 space-y-3">
+                {panelOrders.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
+                {panelOrders.map((order) => {
+                  const isDelivery = !!order.address
+                  return (
+                    <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
+                        <span className="font-semibold text-gray-900">{order.customer_name}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
+                          {isDelivery ? 'Delivery' : 'Pickup'}
+                        </span>
+                        {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
+                        {(order.quantity ?? 1) > 1 && <span className="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full">×{order.quantity}</span>}
+                      </div>
+                      {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
+                      <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
+                      {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
+                      {order.address && <div className="text-sm text-gray-400 mb-1">{order.address}</div>}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-sm text-gray-400">📞 {order.phone}</span>
+                        <span className="font-semibold text-gray-900">RM {order.amount}</span>
+                      </div>
+                      {isToday && (
+                        <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
+                          className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
+                          {loading === order.id ? 'Updating...' : order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
+                        </button>
+                      )}
+                      <button onClick={() => togglePaid(order)} disabled={loading === order.id}
+                        className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
+                        {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )
-          })}
+          })()}
         </div>
       </div>
 
