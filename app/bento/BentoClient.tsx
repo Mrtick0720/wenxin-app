@@ -432,24 +432,34 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         </div>
 
         <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
-          <div className="border-t border-gray-100 pt-3">
-            <div className="grid grid-cols-4 gap-2 mb-3">
-              {[
-                { val: total, label: 'Orders', color: 'text-gray-900' },
-                { val: completed, label: 'Done', color: 'text-green-500' },
-                { val: pending, label: 'Pending', color: 'text-orange-500' },
-                { val: totalAmount > 0 ? totalAmount : '—', label: 'Amount', color: 'text-blue-500' },
-              ].map(({ val, label, color }) => (
-                <div key={label} className="text-center">
-                  <div className={`text-2xl font-bold ${color}`}>{val}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{label}</div>
-                </div>
-              ))}
+          <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ flexShrink: 0 }}>
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm text-gray-500">Bento Revenue</div>
+              <div className={`text-xs font-medium ${pending > 0 ? 'text-orange-500' : 'text-green-500'}`}>
+                ● {pending > 0 ? 'In Progress' : 'All Done'}
+              </div>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-2">
-              <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
+            <div className="text-3xl font-bold text-gray-900 mb-3">
+              RM {totalAmount > 0 ? totalAmount.toFixed(2) : '0.00'}
             </div>
-            <div className="text-xs text-gray-400 mt-1 text-right">{percent}% complete</div>
+            <div className="grid grid-cols-4 gap-2">
+              <div className="text-center">
+                <div className="text-xl font-bold text-blue-500">{total}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Portions</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-gray-700">{total}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Orders</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-green-500">{completed}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Done</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-orange-500">{pending}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Pending</div>
+              </div>
+            </div>
           </div>
 
           <div className="flex gap-2">
