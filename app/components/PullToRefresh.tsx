@@ -20,7 +20,7 @@ export default function PullToRefresh({ children, onRefresh }: PullToRefreshProp
     if (!el) return
 
     const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY === 0) {
+      if (window.scrollY <= 1) {
         startYRef.current = e.touches[0].clientY
         pullingRef.current = true
       }
@@ -29,7 +29,7 @@ export default function PullToRefresh({ children, onRefresh }: PullToRefreshProp
     const onTouchMove = (e: TouchEvent) => {
       if (!pullingRef.current || refreshing) return
       const dist = e.touches[0].clientY - startYRef.current
-      if (dist > 0 && window.scrollY === 0) {
+      if (dist > 0 && window.scrollY <= 1) {
         e.preventDefault()
         setPullDistance(Math.min(dist * 0.45, threshold + 30))
       }
