@@ -59,12 +59,9 @@ async function getComplaintCount() { return 1 }
 
 // ── Today's Issues — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
-function getTodayIssues(complaintCount: number): Issue[] {
+function getTodayIssues(_complaintCount: number): Issue[] {
   const issues: Issue[] = []
-  if (complaintCount > 0) {
-    issues.push({ type: '⚠ Complaint', detail: `${complaintCount} unresolved`, link: '/complaints' })
-  }
-  // Placeholder items — will be driven by real data later
+  // Complaint is already shown in Alert Cards above — only show operational issues here
   issues.push({ type: '⚠ Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
   issues.push({ type: '⚠ Attendance', detail: 'Lina — missing punch-out', link: '/staff' })
   return issues
@@ -125,26 +122,37 @@ export default async function Home() {
         {/* ═══ Revenue Hero Card — first visual priority ═══ */}
         <Link href="/reports" className="block">
           <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
-          <div className="flex items-center gap-1.5 mt-1">
+          <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
-            <span className="text-[10px] text-green-500 font-medium">● Open</span>
+            <span className="text-xs text-green-500 font-semibold">● Open</span>
           </div>
           <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
             <span className="text-green-500 font-medium">↑ 12%</span>
             <span>vs yesterday</span>
           </div>
-          <div className="flex items-center gap-3 mt-2.5 pt-2.5 border-t border-gray-100">
-            <div>
-              <span className="text-xs text-gray-400">Dine-in </span>
-              <span className="text-sm font-semibold text-gray-900">RM {revenueDineIn.toLocaleString()}</span>
-            </div>
-            <div className="w-px h-4 bg-gray-200" />
-            <div>
-              <span className="text-xs text-gray-400">Bento </span>
-              <span className="text-sm font-semibold text-gray-900">RM {revenueBento.toLocaleString()}</span>
-            </div>
-          </div>
         </Link>
+
+        {/* ═══ Core Business Cards — moved up directly under Revenue ═══ */}
+        <div className="grid grid-cols-2 gap-2">
+          <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
+            <div className="text-sm font-semibold text-gray-900 mb-1">Dine-in</div>
+            <div className="text-sm text-green-500 font-medium mb-2">● Open</div>
+            <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+              <span>12 Orders</span>
+              <span>Avg RM 106</span>
+            </div>
+          </Link>
+          <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
+            <div className="text-sm font-semibold text-gray-900 mb-1">Bento</div>
+            <div className="text-sm text-green-500 font-medium mb-2">In Progress</div>
+            <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+              <span>{bentoOrders} Orders</span>
+              <span className="text-orange-500">{bentoPercent}% Done</span>
+            </div>
+          </Link>
+        </div>
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-4 gap-1.5">
@@ -170,7 +178,7 @@ export default async function Home() {
           </Link>
         </div>
 
-        {/* ═══ Today's Issues — replaces Today's Notes ═══ */}
+        {/* ═══ Today's Issues — Low Stock + Attendance only (Complaints shown in Alert Cards above) ═══ */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-semibold text-gray-800">Today&apos;s Issues</span>
@@ -193,28 +201,6 @@ export default async function Home() {
           )}
         </div>
 
-        {/* ═══ Core Business Cards — redesigned with data ═══ */}
-        <div className="grid grid-cols-2 gap-2">
-          <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-1">Dine-in</div>
-            <div className="text-xs text-green-500 mb-2">● Open</div>
-            <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-              <span>12 Orders</span>
-              <span>Avg RM 106</span>
-            </div>
-          </Link>
-          <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-1">Bento</div>
-            <div className="text-xs text-green-500 mb-2">In Progress</div>
-            <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-              <span>{bentoOrders} Orders</span>
-              <span className="text-orange-500">{bentoPercent}% Done</span>
-            </div>
-          </Link>
-        </div>
-
         {/* ═══ Shift Board — today's staffing ═══ */}
         <Link href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
           <div className="flex items-center justify-between mb-2">
@@ -235,21 +221,17 @@ export default async function Home() {
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
           <div className="grid grid-cols-4 gap-2">
-            <Link href="/procurement" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
-              <div className="text-lg mb-0.5">📦</div>
-              <div className="text-[11px] font-medium text-gray-700">Procurement</div>
+            <Link href="/procurement" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
+              <div className="text-xs font-semibold text-gray-700">Procurement</div>
             </Link>
-            <Link href="/staff" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
-              <div className="text-lg mb-0.5">👥</div>
-              <div className="text-[11px] font-medium text-gray-700">Staff</div>
+            <Link href="/staff" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
+              <div className="text-xs font-semibold text-gray-700">Staff</div>
             </Link>
-            <Link href="/inventory" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
-              <div className="text-lg mb-0.5">📋</div>
-              <div className="text-[11px] font-medium text-gray-700">Inventory</div>
+            <Link href="/inventory" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
+              <div className="text-xs font-semibold text-gray-700">Inventory</div>
             </Link>
-            <Link href="/finance" className="bg-white rounded-xl p-2.5 shadow-sm border border-gray-100 text-center block">
-              <div className="text-lg mb-0.5">💰</div>
-              <div className="text-[11px] font-medium text-gray-700">Finance</div>
+            <Link href="/finance" className="bg-white rounded-xl py-3 px-2 shadow-sm border border-gray-100 text-center block">
+              <div className="text-xs font-semibold text-gray-700">Finance</div>
             </Link>
           </div>
         </div>
