@@ -217,7 +217,7 @@ export default function PurchaseClient({
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base tracking-wide">采购中心</span>
+          <span className="font-semibold text-base tracking-wide">Purchase</span>
         </div>
         <button
           onClick={() => { setShowAdd(true); setForm(emptyForm) }}
