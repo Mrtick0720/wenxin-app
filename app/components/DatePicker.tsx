@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { createPortal, flushSync } from 'react-dom'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
 
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -48,6 +48,15 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const hasDragged = useRef(false)
   const pendingWeek = useRef<{ weekStart: string; transform: string } | null>(null)
   const navDirection = useRef<'next' | 'prev'>('next')
+  const resetTransformAfterRender = useRef(false)
+
+  // After React commits new week content to DOM, reset transform before browser paints
+  useLayoutEffect(() => {
+    if (resetTransformAfterRender.current) {
+      resetTransformAfterRender.current = false
+      applyTransform('translateX(-33.333%)', false)
+    }
+  }, [viewWeekStart]) // eslint-disable-line
 
   // Month animation
   const initial = getMonthInfo(getMondayOfWeek(selectedDate))
@@ -156,10 +165,10 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     if (!pendingWeek.current) return
     const { weekStart } = pendingWeek.current
     pendingWeek.current = null
-    // flushSync: React renders new week content synchronously before transform reset,
-    // preventing a one-frame flash of wrong content at center position
-    flushSync(() => setViewWeekStart(weekStart))
-    applyTransform('translateX(-33.333%)', false)
+    // useLayoutEffect will reset the transform after React commits new content,
+    // before the browser paints — no intermediate flash frame
+    resetTransformAfterRender.current = true
+    setViewWeekStart(weekStart)
   }
 
   // Calendar popup handlers
