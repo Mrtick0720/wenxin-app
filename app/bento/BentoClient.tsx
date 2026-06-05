@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import DatePicker from '../components/DatePicker'
@@ -36,6 +37,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
+  const [portalMounted, setPortalMounted] = useState(false)
+  useEffect(() => { setPortalMounted(true) }, [])
   const [filterArea, setFilterArea] = useState('全部')
   const [filterType, setFilterType] = useState('全部')
   const [filterTime, setFilterTime] = useState('全部')
@@ -243,16 +246,17 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
       </div>
 
-      {/* TODAY button — fixed at bottom, unaffected by content changes */}
-      {selectedDate !== today && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+      {/* TODAY button — portalled to body to escape transform stacking context */}
+      {portalMounted && selectedDate !== today && createPortal(
+        <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
           <button
             onClick={() => handleDateChange(today)}
-            className="px-10 py-2.5 bg-blue-400 text-white text-sm font-semibold rounded-full shadow-lg"
+            style={{ padding: '10px 40px', backgroundColor: '#60a5fa', color: '#fff', fontSize: 14, fontWeight: 600, borderRadius: 999, border: 'none', boxShadow: '0 4px 16px rgba(96,165,250,0.5)', cursor: 'pointer' }}
           >
             TODAY
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   )

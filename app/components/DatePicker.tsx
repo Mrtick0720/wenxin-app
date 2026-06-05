@@ -347,13 +347,26 @@ export default function DatePicker({ selectedDate, onDateChange, isLoading = fal
                       }}
                       className="flex justify-center items-center py-1"
                     >
-                      <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${
-                        isSelected && isToday ? 'bg-blue-400 text-white'
-                        : isSelected ? 'bg-gray-200 text-gray-800'
-                        : isToday ? 'text-blue-400 font-semibold'
-                        : 'text-gray-700'
-                      }`}>
-                        {day}
+                      {/* Separate circle bg (scales) from text (color transitions) */}
+                      <span className="relative w-8 h-8 flex items-center justify-center">
+                        <span
+                          className="absolute inset-0 rounded-full"
+                          style={{
+                            transform: isSelected ? 'scale(1)' : 'scale(0)',
+                            transition: 'transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                            backgroundColor: isToday ? '#60a5fa' : '#e5e7eb',
+                          }}
+                        />
+                        <span
+                          className="relative text-sm font-medium"
+                          style={{
+                            transition: 'color 0.18s ease',
+                            color: isSelected ? '#fff' : isToday ? '#60a5fa' : '#374151',
+                            fontWeight: isToday ? 600 : 400,
+                          }}
+                        >
+                          {day}
+                        </span>
                       </span>
                     </button>
                   )
