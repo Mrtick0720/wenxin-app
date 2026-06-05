@@ -420,7 +420,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-500 text-xl">←</Link>
+            <Link href="/" className="flex items-center text-gray-500"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></Link>
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
           <Link href="/bento/new" className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</Link>
@@ -496,7 +496,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
-            <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
+            <button onClick={closePanel} className="flex items-center text-gray-500"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
             <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
           </div>
         </div>

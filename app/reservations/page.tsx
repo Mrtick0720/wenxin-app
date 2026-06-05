@@ -29,7 +29,7 @@ export default function ReservationsPage() {
     <main className="min-h-screen bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <Link href="/" className="text-gray-500 text-xl">←</Link>
+          <Link href="/" className="flex items-center text-gray-500"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg></Link>
           <span className="font-semibold text-base">Reservations</span>
         </div>
         <span className="text-xs text-gray-400">{total} bookings</span>
