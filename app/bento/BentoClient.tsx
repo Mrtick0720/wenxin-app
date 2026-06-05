@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
-import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut, shouldTrackBentoDetailGesture } from '@/lib/bentoInteractionUtils'
+import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldMoveBentoPanelDuringClose, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
@@ -110,7 +110,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const m = t.match(/translateX\(([-\d.]+)px\)/)
       if (m) return parseFloat(m[1])
     }
-    return new DOMMatrix(window.getComputedStyle(el).transform).m41
+    const computedTransform = window.getComputedStyle(el).transform
+    if (!computedTransform || computedTransform === 'none') return 0
+    return new DOMMatrix(computedTransform).m41
   }
 
   function animatePanel(toX: number, onDone?: () => void) {
@@ -124,7 +126,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     }
     const fromX = getPanelX()
     const dist = Math.abs(toX - fromX)
-    if (dist < 1) { el.style.transform = `translateX(${toX}px)`; onDone?.(); return }
+    if (dist < 1) { el.style.transform = toX === 0 ? 'none' : `translateX(${toX}px)`; onDone?.(); return }
     const anim = el.animate(
       [{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }],
       { duration: Math.max(200, Math.min(350, dist * 0.75)), easing: 'cubic-bezier(0.3,0,0.1,1)', fill: 'none' }
@@ -133,7 +135,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     anim.onfinish = () => {
       if (panelAnimRef.current !== anim) return
       panelAnimRef.current = null
-      el.style.transform = `translateX(${toX}px)`
+      el.style.transform = toX === 0 ? 'none' : `translateX(${toX}px)`
       onDone?.()
     }
   }
@@ -221,8 +223,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       axis = null; tracking = false; mode = null
 
       if (panelIsOpen.current) {
-        const isInsideScrollArea = !!(e.target as Element | null)?.closest('[data-scroll]')
-        if (!shouldTrackBentoDetailGesture(isInsideScrollArea)) return
         tracking = true; mode = 'close'
         return
       }
@@ -256,12 +256,9 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (mode === 'open' && dx < 0) {
         e.preventDefault()
         if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-      } else if (mode === 'close' && dx > 0) {
+      } else if (mode === 'close' && shouldMoveBentoPanelDuringClose({ axis, dx })) {
         e.preventDefault()
-        if (el) {
-          const inScroll = !!(e.target as Element | null)?.closest('[data-scroll]')
-          if (!inScroll) el.style.transform = `translateX(${Math.max(0, dx)}px)`
-        }
+        if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`
       }
     }
 
@@ -447,7 +444,17 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       </div>
 
       {/* Detail Panel */}
-      <div ref={setPanelRef} className="fixed inset-0 bg-white flex flex-col min-h-0" style={{ zIndex: 20 }}>
+      <div
+        ref={setPanelRef}
+        className="fixed inset-0 bg-white grid"
+        style={{
+          zIndex: 20,
+          height: '100dvh',
+          maxHeight: '100dvh',
+          overflow: 'hidden',
+          gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
+        }}
+      >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
           <div className="flex items-center gap-3">
             <button onClick={closePanel} className="text-gray-500 text-xl">←</button>
@@ -467,7 +474,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+        <div data-scroll className="min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {

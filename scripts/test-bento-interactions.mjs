@@ -5,7 +5,7 @@ import {
   getBentoPanelAction,
   getBentoPullState,
   getBentoSwipeThreshold,
-  shouldTrackBentoDetailGesture,
+  shouldMoveBentoPanelDuringClose,
   shouldShowBentoTodayShortcut,
 } from '../lib/bentoInteractionUtils.ts'
 
@@ -70,15 +70,15 @@ assert.equal(
 )
 
 assert.equal(
-  shouldTrackBentoDetailGesture(true),
-  false,
-  'detail order list keeps native vertical scrolling instead of document gestures'
+  shouldMoveBentoPanelDuringClose({ axis: 'h', dx: 58 }),
+  true,
+  'detail page can right-swipe closed from the order list'
 )
 
 assert.equal(
-  shouldTrackBentoDetailGesture(false),
-  true,
-  'non-scroll detail areas can still track panel close gestures'
+  shouldMoveBentoPanelDuringClose({ axis: 'v', dx: 8 }),
+  false,
+  'detail page vertical order scrolling does not move the panel'
 )
 
 assert.equal(
