@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import BackButton from '../../components/BackButton'
-import { useRouter } from 'next/navigation'
 
 type PurchaseItem = {
   id: number
@@ -36,10 +36,9 @@ function InlinePicker({ value, options, onChange, label }: {
   return (
     <div className="relative">
       <button type="button" onClick={() => setOpen(o => !o)}
-        className="w-full text-left flex items-center justify-between py-3 border-b border-gray-100"
-        style={{ fontSize: 16 }}>
+        className="w-full text-left flex items-center justify-between py-3 border-b border-gray-100">
         <span className="text-xs text-gray-400 w-28 flex-shrink-0">{label}</span>
-        <span className="flex-1 text-gray-900">{value}</span>
+        <span className="flex-1 text-gray-900" style={{ fontSize: 16 }}>{value}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
           style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
           <polyline points="6 9 12 15 18 9"/>
@@ -69,29 +68,55 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-export default function DetailClient({ item }: { item: PurchaseItem }) {
+export default function DetailClient() {
+  const params = useParams()
   const router = useRouter()
+  const id = params?.id as string
+
+  const [item, setItem] = useState<PurchaseItem | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
   const [form, setForm] = useState({
-    name: item.name ?? '',
-    category: item.category ?? 'Vegetables',
-    unit: item.unit ?? 'kg',
-    quantity: String(item.quantity ?? ''),
-    unit_price: String(item.unit_price ?? ''),
-    supplier: item.supplier ?? '',
-    purchase_method: item.purchase_method ?? 'Supplier Delivery',
-    note: item.note ?? '',
+    name: '', category: 'Vegetables', unit: 'kg',
+    quantity: '', unit_price: '',
+    supplier: '', purchase_method: 'Supplier Delivery', note: '',
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
 
+  useEffect(() => {
+    if (!id) return
+    supabase.from('purchase_items').select('*').eq('id', id).single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          setNotFound(true)
+        } else {
+          const it = data as PurchaseItem
+          setItem(it)
+          setForm({
+            name: it.name ?? '',
+            category: it.category ?? 'Vegetables',
+            unit: it.unit ?? 'kg',
+            quantity: String(it.quantity ?? ''),
+            unit_price: String(it.unit_price ?? ''),
+            supplier: it.supplier ?? '',
+            purchase_method: it.purchase_method ?? 'Supplier Delivery',
+            note: it.note ?? '',
+          })
+        }
+        setLoading(false)
+      })
+  }, [id])
+
   const qty = parseFloat(form.quantity) || 0
   const up = parseFloat(form.unit_price) || 0
   const total = qty * up
   const catColor = CATEGORY_COLOR[form.category] ?? '#9ca3af'
-  const isDone = item.status === 'completed'
+  const isDone = item?.status === 'completed'
 
   async function handleSave() {
+    if (!item) return
     setSaving(true)
     await supabase.from('purchase_items').update({
       name: form.name.trim(),
@@ -105,19 +130,39 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
       note: form.note.trim() || null,
     }).eq('id', item.id)
     setSaving(false)
-    router.back()
+    router.push('/purchase')
   }
 
   async function handleDelete() {
+    if (!item) return
     setDeleting(true)
     await supabase.from('purchase_items').delete().eq('id', item.id)
-    router.back()
+    router.push('/purchase')
   }
 
   async function toggleStatus() {
+    if (!item) return
     const newStatus = isDone ? 'pending' : 'completed'
     await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
-    router.back()
+    router.push('/purchase')
+  }
+
+  if (loading) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div className="text-gray-400 text-sm">Loading...</div>
+      </div>
+    )
+  }
+
+  if (notFound) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: '#f9fafb', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <div className="text-gray-400 text-sm">Item not found</div>
+        <button onClick={() => router.push('/purchase')}
+          className="text-orange-500 text-sm font-medium">← Back to Purchase</button>
+      </div>
+    )
   }
 
   return (
@@ -137,17 +182,14 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* Category color band */}
         <div style={{ height: 4, background: catColor }} />
 
         <div className="bg-white px-4">
-          {/* Name */}
-          <div className="flex items-center py-3 border-b border-gray-100">
-            <span className="text-xs text-gray-400 w-28 flex-shrink-0">Name</span>
-            <input className="flex-1 outline-none text-gray-900 font-medium" style={{ fontSize: 16 }}
+          <FieldRow label="Name">
+            <input className="w-full outline-none text-gray-900 font-medium" style={{ fontSize: 16 }}
               value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Item name" />
-          </div>
+          </FieldRow>
 
           <InlinePicker label="Category" value={form.category} options={CATEGORIES}
             onChange={v => setForm(f => ({ ...f, category: v }))} />
@@ -155,21 +197,18 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
           <InlinePicker label="Unit" value={form.unit} options={UNITS}
             onChange={v => setForm(f => ({ ...f, unit: v }))} />
 
-          {/* Qty */}
           <FieldRow label="Qty">
             <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
               type="number" inputMode="decimal" placeholder="0"
               value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
           </FieldRow>
 
-          {/* Unit price */}
           <FieldRow label="Unit Price (RM)">
             <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
               type="number" inputMode="decimal" placeholder="0.00"
               value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
           </FieldRow>
 
-          {/* Total (read-only) */}
           <FieldRow label="Total">
             <span className="font-semibold text-gray-900" style={{ fontSize: 16 }}>
               {total > 0 ? `RM ${total.toFixed(2)}` : '—'}
@@ -179,14 +218,12 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
           <InlinePicker label="Method" value={form.purchase_method} options={PURCHASE_METHODS}
             onChange={v => setForm(f => ({ ...f, purchase_method: v }))} />
 
-          {/* Supplier */}
           <FieldRow label="Supplier">
             <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
               placeholder="e.g. KK Meat Supply"
               value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
           </FieldRow>
 
-          {/* Note */}
           <FieldRow label="Note">
             <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
               placeholder="Optional"
@@ -194,7 +231,6 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
           </FieldRow>
         </div>
 
-        {/* Status toggle */}
         <div className="px-4 mt-4">
           <button onClick={toggleStatus}
             className="w-full py-3 rounded-2xl text-sm font-semibold border-2"
@@ -207,7 +243,6 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
           </button>
         </div>
 
-        {/* Delete */}
         <div className="px-4 mt-3 mb-8">
           {!showDelete ? (
             <button onClick={() => setShowDelete(true)}
@@ -216,7 +251,7 @@ export default function DetailClient({ item }: { item: PurchaseItem }) {
             </button>
           ) : (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-              <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete "{item.name}"?</div>
+              <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete "{item?.name}"?</div>
               <div className="flex gap-2">
                 <button onClick={() => setShowDelete(false)}
                   className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600">
