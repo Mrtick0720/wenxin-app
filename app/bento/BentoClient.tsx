@@ -40,19 +40,20 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const [loading, setLoading] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
   const [portalMounted, setPortalMounted] = useState(false)
+  const [showDetail, setShowDetail] = useState(false)
   useEffect(() => { setPortalMounted(true) }, [])
   const [filterArea, setFilterArea] = useState('全部')
   const [filterType, setFilterType] = useState('全部')
   const [filterTime, setFilterTime] = useState('全部')
   const [fetching, setFetching] = useState(false)
 
-  // Order cache: keyed by date string — avoids reloading already-fetched data
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
 
-  const isToday = selectedDate === today
-  const headerTitle = isToday ? 'Bento 今日进度' : `Bento ${formatDate(selectedDate)}`
+  // Swipe-to-open-detail
+  const swipeStartX = useRef(0)
+  const swipeStartY = useRef(0)
+  const swipeTracking = useRef(false)
 
-  // Fetch a single date's orders, updating cache
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
     const { data } = await supabase
       .from('bento_orders')
@@ -64,7 +65,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     return result
   }, [])
 
-  // Pre-load adjacent week's representative date silently in background
   const prefetchAdjacent = useCallback((date: string) => {
     const monday = getMondayOfWeek(date)
     const d = new Date(date + 'T00:00:00')
@@ -78,10 +78,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   async function handleDateChange(date: string) {
     setSelectedDate(date)
     if (cache.current[date] !== undefined) {
-      // Instant: use cached data
       setOrders(cache.current[date])
     } else {
-      // Not cached yet: load normally
       setFetching(true)
       const result = await fetchDate(date)
       setOrders(result)
@@ -90,10 +88,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     prefetchAdjacent(date)
   }
 
-  // Pre-load adjacent weeks on mount
-  useEffect(() => {
-    prefetchAdjacent(today)
-  }, []) // eslint-disable-line
+  useEffect(() => { prefetchAdjacent(today) }, []) // eslint-disable-line
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
@@ -126,28 +121,48 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const completed = orders.filter(o => o.status === 'completed').length
   const pending = orders.filter(o => o.status === 'pending').length
   const percent = total > 0 ? Math.round((completed / total) * 100) : 0
+  const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
+  const unpaidCount = orders.filter(o => !o.paid).length
+  const isToday = selectedDate === today
 
   return (
     <>
-      {/* Header */}
+      {/* ── Main page ── */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link href="/" className="text-gray-500 text-xl">←</Link>
-          <span className="font-semibold text-base">{headerTitle}</span>
+          <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
         </div>
         <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">
           + 新增
         </Link>
       </div>
 
-      <div className="px-4 py-4 pb-8 space-y-4">
-        {/* 日期选择 + 概况 */}
+      {/* Swipe-target: the lower area triggers open-detail on left swipe */}
+      <div
+        className="px-4 py-4 pb-8 space-y-4"
+        onTouchStart={e => {
+          swipeStartX.current = e.touches[0].clientX
+          swipeStartY.current = e.touches[0].clientY
+          swipeTracking.current = true
+        }}
+        onTouchEnd={e => {
+          if (!swipeTracking.current) return
+          swipeTracking.current = false
+          const dx = e.changedTouches[0].clientX - swipeStartX.current
+          const dy = e.changedTouches[0].clientY - swipeStartY.current
+          if (dx < -60 && Math.abs(dy) < 80) setShowDetail(true)
+        }}
+      >
+        {/* 日期选择 */}
         <div className="-mx-4">
           <div className="px-4 pb-3">
             <DatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
           </div>
+
+          {/* 统计 */}
           <div className="border-t border-gray-100 px-4 pt-3">
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-4 gap-2 mb-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-gray-900">{total}</div>
                 <div className="text-xs text-gray-400 mt-0.5">总订单</div>
@@ -160,12 +175,15 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-2xl font-bold text-orange-500">{pending}</div>
                 <div className="text-xs text-gray-400 mt-0.5">待处理</div>
               </div>
+              <div className="text-center">
+                <div className="text-2xl font-bold text-blue-500">
+                  {totalAmount > 0 ? `${totalAmount}` : '—'}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5">总金额</div>
+              </div>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all"
-                style={{ width: `${percent}%` }}
-              />
+              <div className="bg-green-500 h-2 rounded-full transition-all" style={{ width: `${percent}%` }} />
             </div>
             <div className="text-xs text-gray-400 mt-1 text-right">完成 {percent}%</div>
           </div>
@@ -182,7 +200,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             </svg>
             <div>
               <div className="text-xs font-medium text-gray-700">未付款</div>
-              <div className="text-xs text-gray-400">后付费客户</div>
+              <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} 单待付` : '全部已付'}</div>
             </div>
           </Link>
           <Link href="/bento/weekly-menu" className="flex-1 bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
@@ -199,86 +217,108 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </Link>
         </div>
 
-        {/* 筛选 - 自定义下拉 */}
-        <div className="flex gap-2">
-          <Dropdown
-            value={filterArea}
-            onChange={setFilterArea}
-            options={AREAS.map(a => ({ value: a, label: a === '全部' ? '全部地区' : a }))}
-          />
-          <Dropdown
-            value={filterType}
-            onChange={setFilterType}
-            options={MENU_TYPES.map(t => ({ value: t, label: t === '全部' ? '全部类型' : t }))}
-          />
-          <Dropdown
-            value={filterTime}
-            onChange={setFilterTime}
-            options={TIME_SLOTS.map(t => ({ value: t, label: t === '全部' ? '全时段' : t }))}
-          />
+        {/* 查看订单入口 */}
+        <button
+          onClick={() => setShowDetail(true)}
+          className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 border border-gray-100"
+        >
+          <span className="text-sm text-gray-600">
+            {fetching ? '加载中...' : total > 0 ? `查看 ${formatDate(selectedDate)} 全部订单` : '暂无订单'}
+          </span>
+          <span className="text-gray-400 text-sm">→</span>
+        </button>
+      </div>
+
+      {/* ── Detail Panel (slides in from right) ── */}
+      <div
+        className="fixed inset-0 bg-white z-20 flex flex-col"
+        style={{
+          transform: showDetail ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.32s cubic-bezier(0.3, 0, 0.1, 1)',
+        }}
+      >
+        {/* Detail header */}
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-b flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <button onClick={() => setShowDetail(false)} className="text-gray-500 text-xl">←</button>
+            <span className="font-semibold text-base">{formatDate(selectedDate)}</span>
+          </div>
+          <Link href="/bento/new" className="bg-orange-500 text-white text-sm px-3 py-1.5 rounded-full">
+            + 新增
+          </Link>
         </div>
 
-        {/* 订单列表 */}
-        <div className="text-sm font-semibold text-gray-700">
-          订单列表 {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length} 单)</span>}
+        {/* Filters */}
+        <div className="px-4 pt-3 pb-2 flex gap-2 flex-shrink-0">
+          <Dropdown value={filterArea} onChange={setFilterArea} options={AREAS.map(a => ({ value: a, label: a === '全部' ? '全部地区' : a }))} />
+          <Dropdown value={filterType} onChange={setFilterType} options={MENU_TYPES.map(t => ({ value: t, label: t === '全部' ? '全部类型' : t }))} />
+          <Dropdown value={filterTime} onChange={setFilterTime} options={TIME_SLOTS.map(t => ({ value: t, label: t === '全部' ? '全时段' : t }))} />
         </div>
 
-        {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
+        <div className="px-4 pb-2 flex-shrink-0">
+          <span className="text-sm font-semibold text-gray-700">
+            订单列表 {filtered.length > 0 && <span className="text-gray-400 font-normal">({filtered.length} 单)</span>}
+          </span>
+        </div>
 
-        <div className="space-y-3">
+        {/* Scrollable order list */}
+        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-3">
+          {fetching && <div className="text-center text-gray-400 py-4">加载中...</div>}
           {!fetching && filtered.length === 0 && (
             <div className="text-center text-gray-400 py-8">暂无订单</div>
           )}
-          {!fetching && filtered.map((order) => (
-
-            <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900">{order.customer_name}</span>
-                  {order.menu_type && (
-                    <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>
-                  )}
+          {!fetching && filtered.map((order) => {
+            const isDelivery = !!order.address
+            return (
+              <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-gray-900">{order.customer_name}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
+                      {isDelivery ? '配送' : '自取'}
+                    </span>
+                    {order.menu_type && (
+                      <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{order.menu_type}</span>
+                    )}
+                  </div>
                 </div>
+                {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
+                <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
+                {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
+                {order.address && <div className="text-sm text-gray-400 mb-1">{order.address}</div>}
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-sm text-gray-400">📞 {order.phone}</span>
+                  <span className="font-semibold text-gray-900">RM {order.amount}</span>
+                </div>
+                {/* 制作状态 */}
+                {isToday && (
+                  <button
+                    onClick={() => toggleStatus(order)}
+                    disabled={loading === order.id}
+                    className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${
+                      order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'
+                    }`}
+                  >
+                    {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
+                  </button>
+                )}
+                {/* 付款状态 — 在制作状态下方 */}
                 <button
                   onClick={() => togglePaid(order)}
                   disabled={loading === order.id}
-                  className={`text-xs px-2 py-1 rounded-full border ${
-                    order.paid
-                      ? 'bg-green-100 text-green-600 border-green-200'
-                      : 'bg-red-50 text-red-500 border-red-200'
+                  className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${
+                    order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'
                   }`}
                 >
-                  {order.paid ? '✓ 已付款' : '未付款'}
+                  {order.paid ? '✓ 已付款' : '未付款 — 点击标记'}
                 </button>
               </div>
-              {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
-              <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
-              {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
-              <div className="text-sm text-gray-400 mb-1">{order.address}</div>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-sm text-gray-400">📞 {order.phone}</span>
-                <span className="font-semibold text-gray-900">RM {order.amount}</span>
-              </div>
-              {isToday && (
-                <button
-                  onClick={() => toggleStatus(order)}
-                  disabled={loading === order.id}
-                  className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${
-                    order.status === 'completed'
-                      ? 'bg-gray-100 text-gray-500'
-                      : 'bg-orange-500 text-white'
-                  }`}
-                >
-                  {loading === order.id ? '更新中...' : order.status === 'completed' ? '✓ 已完成' : '标记完成'}
-                </button>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
-
       </div>
 
-      {/* TODAY button — portalled to body to escape transform stacking context */}
+      {/* TODAY button */}
       {portalMounted && selectedDate !== today && createPortal(
         <div style={{ position: 'fixed', bottom: 32, left: '50%', transform: 'translateX(-50%)', zIndex: 9999, pointerEvents: 'auto' }}>
           <button
