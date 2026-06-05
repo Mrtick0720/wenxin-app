@@ -12,7 +12,7 @@ function getWeekDays(mondayStr: string): string[] {
 }
 
 function getMonthInfo(weekStart: string) {
-  const d = new Date(getWeekDays(weekStart)[3] + 'T00:00:00')
+  const d = new Date(weekStart + 'T00:00:00')
   return { key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ZH[d.getMonth()], year: d.getFullYear() }
 }
 
