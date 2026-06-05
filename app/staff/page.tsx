@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import BackButton from '../components/BackButton'
 import BottomNav from '../components/BottomNav'
+import PageTransition from '../components/PageTransition'
 
 type ShiftType = 'morning' | 'full' | 'afternoon' | 'off' | 'leave'
 
@@ -107,7 +108,8 @@ export default function SchedulePage() {
   }).length
 
   return (
-    <main className="page-slide-in min-h-screen bg-gray-50 w-full mx-auto">
+    <PageTransition>
+    <main className="bg-gray-50 w-full mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -204,5 +206,6 @@ export default function SchedulePage() {
 
       <BottomNav />
     </main>
+    </PageTransition>
   )
 }

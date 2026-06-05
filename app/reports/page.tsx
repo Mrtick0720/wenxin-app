@@ -4,7 +4,7 @@ import PageTransition from '../components/PageTransition'
 export default function ReportsPage() {
   return (
     <PageTransition>
-    <main className="min-h-screen bg-gray-50 w-full mx-auto">
+    <main className="bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b sticky top-0 z-10">
         <BackButton href="/" />
         <span className="font-semibold text-base">Reports</span>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import BackButton from '../components/BackButton'
+import PageTransition from '../components/PageTransition'
 
 // Placeholder data — will be replaced with Supabase `procurement_items` table
 type Item = {
@@ -58,7 +59,8 @@ export default function ProcurementPage() {
   const pendingTotal = items.filter(i => i.status === 'pending').length
 
   return (
-    <main className="page-slide-in min-h-screen bg-gray-50 w-full mx-auto">
+    <PageTransition>
+    <main className="bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <BackButton href="/" />
@@ -145,5 +147,6 @@ export default function ProcurementPage() {
         </div>
       </div>
     </main>
+    </PageTransition>
   )
 }

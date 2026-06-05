@@ -40,7 +40,7 @@ export default async function IncidentsPage() {
 
   return (
     <PageTransition>
-    <main className="min-h-screen bg-gray-50 w-full mx-auto">
+    <main className="bg-gray-50 w-full mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <BackButton href="/" />
