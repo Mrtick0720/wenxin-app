@@ -94,7 +94,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   function applyTransform(value: string, animate: boolean) {
     const el = stripRef.current
     if (!el) return
-    el.style.transition = animate ? 'transform 0.38s cubic-bezier(0, 0, 0.12, 1)' : 'none'
+    el.style.transition = animate ? 'transform 0.38s cubic-bezier(0.45, 0, 0.55, 1)' : 'none'
     el.style.transform = value
   }
 
@@ -130,31 +130,20 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     isDragging.current = false
     const delta = e.changedTouches[0].clientX - touchStartX.current
     const threshold = getContainerWidth() * 0.22
-    const containerW = getContainerWidth()
 
     if (delta > threshold) {
       navDirection.current = 'prev'
       pendingWeek.current = { weekStart: prevWeekStart, transform: 'translateX(0%)' }
       onDateChange(getRepDate(prevWeekStart))
-      // Ensure at least 55% of total travel is animated (launch from -18% at most)
-      const dragPct = (delta / containerW) * 100 / 3
-      const currentPct = -33.333 + dragPct
-      if (currentPct < -18) {
-        applyTransform('translateX(-18%)', false)
-        stripRef.current?.getBoundingClientRect()
-      }
+      applyTransform('translateX(-33.333%)', false)
+      stripRef.current?.getBoundingClientRect()
       applyTransform('translateX(0%)', true)
     } else if (delta < -threshold) {
       navDirection.current = 'next'
       pendingWeek.current = { weekStart: nextWeekStart, transform: 'translateX(-66.666%)' }
       onDateChange(getRepDate(nextWeekStart))
-      // Ensure at least 55% of total travel is animated (launch from -48% at most)
-      const dragPct = (delta / containerW) * 100 / 3
-      const currentPct = -33.333 + dragPct
-      if (currentPct > -48) {
-        applyTransform('translateX(-48%)', false)
-        stripRef.current?.getBoundingClientRect()
-      }
+      applyTransform('translateX(-33.333%)', false)
+      stripRef.current?.getBoundingClientRect()
       applyTransform('translateX(-66.666%)', true)
     } else {
       applyTransform('translateX(-33.333%)', true)
