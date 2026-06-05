@@ -28,18 +28,33 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const today = todayLocalStr()
   const [viewWeekStart, setViewWeekStart] = useState(() => getMondayOfWeek(selectedDate))
 
-  // Calendar popup
+  // Calendar popup — two states: render + animation
   const [showCalendar, setShowCalendar] = useState(false)
+  const [calendarVisible, setCalendarVisible] = useState(false)
+  const calCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [mounted, setMounted] = useState(false)
   const [calYear, setCalYear] = useState(new Date().getFullYear())
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
   useEffect(() => { setMounted(true) }, [])
-  useEffect(() => {
-    document.body.style.overflow = showCalendar ? 'hidden' : ''
-    document.body.style.position = showCalendar ? 'fixed' : ''
-    document.body.style.width = showCalendar ? '100%' : ''
-    return () => { document.body.style.overflow = ''; document.body.style.position = ''; document.body.style.width = '' }
-  }, [showCalendar])
+
+  function openCalendar() {
+    if (calCloseTimer.current) clearTimeout(calCloseTimer.current)
+    document.body.style.overflow = 'hidden'
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    setShowCalendar(true)
+    requestAnimationFrame(() => requestAnimationFrame(() => setCalendarVisible(true)))
+  }
+
+  function closeCalendar() {
+    setCalendarVisible(false)
+    calCloseTimer.current = setTimeout(() => {
+      setShowCalendar(false)
+      document.body.style.overflow = ''
+      document.body.style.position = ''
+      document.body.style.width = ''
+    }, 320)
+  }
 
   // Strip refs
   const stripRef = useRef<HTMLDivElement>(null)
@@ -49,12 +64,21 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const animRef = useRef<Animation | null>(null)
   const navDirection = useRef<'next' | 'prev'>('next')
   const resetTransformAfterRender = useRef(false)
+  const pendingAnimation = useRef<{ target: string; weekStart: string } | null>(null)
 
-  // After React commits new week content, reset transform before browser paints
+  // After React commits new week content, handle reset or pending animation before paint
   useLayoutEffect(() => {
     if (resetTransformAfterRender.current) {
       resetTransformAfterRender.current = false
       setTransform('translateX(-33.333%)')
+    } else if (pendingAnimation.current) {
+      const { target, weekStart } = pendingAnimation.current
+      pendingAnimation.current = null
+      setTransform('translateX(-33.333%)')
+      animateTransform(target, () => {
+        resetTransformAfterRender.current = true
+        setViewWeekStart(weekStart)
+      })
     }
   }, [viewWeekStart]) // eslint-disable-line
 
@@ -79,12 +103,29 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     }
   }, [viewWeekStart])
 
-  // Sync view when selectedDate changes externally
+  // Sync strip when selectedDate changes externally (calendar pick, TODAY button, etc.)
   useEffect(() => {
     const monday = getMondayOfWeek(selectedDate)
-    if (monday !== viewWeekStart && !isDragging.current && !animRef.current) {
+    if (monday === viewWeekStart || isDragging.current) return
+
+    const isForward = monday > viewWeekStart
+    navDirection.current = isForward ? 'next' : 'prev'
+    const target = isForward ? 'translateX(-66.666%)' : 'translateX(0%)'
+
+    // launchWeek: the week whose *adjacent panel* shows the target week
+    const launchWeek = isForward ? addDays(monday, -7) : addDays(monday, 7)
+
+    if (launchWeek === viewWeekStart) {
+      // Target is adjacent — animate directly like a normal swipe
       setTransform('translateX(-33.333%)')
-      setViewWeekStart(monday)
+      animateTransform(target, () => {
+        resetTransformAfterRender.current = true
+        setViewWeekStart(monday)
+      })
+    } else {
+      // Non-adjacent jump — reposition strip so the target is the next/prev panel, then animate
+      pendingAnimation.current = { target, weekStart: monday }
+      setViewWeekStart(launchWeek)
     }
   }, [selectedDate]) // eslint-disable-line
 
@@ -123,12 +164,10 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
       -containerW  // -33.333% snap-back
 
     const totalDist = Math.abs(targetPx - fromPx)
-    const GLIDE_PX = Math.round(containerW / 7 / 5)  // 1/5 of one day cell
+    const GLIDE_PX = Math.round(containerW / 7 / 5)
     const dir = Math.sign(targetPx - fromPx)
 
-    // Two-phase animation: fast run → sudden stop → slow glide to exact position
-    // Only apply to actual week changes, not snap-back
-    const FAST_RATIO = 0.68  // fast phase uses 68% of total duration
+    const FAST_RATIO = 0.68
     const duration = 430
 
     let keyframes: Keyframe[]
@@ -161,7 +200,6 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     return stripRef.current?.parentElement?.clientWidth ?? 300
   }
 
-  // Representative date in target week: same day-of-week as selectedDate
   function getRepDate(newWeekStart: string): string {
     const d = new Date(selectedDate + 'T00:00:00')
     const idx = d.getDay() === 0 ? 6 : d.getDay() - 1
@@ -216,7 +254,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     const m = String(calMonth + 1).padStart(2, '0')
     const d = String(day).padStart(2, '0')
     onDateChange(`${calYear}-${m}-${d}`)
-    setShowCalendar(false)
+    closeCalendar()
   }
 
   const weeks = [getWeekDays(prevWeekStart), getWeekDays(viewWeekStart), getWeekDays(nextWeekStart)]
@@ -226,13 +264,32 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const firstCalDay = getFirstDayOfMonth(calYear, calMonth)
 
   const calendarModal = showCalendar && (
+    // Backdrop
     <div
-      onClick={() => setShowCalendar(false)}
-      style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', zIndex: 99999 }}
+      onClick={closeCalendar}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        opacity: calendarVisible ? 1 : 0,
+        transition: 'opacity 0.32s',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 24px',
+      }}
     >
+      {/* Calendar card — slides up from below to center */}
       <div
         onClick={e => e.stopPropagation()}
-        style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 16px 40px' }}
+        style={{
+          backgroundColor: '#fff',
+          borderRadius: 24,
+          padding: '20px 16px 28px',
+          width: '100%',
+          maxWidth: 380,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
+          transform: calendarVisible ? 'translateY(0)' : 'translateY(80px)',
+          opacity: calendarVisible ? 1 : 0,
+          transition: 'transform 0.35s cubic-bezier(0.3, 0, 0.1, 1), opacity 0.25s',
+        }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1) } else setCalMonth(calMonth - 1) }}
@@ -270,9 +327,9 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
           })}
         </div>
         <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button onClick={() => { onDateChange(today); setShowCalendar(false) }}
+          <button onClick={() => { onDateChange(today); closeCalendar() }}
             style={{ flex: 1, padding: 12, background: '#60a5fa', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Today</button>
-          <button onClick={() => setShowCalendar(false)}
+          <button onClick={closeCalendar}
             style={{ flex: 1, padding: 12, background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 14, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>取消</button>
         </div>
       </div>
@@ -288,7 +345,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
             const d = new Date(selectedDate + 'T00:00:00')
             setCalYear(d.getFullYear())
             setCalMonth(d.getMonth())
-            setShowCalendar(true)
+            openCalendar()
           }}
           className="flex items-center gap-1.5 active:opacity-60 transition-opacity"
         >

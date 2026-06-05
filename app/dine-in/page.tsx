@@ -26,7 +26,7 @@ export default function DineInPage() {
 
   return (
     <PageTransition>
-    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto">
+    <main className="min-h-screen bg-gray-50 w-full mx-auto">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <Link href="/" className="text-gray-500 text-xl">←</Link>

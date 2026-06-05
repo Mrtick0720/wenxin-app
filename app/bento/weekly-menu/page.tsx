@@ -101,7 +101,7 @@ export default function WeeklyMenuPage() {
   const todayIndex = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1
 
   return (
-    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto">
+    <main className="min-h-screen bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <Link href="/bento" className="text-gray-500 text-xl">←</Link>

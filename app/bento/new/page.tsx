@@ -51,7 +51,7 @@ export default function NewBentoOrder() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto">
+    <main className="min-h-screen bg-gray-50 w-full mx-auto">
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <Link href="/bento" className="text-gray-500 text-xl">←</Link>
         <span className="font-semibold text-base">新增 Bento 订单</span>

@@ -18,7 +18,7 @@ export default async function BentoPage() {
 
   return (
     <PageTransition>
-      <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
+      <main className="min-h-screen bg-gray-50 w-full mx-auto relative">
         <BentoClient initialOrders={orders} />
       </main>
     </PageTransition>

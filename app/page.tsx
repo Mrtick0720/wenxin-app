@@ -58,7 +58,7 @@ export default async function Home() {
 
   return (
     <HomeRefresh>
-    <main className="min-h-screen bg-gray-50 w-full max-w-sm mx-auto relative">
+    <main className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-2">
