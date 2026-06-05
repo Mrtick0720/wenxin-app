@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { toLocalDateStr, addDays } from '@/lib/dateUtils'
 
 const DAYS = ['一', '二', '三', '四', '五', '六', '日']
 const DAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
@@ -24,13 +25,11 @@ function getWeekStart(date: Date): string {
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
   d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
+  return toLocalDateStr(d)
 }
 
 function addWeeks(weekStart: string, n: number): string {
-  const d = new Date(weekStart + 'T00:00:00')
-  d.setDate(d.getDate() + n * 7)
-  return d.toISOString().split('T')[0]
+  return addDays(weekStart, n * 7)
 }
 
 function formatWeekLabel(weekStart: string): string {

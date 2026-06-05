@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { todayLocalStr } from '@/lib/dateUtils'
 import Greeting from './components/Greeting'
 import Link from 'next/link'
 import HomeRefresh from './components/HomeRefresh'

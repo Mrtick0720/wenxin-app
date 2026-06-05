@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
+import { todayLocalStr } from '@/lib/dateUtils'
 import Link from 'next/link'
 import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'

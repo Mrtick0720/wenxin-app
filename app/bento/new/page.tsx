@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { todayLocalStr } from '@/lib/dateUtils'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 

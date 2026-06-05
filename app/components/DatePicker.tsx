@@ -2,23 +2,10 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
 
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 const MONTHS_ZH = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月']
-
-function getMondayOfWeek(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  const day = d.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  d.setDate(d.getDate() + diff)
-  return d.toISOString().split('T')[0]
-}
-
-function addDays(dateStr: string, n: number): string {
-  const d = new Date(dateStr + 'T00:00:00')
-  d.setDate(d.getDate() + n)
-  return d.toISOString().split('T')[0]
-}
 
 function getWeekDays(mondayStr: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(mondayStr, i))
@@ -39,7 +26,7 @@ interface DatePickerProps {
 }
 
 export default function DatePicker({ selectedDate, onDateChange, isLoading = false }: DatePickerProps) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const [viewWeekStart, setViewWeekStart] = useState(() => getMondayOfWeek(selectedDate))
 
   // ── Calendar popup ────────────────────────────────────────────
