@@ -23,6 +23,11 @@ function getWeekDays(mondayStr: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(mondayStr, i))
 }
 
+function getMonthKey(weekStart: string) {
+  const d = new Date(getWeekDays(weekStart)[3] + 'T00:00:00')
+  return { key: `${d.getFullYear()}-${d.getMonth()}`, label: MONTHS_ZH[d.getMonth()], year: d.getFullYear() }
+}
+
 interface DatePickerProps {
   selectedDate: string
   onDateChange: (date: string) => void
@@ -39,21 +44,27 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
   const pendingWeek = useRef<string | null>(null)
   const navDirection = useRef<'next' | 'prev'>('next')
 
-  // Month flip animation: track when month/year changes
-  const refD = new Date(getWeekDays(viewWeekStart)[3] + 'T00:00:00')
-  const monthLabel = MONTHS_ZH[refD.getMonth()]
-  const yearLabel = refD.getFullYear()
-  const monthKey = `${refD.getFullYear()}-${refD.getMonth()}`
+  // Month animation state
+  const initialMonthInfo = getMonthKey(getMondayOfWeek(selectedDate))
+  const [displayMonth, setDisplayMonth] = useState({ label: initialMonthInfo.label, year: initialMonthInfo.year })
+  const [exitMonth, setExitMonth] = useState<{ label: string; year: number } | null>(null)
+  const [animDir, setAnimDir] = useState<'next' | 'prev'>('next')
+  const prevMonthKeyRef = useRef(initialMonthInfo.key)
+  const prevMonthDataRef = useRef({ label: initialMonthInfo.label, year: initialMonthInfo.year })
 
-  const [displayedMonthKey, setDisplayedMonthKey] = useState(monthKey)
-  const [flipClass, setFlipClass] = useState('')
-
+  // Detect month change when viewWeekStart changes
   useEffect(() => {
-    if (monthKey !== displayedMonthKey) {
-      setFlipClass(navDirection.current === 'next' ? 'month-flip-next' : 'month-flip-prev')
-      setDisplayedMonthKey(monthKey)
+    const { key, label, year } = getMonthKey(viewWeekStart)
+    if (key !== prevMonthKeyRef.current) {
+      setExitMonth({ ...prevMonthDataRef.current })
+      setDisplayMonth({ label, year })
+      setAnimDir(navDirection.current)
+      prevMonthKeyRef.current = key
+      prevMonthDataRef.current = { label, year }
+      const t = setTimeout(() => setExitMonth(null), 320)
+      return () => clearTimeout(t)
     }
-  }, [monthKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [viewWeekStart])
 
   // Sync view when selectedDate jumps to a different week externally
   useEffect(() => {
@@ -139,10 +150,13 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
     getWeekDays(nextWeekStart),
   ]
 
+  const exitClass = animDir === 'next' ? 'month-exit-up' : 'month-exit-down'
+  const enterClass = animDir === 'next' ? 'month-enter-up' : 'month-enter-down'
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      {/* Header: centered month label, no arrows */}
+      <div className="flex justify-center mb-3">
         <div className="flex items-center gap-1.5">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="4" width="18" height="18" rx="2"/>
@@ -150,23 +164,17 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          {/* key triggers re-mount → CSS animation fires */}
-          <span
-            key={displayedMonthKey}
-            className={`text-sm font-semibold text-gray-700 ${flipClass}`}
-          >
-            {monthLabel} {yearLabel}
-          </span>
-        </div>
-        <div className="flex gap-1">
-          <button
-            onClick={() => navigate('prev')}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-base leading-none"
-          >‹</button>
-          <button
-            onClick={() => navigate('next')}
-            className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 text-gray-500 text-base leading-none"
-          >›</button>
+          {/* Overflow-hidden container clips the sliding labels */}
+          <div style={{ position: 'relative', overflow: 'hidden', height: '1.25rem', minWidth: '5rem' }} className="flex items-center">
+            {exitMonth && (
+              <span key={`exit-${exitMonth.label}-${exitMonth.year}`} className={`text-sm font-semibold text-gray-700 ${exitClass}`}>
+                {exitMonth.label} {exitMonth.year}
+              </span>
+            )}
+            <span key={`enter-${displayMonth.label}-${displayMonth.year}`} className={`text-sm font-semibold text-gray-700 ${enterClass}`}>
+              {displayMonth.label} {displayMonth.year}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -177,7 +185,7 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
         ))}
       </div>
 
-      {/* Sliding strip */}
+      {/* Sliding week strip */}
       <div className="overflow-hidden">
         <div
           ref={stripRef}

@@ -37,20 +37,24 @@ body {
   animation: slideOutRight 0.25s ease-in forwards;
 }
 
-/* Month label flip animations */
-@keyframes month-flip-next {
-  from { transform: perspective(300px) rotateX(-90deg); opacity: 0; }
-  to   { transform: perspective(300px) rotateX(0deg);   opacity: 1; }
+/* Month slide animations — next: old goes up, new comes from below; prev: reversed */
+@keyframes month-exit-up {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(-130%); opacity: 0; }
 }
-@keyframes month-flip-prev {
-  from { transform: perspective(300px) rotateX(90deg);  opacity: 0; }
-  to   { transform: perspective(300px) rotateX(0deg);   opacity: 1; }
+@keyframes month-enter-up {
+  from { transform: translateY(130%);  opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
 }
-.month-flip-next {
-  display: inline-block;
-  animation: month-flip-next 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+@keyframes month-exit-down {
+  from { transform: translateY(0);     opacity: 1; }
+  to   { transform: translateY(130%);  opacity: 0; }
 }
-.month-flip-prev {
-  display: inline-block;
-  animation: month-flip-prev 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+@keyframes month-enter-down {
+  from { transform: translateY(-130%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
 }
+.month-exit-up   { position: absolute; white-space: nowrap; animation: month-exit-up   0.26s ease-in  forwards; }
+.month-enter-up  { display: inline-block;                   animation: month-enter-up  0.26s ease-out forwards; }
+.month-exit-down { position: absolute; white-space: nowrap; animation: month-exit-down 0.26s ease-in  forwards; }
+.month-enter-down{ display: inline-block;                   animation: month-enter-down 0.26s ease-out forwards; }

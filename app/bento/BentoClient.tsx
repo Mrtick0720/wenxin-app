@@ -241,18 +241,19 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           ))}
         </div>
 
-        {/* TODAY button — 浮于内容底部，不在日历卡片内 */}
-        {selectedDate !== today && (
-          <div className="flex justify-center pt-6 pb-2">
-            <button
-              onClick={() => handleDateChange(today)}
-              className="px-10 py-2 bg-blue-400 text-white text-sm font-semibold rounded-full shadow-md"
-            >
-              TODAY
-            </button>
-          </div>
-        )}
       </div>
+
+      {/* TODAY button — fixed at bottom, unaffected by content changes */}
+      {selectedDate !== today && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <button
+            onClick={() => handleDateChange(today)}
+            className="px-10 py-2.5 bg-blue-400 text-white text-sm font-semibold rounded-full shadow-lg"
+          >
+            TODAY
+          </button>
+        </div>
+      )}
     </>
   )
 }
