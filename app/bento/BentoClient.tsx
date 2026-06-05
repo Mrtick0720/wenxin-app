@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
-import { getBentoCloseGestureAxis, getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldMoveBentoPanelDuringClose, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
+import { getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
@@ -224,13 +224,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       axis = null; tracking = false; mode = null
 
       if (panelIsOpen.current) {
-        // If touch starts inside the scrollable order list, let the browser
-        // handle it natively — avoids Android passive:false deadlock that
-        // kills vertical scrolling when the thumb has any horizontal drift.
-        const scrollEl = scrollAreaRef.current
-        if (scrollEl && e.target instanceof Node && scrollEl.contains(e.target)) {
-          return
-        }
         tracking = true; mode = 'close'
         return
       }
@@ -244,15 +237,25 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (!tracking) return
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
+
+      // ── Detail panel is open: only intercept clear right-swipes ──
+      // Anything else (vertical scroll, diagonal, left-swipe) passes through
+      // so the browser handles native scroll without deadlock.
+      if (mode === 'close') {
+        if (dx > 30 && dx > Math.abs(dy) * 3) {
+          e.preventDefault()
+          const el = panelRef.current
+          if (el) el.style.transform = `translateX(${dx}px)`
+        }
+        return
+      }
+
       if (!axis) {
-        axis = mode === 'close'
-          ? getBentoCloseGestureAxis({ dx, dy })
-          : getBentoGestureAxis({ dx, dy })
+        axis = getBentoGestureAxis({ dx, dy })
       }
       if (!axis) return
 
       if (axis === 'v') {
-        if (mode === 'close') return
         e.preventDefault()
         setMainPullOffset(getBentoPullState({ dy, threshold: pullRefreshThreshold }).offset)
         return
@@ -264,9 +267,6 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       if (mode === 'open' && dx < 0) {
         e.preventDefault()
         if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
-      } else if (mode === 'close' && shouldMoveBentoPanelDuringClose({ axis, dx })) {
-        e.preventDefault()
-        if (el) el.style.transform = `translateX(${Math.max(0, dx)}px)`
       }
     }
 
@@ -277,7 +277,18 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       const dx = e.changedTouches[0].clientX - sx
       const dy = e.changedTouches[0].clientY - sy
 
-      if (axis === 'v' && mode !== 'close') {
+      // ── Detail panel close gesture ──
+      if (mode === 'close') {
+        const threshold = getBentoSwipeThreshold(window.innerWidth)
+        if (dx > threshold) {
+          closePanel()
+        } else {
+          animatePanel(0)
+        }
+        return
+      }
+
+      if (axis === 'v') {
         finishMainPull(dy)
         return
       }
@@ -287,13 +298,11 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         dx,
         dy,
         threshold: getBentoSwipeThreshold(window.innerWidth),
-        mode: mode === 'close' ? 'close' : 'open',
+        mode: 'open',
       })
 
       if (action === 'open') openPanel()
       else if (action === 'reset-closed') animatePanel(window.innerWidth)
-      else if (action === 'close') closePanel()
-      else if (action === 'reset-open') animatePanel(0)
     }
 
     document.addEventListener('touchstart', onStart, { passive: true })
@@ -454,13 +463,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
       {/* Detail Panel */}
       <div
         ref={setPanelRef}
-        className="fixed inset-0 bg-white grid"
+        className="fixed inset-0 bg-white"
         style={{
           zIndex: 20,
-          height: '100dvh',
-          maxHeight: '100dvh',
+          display: 'flex',
+          flexDirection: 'column',
           overflow: 'hidden',
-          gridTemplateRows: 'auto auto auto minmax(0, 1fr)',
         }}
       >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
@@ -482,7 +490,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </span>
         </div>
 
-        <div ref={scrollAreaRef} data-scroll className="min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+        <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 space-y-3" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {fetching && <div className="text-center text-gray-400 py-4">Loading...</div>}
           {!fetching && filtered.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
           {!fetching && filtered.map((order) => {
