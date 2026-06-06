@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 文心管理 App
 
-## Getting Started
+Internal restaurant operations PWA for **文心砂锅 (Wenxin Claypot Restaurant)**, Kota Kinabalu, Malaysia.
 
-First, run the development server:
+**Stack:** Next.js 16 (App Router) · TypeScript · Tailwind CSS v4 · Supabase · Vercel
+
+---
+
+## What it does
+
+A mobile-first management dashboard for the restaurant owner and staff:
+
+- **Home dashboard** — today's revenue, bento status, incidents, pending tasks
+- **Purchase management** — daily procurement checklist with item detail editing
+- **Bento orders** — weekly calendar view, order status, production & delivery
+- **Staff schedule** — shift board and attendance
+- **Finance / Inventory / Reports / Reservations / Complaints / Incidents / Tasks**
+
+---
+
+## Navigation System
+
+The app uses a custom **iOS-style client navigation stack** — pages slide in/out like native iOS, with no white flash and no page rebuilds on back navigation.
+
+- Forward: new page slides in from right, previous page stays alive underneath
+- Back: current page slides out, previous page immediately revealed
+- Edge swipe: drag from left edge to go back (follow-finger gesture)
+
+See `CLAUDE.md` for full technical details on the navigation architecture.
+
+---
+
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Environment variables** (`.env.local`):
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Deployment
 
-## Learn More
+Auto-deploys to Vercel on push to `main`. No manual steps required.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## For AI Assistants
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Read `CLAUDE.md` before making any changes (Claude Code)
+- Read `AGENTS.md` before making any changes (Codex / ChatGPT)
