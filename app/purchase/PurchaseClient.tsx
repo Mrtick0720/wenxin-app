@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
 import { supabase } from '@/lib/supabase'
 import { todayLocalStr } from '@/lib/dateUtils'
 import BackButton from '../components/BackButton'
-import Link from 'next/link'
+import { useNavigation } from '../components/NavigationStack'
+
+const DetailClient = lazy(() => import('./[id]/DetailClient'))
 
 export type PurchaseItem = {
   id: number
@@ -290,9 +292,10 @@ function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onR
 type Filter = 'all' | 'pending' | 'done'
 
 export default function PurchaseClient({ initialItems, initialDate }: { initialItems: PurchaseItem[]; initialDate: string }) {
+  const { push } = useNavigation()
   const [items, setItems] = useState(initialItems)
   const [selectedDate, setSelectedDate] = useState(initialDate)
-  const [fetching, setFetching] = useState(false)
+  const [fetching, setFetching] = useState(initialItems.length === 0)
   const [toggling, setToggling] = useState<number | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const cache = useRef<Record<string, PurchaseItem[]>>({ [initialDate]: initialItems })
@@ -364,6 +367,13 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
     const { data } = await supabase.from('purchase_items').select('*').eq('date', date).order('id', { ascending: true })
     const result = (data || []) as PurchaseItem[]; cache.current[date] = result; return result
   }, [])
+
+  // Self-fetch when rendered via navigation stack (initialItems will be empty)
+  useEffect(() => {
+    if (initialItems.length === 0) {
+      fetchDate(initialDate).then(data => { setItems(data); setFetching(false) })
+    }
+  }, []) // eslint-disable-line
 
   const doRefresh = useCallback(async () => { setItems(await fetchDate(selectedDate)) }, [fetchDate, selectedDate])
   const { pullDist, refreshing, THRESHOLD } = usePullToRefresh(scrollRef, doRefresh)
@@ -461,7 +471,8 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
         )}
         {!fetching && displayItems.map((item, idx) => (
           <ItemRow key={item.id} item={item} isLast={idx === displayItems.length - 1}
-            toggling={toggling === item.id} onToggle={() => toggleComplete(item)} />
+            toggling={toggling === item.id} onToggle={() => toggleComplete(item)}
+            onDetail={() => push(`/purchase/${item.id}`, <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />}><DetailClient itemId={item.id} /></Suspense>)} />
         ))}
       </div>
 
@@ -530,7 +541,7 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
   )
 }
 
-function ItemRow({ item, isLast, toggling, onToggle }: { item: PurchaseItem; isLast: boolean; toggling: boolean; onToggle: () => void }) {
+function ItemRow({ item, isLast, toggling, onToggle, onDetail }: { item: PurchaseItem; isLast: boolean; toggling: boolean; onToggle: () => void; onDetail: () => void }) {
   const done = item.status === 'completed'
   const catColor = getCatColor(item.category)
   return (
@@ -540,7 +551,7 @@ function ItemRow({ item, isLast, toggling, onToggle }: { item: PurchaseItem; isL
         style={{ borderColor: done ? '#9ca3af' : catColor, background: done ? '#9ca3af' : 'transparent', color: '#fff', opacity: toggling ? 0.5 : 1 }}>
         {done && <CheckIcon />}
       </button>
-      <Link href={`/purchase/${item.id}`} className="flex-1 min-w-0">
+      <button onClick={onDetail} className="flex-1 min-w-0 text-left">
         <div className="flex items-center justify-between gap-2">
           <span className="font-medium text-sm truncate" style={{ color: done ? '#9ca3af' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>{item.name}</span>
           <span className="text-sm font-semibold flex-shrink-0" style={{ color: done ? '#9ca3af' : '#111827' }}>
@@ -550,7 +561,7 @@ function ItemRow({ item, isLast, toggling, onToggle }: { item: PurchaseItem; isL
         <div className="text-xs text-gray-400 mt-0.5">
           {(item.unit_price ?? 0) > 0 ? `RM${item.unit_price}/${item.unit}` : '—'} · {(item.quantity ?? 0) > 0 ? `${item.quantity} ${item.unit}` : '—'}
         </div>
-      </Link>
+      </button>
     </div>
   )
 }

@@ -1,7 +1,7 @@
 'use client'
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { useNavigation } from './NavigationStack'
+import { getPageElement } from '@/app/lib/stackRoutes'
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -55,14 +55,25 @@ const tabs = [
 ]
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
-  const pathname = usePathname()
+  const { push, reset, currentPath } = useNavigation()
+
+  const handleTap = (e: React.MouseEvent, href: string) => {
+    e.preventDefault()
+    if (href === '/') {
+      reset()
+      return
+    }
+    const el = getPageElement(href)
+    if (el) push(href, el)
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-40">
       {tabs.map(({ href, label, Icon, badge }) => {
-        const active = pathname === href
+        const active = currentPath === href
         return (
-          <Link key={label} href={href} className="flex-1 flex flex-col items-center justify-center relative py-1">
+          <a key={label} href={href} onClick={e => handleTap(e, href)}
+            className="flex-1 flex flex-col items-center justify-center relative py-1">
             <Icon active={active} />
             <span className={`text-xs mt-0.5 ${active ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>
               {label}
@@ -72,7 +83,7 @@ export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number 
                 {pendingCount}
               </span>
             )}
-          </Link>
+          </a>
         )
       })}
     </div>

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import Link from 'next/link'
+import NavLink from './components/NavLink'
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
 
@@ -120,7 +120,7 @@ export default async function Home() {
 
       <div className="px-4 pt-4 pb-28 space-y-4">
         {/* ═══ Revenue Hero Card — first visual priority ═══ */}
-        <Link href="/reports" className="block">
+        <NavLink href="/reports" className="block">
           <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
@@ -130,50 +130,50 @@ export default async function Home() {
             <span className="text-green-500 font-medium">↑ 12%</span>
             <span>vs yesterday</span>
           </div>
-        </Link>
+        </NavLink>
 
         {/* ═══ Core Business Cards — performance data only, no status ═══ */}
         <div className="grid grid-cols-2 gap-2">
-          <Link href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
+          <NavLink href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
             <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
             <div className="mt-2 space-y-0.5">
               <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
               <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
             </div>
-          </Link>
-          <Link href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
+          </NavLink>
+          <NavLink href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold text-gray-900 mb-2">Bento</div>
             <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
             <div className="mt-2 space-y-0.5">
               <div className="text-xs text-gray-400 whitespace-nowrap">{bentoOrders} Orders</div>
               <div className="text-xs whitespace-nowrap text-orange-500">{bentoPercent}% Done</div>
             </div>
-          </Link>
+          </NavLink>
         </div>
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-4 gap-1.5">
-          <Link href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          <NavLink href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Booking</div>
             <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
             <div className="text-[11px] text-gray-400 mt-0.5 truncate">Today</div>
-          </Link>
-          <Link href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          </NavLink>
+          <NavLink href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Complaint</div>
             <div className="text-lg font-bold text-red-500">{complaintCount}</div>
             <div className="text-[11px] text-red-400 mt-0.5 truncate">! Urgent</div>
-          </Link>
-          <Link href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          </NavLink>
+          <NavLink href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Incident</div>
             <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
             <div className="text-[11px] text-gray-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
-          </Link>
-          <Link href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          </NavLink>
+          <NavLink href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Pending</div>
             <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
             <div className="text-[11px] text-amber-400 mt-0.5 truncate">{pendingCount > 0 ? 'Overdue' : 'Clear'}</div>
-          </Link>
+          </NavLink>
         </div>
 
         {/* ═══ Today's Issues — Low Stock + Attendance only (Complaints shown in Alert Cards above) ═══ */}
@@ -187,20 +187,20 @@ export default async function Home() {
           ) : (
             <div className="space-y-2">
               {issues.map((issue, i) => (
-                <Link key={i} href={issue.link} className="flex items-center gap-2.5 py-1.5 border-b border-gray-50 last:border-0">
+                <NavLink key={i} href={issue.link} className="flex items-center gap-2.5 py-1.5 border-b border-gray-50 last:border-0">
                   <span className="text-xs font-medium text-gray-700 flex-1">{issue.type}</span>
                   <span className="text-xs text-gray-400">{issue.detail}</span>
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="9 18 15 12 9 6"/>
                   </svg>
-                </Link>
+                </NavLink>
               ))}
             </div>
           )}
         </div>
 
         {/* ═══ Shift Board — today's staffing ═══ */}
-        <Link href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
+        <NavLink href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-gray-800">Shift Board</span>
             <span className="text-xs text-orange-500">→</span>
@@ -213,7 +213,7 @@ export default async function Home() {
             <span className="text-gray-300">·</span>
             <span>10:00–20:00</span>
           </div>
-        </Link>
+        </NavLink>
 
         {/* ═══ Quick Access — low-frequency but essential ═══ */}
         <div>
@@ -225,9 +225,9 @@ export default async function Home() {
               { href: '/inventory',   label: 'Inventory' },
               { href: '/finance',     label: 'Finance' },
             ].map(({ href, label }) => (
-              <Link key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
+              <NavLink key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
                 <div className="text-xs font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{label}</div>
-              </Link>
+              </NavLink>
             ))}</div>
         </div>
       </div>

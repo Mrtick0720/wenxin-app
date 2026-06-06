@@ -188,7 +188,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
     prefetchAdjacent(date)
   }
 
-  useEffect(() => { prefetchAdjacent(today) }, []) // eslint-disable-line
+  // Self-fetch today's orders when rendered via navigation stack (initialOrders will be empty)
+  useEffect(() => {
+    if (initialOrders.length === 0) {
+      fetchDate(today).then(data => { setOrders(data); cache.current[today] = data })
+    }
+    prefetchAdjacent(today)
+  }, []) // eslint-disable-line
 
   const refreshSelectedDate = useCallback(async () => {
     if (refreshing) return

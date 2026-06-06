@@ -68,10 +68,10 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-export default function DetailClient() {
+export default function DetailClient({ itemId }: { itemId?: number }) {
   const params = useParams()
   const router = useRouter()
-  const id = params?.id as string
+  const id = itemId ? String(itemId) : params?.id as string
 
   const [item, setItem] = useState<PurchaseItem | null>(null)
   const [loading, setLoading] = useState(true)

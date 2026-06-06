@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase'
@@ -21,6 +21,7 @@ type Customer = {
   used_portions: number
   note: string
   active: boolean
+  cancelled_dates: string[]
 }
 
 type Order = {
@@ -41,18 +42,48 @@ const SUB_COLORS: Record<string, { color: string; bg: string }> = {
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-function getEndDate(startDate: string, subType: string, totalPortions: number): string | null {
-  if (!startDate || totalPortions <= 0) return null
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+}
+
+function isWeekend(dateStr: string): boolean {
+  const d = new Date(dateStr + 'T00:00:00')
+  return d.getDay() === 0 || d.getDay() === 6
+}
+
+// Compute scheduled workday dates: skip weekends + cancelled days
+function computeSchedule(startDate: string, totalPortions: number, cancelledDates: string[]): string[] {
+  if (!startDate || totalPortions <= 0) return []
+  const cancelled = new Set(cancelledDates)
+  const scheduled: string[] = []
   const d = new Date(startDate + 'T00:00:00')
-  if (subType === 'weekly') {
-    d.setDate(d.getDate() + Math.ceil(totalPortions / 5) * 7)
-  } else if (subType === 'monthly') {
-    const months = Math.ceil(totalPortions / 22)
-    d.setMonth(d.getMonth() + months)
-  } else {
-    d.setDate(d.getDate() + totalPortions)
+  let safety = 0
+  while (scheduled.length < totalPortions && safety < 500) {
+    safety++
+    const ds = toDateStr(d)
+    const dow = d.getDay()
+    if (dow !== 0 && dow !== 6 && !cancelled.has(ds)) {
+      scheduled.push(ds)
+    }
+    d.setDate(d.getDate() + 1)
   }
-  return d.toISOString().split('T')[0]
+  return scheduled
+}
+
+// Next workday after endDate (to find the replacement day when cancelling)
+function nextWorkday(afterDate: string, cancelledDates: string[]): string {
+  const cancelled = new Set(cancelledDates)
+  const d = new Date(afterDate + 'T00:00:00')
+  d.setDate(d.getDate() + 1)
+  let safety = 0
+  while (safety < 60) {
+    safety++
+    const dow = d.getDay()
+    const ds = toDateStr(d)
+    if (dow !== 0 && dow !== 6 && !cancelled.has(ds)) return ds
+    d.setDate(d.getDate() + 1)
+  }
+  return afterDate
 }
 
 function formatDate(dateStr: string) {
@@ -62,55 +93,52 @@ function formatDate(dateStr: string) {
 
 export default function CustomerDetailPage() {
   const params = useParams()
-  const router = useRouter()
   const id = params.id as string
+
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [calYear, setCalYear] = useState(new Date().getFullYear())
   const [calMonth, setCalMonth] = useState(new Date().getMonth())
-  const [editing, setEditing] = useState(false)
-  const [usedEdit, setUsedEdit] = useState('')
-  const [saving, setSaving] = useState(false)
+  const [toggling, setToggling] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [custRes, ordersRes] = await Promise.all([
-      supabase.from('bento_customers').select('*').eq('id', id).single(),
-      supabase.from('bento_orders').select('id,date,menu_type,quantity,status,amount')
-        .ilike('customer_name', `%${id}%`).order('date', { ascending: false }),
-    ])
-    const cust = custRes.data as Customer
-    setCustomer(cust)
+    const { data: cust } = await supabase.from('bento_customers').select('*').eq('id', id).single()
     if (cust) {
-      // Match orders by customer name
-      const { data: nameOrders } = await supabase
-        .from('bento_orders')
-        .select('id,date,menu_type,quantity,status,amount')
-        .ilike('customer_name', cust.name)
-        .order('date', { ascending: false })
-      setOrders((nameOrders || []) as Order[])
-      setUsedEdit(String(cust.used_portions))
-      if (cust.start_date) {
-        const d = new Date(cust.start_date + 'T00:00:00')
+      const c = cust as Customer
+      c.cancelled_dates = Array.isArray(c.cancelled_dates) ? c.cancelled_dates : []
+      setCustomer(c)
+      if (c.start_date) {
+        const d = new Date(c.start_date + 'T00:00:00')
         setCalYear(d.getFullYear())
         setCalMonth(d.getMonth())
       }
+      const { data: nameOrders } = await supabase
+        .from('bento_orders')
+        .select('id,date,menu_type,quantity,status,amount')
+        .ilike('customer_name', c.name)
+        .order('date', { ascending: false })
+      setOrders((nameOrders || []) as Order[])
     }
     setLoading(false)
-    void ordersRes
   }, [id])
 
   useEffect(() => { loadData() }, [loadData])
 
-  async function updateUsed() {
-    if (!customer) return
-    setSaving(true)
-    const used = parseInt(usedEdit) || 0
-    await supabase.from('bento_customers').update({ used_portions: used }).eq('id', id)
-    setCustomer(c => c ? { ...c, used_portions: used } : c)
-    setEditing(false)
-    setSaving(false)
+  async function toggleCancelDate(dateStr: string) {
+    if (!customer || toggling) return
+    setToggling(dateStr)
+    const cancelled = [...customer.cancelled_dates]
+    const idx = cancelled.indexOf(dateStr)
+    if (idx >= 0) {
+      cancelled.splice(idx, 1) // un-cancel
+    } else {
+      cancelled.push(dateStr) // cancel
+    }
+    await supabase.from('bento_customers').update({ cancelled_dates: cancelled }).eq('id', id)
+    setCustomer(c => c ? { ...c, cancelled_dates: cancelled } : c)
+    setToggling(null)
   }
 
   async function toggleActive() {
@@ -133,33 +161,34 @@ export default function CustomerDetailPage() {
   )
 
   const colors = SUB_COLORS[customer.subscription_type] ?? SUB_COLORS.monthly
-  const remaining = customer.total_portions - customer.used_portions
-  const pct = customer.total_portions > 0 ? Math.round((customer.used_portions / customer.total_portions) * 100) : 0
-  const endDate = getEndDate(customer.start_date, customer.subscription_type, customer.total_portions)
-
-  // Calendar: order dates set
+  const cancelledSet = new Set(customer.cancelled_dates)
+  const scheduledDates = computeSchedule(customer.start_date, customer.total_portions, customer.cancelled_dates)
+  const scheduledSet = new Set(scheduledDates)
+  const endDate = scheduledDates.length > 0 ? scheduledDates[scheduledDates.length - 1] : null
   const orderDates = new Set(orders.map(o => o.date))
+  const completedDates = new Set(orders.filter(o => o.status === 'completed').map(o => o.date))
+  const remaining = scheduledDates.filter(d => !completedDates.has(d)).length
+  const used = scheduledDates.filter(d => completedDates.has(d)).length
+  const pct = customer.total_portions > 0 ? Math.round((used / customer.total_portions) * 100) : 0
 
-  // Calendar rendering
+  // Calendar
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
   const firstDay = new Date(calYear, calMonth, 1).getDay()
-  const startDateStr = customer.start_date
-  const endDateStr = endDate
+  const today = new Date().toISOString().split('T')[0]
 
   return (
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+      {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <BackButton href="/bento/customers" />
           <div>
             <span className="font-semibold text-base">{customer.name}</span>
-            <span className="ml-2 text-xs font-mono text-gray-400">C{String(customer.id).padStart(3, '0')}</span>
+            <span className="ml-2 text-xs font-mono text-gray-400">C{String(customer.id).padStart(3,'0')}</span>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/bento/customers/${id}/edit`} className="text-xs px-3 py-1 rounded-full border font-medium text-orange-500 border-orange-200 bg-orange-50">
-            Edit
-          </Link>
+          <Link href={`/bento/customers/${id}/edit`} className="text-xs px-3 py-1 rounded-full border font-medium text-orange-500 border-orange-200 bg-orange-50">Edit</Link>
           <button onClick={toggleActive} className={`text-xs px-3 py-1 rounded-full border font-medium ${customer.active ? 'text-green-500 border-green-200 bg-green-50' : 'text-gray-400 border-gray-200 bg-gray-50'}`}>
             {customer.active ? 'Active' : 'Inactive'}
           </button>
@@ -167,11 +196,12 @@ export default function CustomerDetailPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Profile card */}
+
+        {/* Profile */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <div className="text-lg font-bold text-gray-900">{customer.name}</div>
+              <div className="text-base font-bold text-gray-900">{customer.name}</div>
               {customer.phone && <div className="text-sm text-gray-400 mt-0.5">📞 {customer.phone}</div>}
             </div>
             <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: colors.bg, color: colors.color }}>
@@ -180,13 +210,13 @@ export default function CustomerDetailPage() {
           </div>
           <div className="space-y-1.5 text-sm">
             <div className="flex items-center gap-2">
-              <span className="text-gray-400">{customer.delivery_method === 'delivery' ? '🚚' : '🏪'}</span>
+              <span>{customer.delivery_method === 'delivery' ? '🚚' : '🏪'}</span>
               <span className="text-gray-600">{customer.delivery_method === 'delivery' ? `Delivery${customer.area ? ` · ${customer.area}` : ''}` : 'Pickup'}</span>
             </div>
             {customer.delivery_address && <div className="text-gray-400 text-xs ml-6">{customer.delivery_address}</div>}
-            {customer.menu_preference && <div className="flex items-center gap-2"><span className="text-gray-400">🍱</span><span className="text-gray-600">{customer.menu_preference}</span></div>}
+            {customer.menu_preference && <div className="flex items-center gap-2"><span>🍱</span><span className="text-gray-600">{customer.menu_preference}</span></div>}
             {customer.taste_notes && (
-              <div className="flex items-start gap-2 bg-orange-50 rounded-xl px-3 py-2 mt-2">
+              <div className="flex items-start gap-2 bg-orange-50 rounded-xl px-3 py-2 mt-1">
                 <span>📝</span>
                 <span className="text-orange-600 text-sm">{customer.taste_notes}</span>
               </div>
@@ -196,13 +226,9 @@ export default function CustomerDetailPage() {
         </div>
 
         {/* Subscription tracker */}
-        {customer.total_portions > 0 && (
+        {customer.total_portions > 0 && customer.start_date && (
           <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-gray-700">Subscription</span>
-              <button onClick={() => setEditing(e => !e)} className="text-xs text-orange-500">Edit used</button>
-            </div>
-
+            <div className="text-sm font-semibold text-gray-700 mb-3">Subscription Progress</div>
             <div className="flex items-center gap-4 mb-3">
               <div className="text-center">
                 <div className="text-2xl font-bold" style={{ color: colors.color }}>{remaining}</div>
@@ -210,7 +236,7 @@ export default function CustomerDetailPage() {
               </div>
               <div className="flex-1">
                 <div className="flex justify-between text-xs text-gray-400 mb-1">
-                  <span>{customer.used_portions} used</span>
+                  <span>{used} delivered</span>
                   <span>{customer.total_portions} total</span>
                 </div>
                 <div className="w-full bg-gray-100 rounded-full h-2">
@@ -218,82 +244,112 @@ export default function CustomerDetailPage() {
                 </div>
               </div>
             </div>
-
-            {editing && (
-              <div className="flex items-center gap-2 mb-3">
-                <input type="number" className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
-                  value={usedEdit} onChange={e => setUsedEdit(e.target.value)} />
-                <button onClick={updateUsed} disabled={saving} className="bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-medium">
-                  {saving ? '...' : 'Save'}
-                </button>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="bg-gray-50 rounded-xl px-3 py-2">
+                <div className="text-gray-400 mb-0.5">Start</div>
+                <div className="font-medium text-gray-700">{formatDate(customer.start_date)}</div>
               </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-              {customer.start_date && (
-                <div className="bg-gray-50 rounded-xl px-3 py-2">
-                  <div className="text-gray-400 mb-0.5">Start</div>
-                  <div className="font-medium text-gray-700">{formatDate(customer.start_date)}</div>
-                </div>
-              )}
-              {endDateStr && (
+              {endDate && (
                 <div className="bg-gray-50 rounded-xl px-3 py-2">
                   <div className="text-gray-400 mb-0.5">Est. End</div>
-                  <div className={`font-medium ${new Date(endDateStr) < new Date() ? 'text-red-500' : 'text-gray-700'}`}>{formatDate(endDateStr)}</div>
+                  <div className={`font-medium ${new Date(endDate) < new Date(today) ? 'text-red-500' : 'text-gray-700'}`}>{formatDate(endDate)}</div>
+                </div>
+              )}
+              {customer.cancelled_dates.length > 0 && (
+                <div className="bg-red-50 rounded-xl px-3 py-2">
+                  <div className="text-red-400 mb-0.5">Skipped</div>
+                  <div className="font-medium text-red-500">{customer.cancelled_dates.length} days</div>
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* Calendar */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else setCalMonth(m => m - 1) }}
-              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">‹</button>
-            <span className="text-sm font-semibold text-gray-800">{MONTHS[calMonth]} {calYear}</span>
-            <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }}
-              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">›</button>
-          </div>
-          <div className="grid grid-cols-7 mb-1">
-            {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
-              <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const day = i + 1
-              const dateStr = `${calYear}-${String(calMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-              const hasOrder = orderDates.has(dateStr)
-              const isStart = dateStr === startDateStr
-              const isEnd = dateStr === endDateStr
-              const today = new Date().toISOString().split('T')[0]
-              const isToday = dateStr === today
-              return (
-                <div key={day} className="flex justify-center py-0.5">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm relative
-                    ${isStart || isEnd ? 'ring-2' : ''}
-                    ${hasOrder ? 'font-bold' : ''}`}
-                    style={{
-                      background: hasOrder ? colors.color : isToday ? '#f3f4f6' : 'transparent',
-                      color: hasOrder ? '#fff' : isToday ? colors.color : '#374151',
-                      outline: (isStart || isEnd) ? `2px solid ${colors.color}` : undefined,
-                    }}>
-                    {day}
-                    {(isStart || isEnd) && !hasOrder && (
-                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: colors.color }} />
-                    )}
+        {/* Schedule calendar */}
+        {customer.start_date && customer.total_portions > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-semibold text-gray-700">Schedule</div>
+              <div className="text-xs text-gray-400">Tap a day to cancel / restore</div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-3 text-xs text-gray-400 mb-3">
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{ background: colors.color }}/> Scheduled</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-green-400"/> Done</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-gray-200 flex items-center justify-center text-[8px]">×</div> Cancelled</div>
+            </div>
+
+            {/* Month nav */}
+            <div className="flex items-center justify-between mb-2">
+              <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y-1) } else setCalMonth(m => m-1) }}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">‹</button>
+              <span className="text-sm font-semibold text-gray-800">{MONTHS[calMonth]} {calYear}</span>
+              <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y+1) } else setCalMonth(m => m+1) }}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">›</button>
+            </div>
+            <div className="grid grid-cols-7 mb-1">
+              {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                <div key={d} className="text-center text-xs text-gray-400 py-1">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7">
+              {Array.from({ length: firstDay }).map((_,i) => <div key={`e${i}`}/>)}
+              {Array.from({ length: daysInMonth }).map((_,i) => {
+                const day = i + 1
+                const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+                const isScheduled = scheduledSet.has(ds)
+                const isCancelled = cancelledSet.has(ds)
+                const isDone = completedDates.has(ds)
+                const hasOrder = orderDates.has(ds)
+                const isToday = ds === today
+                const weekend = isWeekend(ds)
+                const isToggling = toggling === ds
+                const isClickable = isScheduled || isCancelled
+
+                let bg = 'transparent'
+                let textColor = weekend ? '#d1d5db' : '#374151'
+                let content: React.ReactNode = day
+
+                if (isDone) { bg = '#22c55e'; textColor = '#fff' }
+                else if (hasOrder && !isDone) { bg = '#86efac'; textColor = '#166534' }
+                else if (isScheduled) { bg = colors.color; textColor = '#fff' }
+                else if (isCancelled) { bg = '#f3f4f6'; textColor = '#9ca3af'; content = <><span className="text-[10px] leading-none">{day}</span><span className="absolute top-0.5 right-0.5 text-[9px] leading-none text-red-400">×</span></> }
+
+                return (
+                  <div key={day} className="flex justify-center py-0.5">
+                    <button
+                      onClick={() => isClickable && !weekend && toggleCancelDate(ds)}
+                      disabled={isToggling || weekend || (!isScheduled && !isCancelled)}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-sm relative select-none"
+                      style={{
+                        background: bg,
+                        color: textColor,
+                        border: isToday && !isScheduled && !isCancelled ? '1.5px solid #60a5fa' : 'none',
+                        opacity: isToggling ? 0.5 : 1,
+                        cursor: isClickable ? 'pointer' : 'default',
+                      }}>
+                      {content}
+                    </button>
                   </div>
-                </div>
-              )
-            })}
+                )
+              })}
+            </div>
+
+            {endDate && (
+              <div className="mt-3 pt-3 border-t border-gray-50 flex items-center justify-between text-xs text-gray-500">
+                <span>Schedule ends</span>
+                <span className="font-semibold text-gray-700">{formatDate(endDate)}</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-3 mt-3 text-xs text-gray-400">
-            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{ background: colors.color }}/> Order day</div>
-            <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full border-2" style={{ borderColor: colors.color }}/> Start/End</div>
+        )}
+
+        {!customer.start_date || customer.total_portions === 0 ? (
+          <div className="bg-orange-50 rounded-2xl p-4 text-sm text-orange-500 text-center">
+            Set start date and total portions in <Link href={`/bento/customers/${id}/edit`} className="underline font-medium">Edit</Link> to enable scheduling
           </div>
-        </div>
+        ) : null}
 
         {/* Recent orders */}
         {orders.length > 0 && (
@@ -318,7 +374,7 @@ export default function CustomerDetailPage() {
           </div>
         )}
 
-        <div className="pb-8" />
+        <div className="pb-8"/>
       </div>
     </div>
   )

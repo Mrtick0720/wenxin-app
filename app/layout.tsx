@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import LayoutCapture from "./components/LayoutCapture";
+import { NavigationProvider } from "./components/NavigationStack";
 
 export const metadata: Metadata = {
   title: "文心管理",
@@ -25,8 +25,9 @@ export default function RootLayout({
   return (
     <html lang="en" style={{ colorScheme: 'light' }}>
       <body className="min-h-full" style={{ colorScheme: 'light', background: '#f9fafb' }}>
-        <LayoutCapture />
-        {children}
+        <NavigationProvider>
+          {children}
+        </NavigationProvider>
       </body>
     </html>
   );

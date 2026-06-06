@@ -1,16 +1,9 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
-
-async function getTasks() {
-  const today = new Date().toISOString().split('T')[0]
-  const { data } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('date', today)
-    .order('id', { ascending: true })
-  return data || []
-}
 
 const typeLabel: Record<string, string> = {
   purchase: 'Purchase Approval',
@@ -32,8 +25,23 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   done: { label: 'Done', color: 'text-green-500' },
 }
 
-export default async function TasksPage() {
-  const tasks = await getTasks()
+export default function TasksPage() {
+  const [tasks, setTasks] = useState<Record<string, string>[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const today = new Date().toISOString().split('T')[0]
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('date', today)
+      .order('id', { ascending: true })
+      .then(({ data }) => {
+        setTasks((data || []) as Record<string, string>[])
+        setLoading(false)
+      })
+  }, [])
+
   const pending = tasks.filter(t => t.status === 'pending').length
   const processing = tasks.filter(t => t.status === 'processing').length
   const done = tasks.filter(t => t.status === 'done').length
@@ -69,7 +77,8 @@ export default async function TasksPage() {
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Task List</div>
           <div className="space-y-3">
-            {tasks.length === 0 && (
+            {loading && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
+            {!loading && tasks.length === 0 && (
               <div className="text-center text-gray-400 py-8">No pending tasks today</div>
             )}
             {tasks.map((task) => {
