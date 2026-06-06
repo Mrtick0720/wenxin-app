@@ -1,15 +1,18 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import LayoutCapture from "./components/LayoutCapture";
+import SessionHeartbeat from "./components/SessionHeartbeat";
+import StaffProvider from "./components/StaffProvider";
+import { getCurrentStaff } from "@/lib/auth/currentStaff";
 
 export const metadata: Metadata = {
-  title: "文心管理",
-  description: "文心砂锅餐厅管理系统",
+  title: "Wenxin Operations",
+  description: "Wenxin restaurant operations system",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "文心",
+    title: "Wenxin",
   },
   icons: {
     icon: "/icon-192.png",
@@ -17,16 +20,21 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const staff = await getCurrentStaff()
+
   return (
     <html lang="en" style={{ colorScheme: 'light' }}>
       <body className="min-h-full" style={{ colorScheme: 'light', background: '#f9fafb' }}>
-        <LayoutCapture />
-        {children}
+        <StaffProvider staff={staff}>
+          <LayoutCapture />
+          <SessionHeartbeat />
+          {children}
+        </StaffProvider>
       </body>
     </html>
   );

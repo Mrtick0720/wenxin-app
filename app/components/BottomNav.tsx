@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { getNavigationItems } from '@/lib/auth/permissions'
+import { useStaff } from './StaffProvider'
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -46,16 +48,23 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const tabs = [
-  { href: '/', label: 'Home', Icon: HomeIcon },
-  { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
-  { href: '/staff', label: 'Schedule', Icon: StaffIcon },
-  { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
-  { href: '/profile', label: 'Me', Icon: ProfileIcon },
-]
+const tabDetails = {
+  '/': { Icon: HomeIcon, badge: false },
+  '/tasks': { Icon: ApprovalIcon, badge: true },
+  '/staff': { Icon: StaffIcon, badge: false },
+  '/purchase': { Icon: PurchaseIcon, badge: false },
+  '/profile': { Icon: ProfileIcon, badge: false },
+} as const
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
   const pathname = usePathname()
+  const staff = useStaff()
+  if (!staff) return null
+
+  const tabs = getNavigationItems(staff.role).map(item => ({
+    ...item,
+    ...tabDetails[item.href as keyof typeof tabDetails],
+  }))
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-40">
