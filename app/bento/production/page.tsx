@@ -1,9 +1,12 @@
 'use client'
 
+/* eslint-disable react-hooks/set-state-in-effect */
+
 import { useState, useEffect, useCallback } from 'react'
 import BackButton from '../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
+import { useStaff } from '@/app/components/StaffProvider'
 
 type Order = {
   id: number
@@ -27,8 +30,8 @@ const MENU_TYPES = [
   { value: 'vegetarian', label: 'Vegetarian', aliases: ['vegetarian', 'Vegetarian', '素食'], color: '#22c55e', bg: '#f0fdf4', border: '#86efac' },
 ]
 const TIME_SLOTS = [
-  { value: 'lunch',  label: 'LUNCH',  aliases: ['lunch', 'Lunch', '午餐'],   time: '准备时间：10:30–11:30', icon: '☀️' },
-  { value: 'dinner', label: 'DINNER', aliases: ['dinner', 'Dinner', '晚餐'], time: '准备时间：16:00–17:00', icon: '🌙' },
+  { value: 'lunch',  label: 'LUNCH',  aliases: ['lunch', 'Lunch', '午餐'],   time: 'Prep time: 10:30-11:30', icon: '☀️' },
+  { value: 'dinner', label: 'DINNER', aliases: ['dinner', 'Dinner', '晚餐'], time: 'Prep time: 16:00-17:00', icon: '🌙' },
 ]
 
 const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
@@ -57,6 +60,7 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export default function ProductionPage() {
+  const staff = useStaff()
   const today = todayLocalStr()
   const [selectedDate, setSelectedDate] = useState(today)
   const [orders, setOrders] = useState<Order[]>([])
@@ -66,14 +70,15 @@ export default function ProductionPage() {
 
   const loadData = useCallback(async (date: string) => {
     setLoading(true)
+    const source = staff?.role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const [ordersRes, menuRes] = await Promise.all([
-      supabase.from('bento_orders').select('*').eq('date', date).order('id'),
+      supabase.from(source).select('*').eq('date', date).neq('status', 'canceled').order('id'),
       supabase.from('bento_weekly_menu').select('*').eq('week_start', getWeekStart(date)).maybeSingle(),
     ])
     setOrders((ordersRes.data || []) as Order[])
     setWeekMenu(menuRes.data as WeekMenu | null)
     setLoading(false)
-  }, [])
+  }, [staff?.role])
 
   useEffect(() => { loadData(selectedDate) }, [loadData, selectedDate])
 

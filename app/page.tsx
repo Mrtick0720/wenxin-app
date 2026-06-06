@@ -1,7 +1,11 @@
-import { supabase } from '@/lib/supabase'
-import NavLink from './components/NavLink'
+import NavLink from "./components/NavLink"
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
+import { canAccessPath, getHomeVisibility } from '@/lib/auth/permissions'
+import { requireCurrentStaff } from '@/lib/auth/currentStaff'
+import type { StaffRole } from '@/lib/auth/types'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
 
@@ -10,7 +14,8 @@ type BentoOrder = {
   amount: number
 }
 
-async function getStats() {
+async function getStats(supabase: SupabaseClient, enabled: boolean) {
+  if (!enabled) return null
   const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('daily_stats')
@@ -20,20 +25,22 @@ async function getStats() {
   return data
 }
 
-async function getBentoStats() {
+async function getBentoStats(supabase: SupabaseClient, role: StaffRole, showRevenue: boolean) {
   const today = new Date().toISOString().split('T')[0]
-  const { data } = await supabase
-    .from('bento_orders')
-    .select('*')
-    .eq('date', today)
-  const orders = (data || []) as BentoOrder[]
+  const source = role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
+  const query = supabase.from(source)
+  const { data } = showRevenue
+    ? await query.select('status,amount').eq('date', today)
+    : await query.select('status').eq('date', today)
+  const orders = (data || []) as unknown as BentoOrder[]
   const total = orders.length
   const completed = orders.filter(o => o.status === 'completed').length
   const revenue = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
   return { total, completed, revenue }
 }
 
-async function getAnomalyCount() {
+async function getAnomalyCount(supabase: SupabaseClient, enabled: boolean) {
+  if (!enabled) return 0
   const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('incidents')
@@ -43,7 +50,7 @@ async function getAnomalyCount() {
   return data?.length ?? 0
 }
 
-async function getPendingCount() {
+async function getPendingCount(supabase: SupabaseClient) {
   const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('tasks')
@@ -59,22 +66,28 @@ async function getComplaintCount() { return 1 }
 
 // ── Today's Issues — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
-function getTodayIssues(_complaintCount: number): Issue[] {
+function getTodayIssues(role: StaffRole): Issue[] {
   const issues: Issue[] = []
-  // Complaint is already shown in Alert Cards above — only show operational issues here
-  issues.push({ type: '⚠ Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
-  issues.push({ type: '⚠ Attendance', detail: 'Lina — missing punch-out', link: '/staff' })
+  if (canAccessPath(role, '/inventory')) {
+    issues.push({ type: 'Low Stock', detail: 'Soy Sauce, Cooking Oil', link: '/inventory' })
+  }
+  if (canAccessPath(role, '/staff')) {
+    issues.push({ type: 'Attendance', detail: 'Lina - missing punch-out', link: '/staff' })
+  }
   return issues
 }
 
 export default async function Home() {
+  const staff = await requireCurrentStaff()
+  const supabase = await createServerSupabaseClient()
+  const visibility = getHomeVisibility(staff.role)
   const [stats, bentoStats, anomalyCount, pendingCount, reservationCount, complaintCount] = await Promise.all([
-    getStats(),
-    getBentoStats(),
-    getAnomalyCount(),
-    getPendingCount(),
-    getReservationCount(),
-    getComplaintCount(),
+    getStats(supabase, visibility.revenue),
+    getBentoStats(supabase, staff.role, visibility.revenue),
+    getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')),
+    getPendingCount(supabase),
+    canAccessPath(staff.role, '/reservations') ? getReservationCount() : 0,
+    canAccessPath(staff.role, '/complaints') ? getComplaintCount() : 0,
   ])
 
   const revenueTotal = stats?.revenue_total ?? 0
@@ -83,7 +96,7 @@ export default async function Home() {
   const bentoOrders = bentoStats.total
   const bentoCompleted = bentoStats.completed
   const bentoPercent = bentoOrders > 0 ? Math.round((bentoCompleted / bentoOrders) * 100) : 0
-  const issues = getTodayIssues(complaintCount)
+  const issues = getTodayIssues(staff.role)
   const now = new Date()
   const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -100,7 +113,7 @@ export default async function Home() {
               B
             </div>
             <div className="flex items-center gap-0.5">
-              <span className="text-sm font-medium text-gray-900">Hi, Bruce</span>
+              <span className="text-sm font-medium text-gray-900">Hi, {staff.displayName}</span>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="9 18 15 12 9 6"/>
               </svg>
@@ -119,56 +132,70 @@ export default async function Home() {
       </div>
 
       <div className="px-4 pt-4 pb-28 space-y-4">
-        {/* ═══ Revenue Hero Card — first visual priority ═══ */}
-        <NavLink href="/reports" className="block">
-          <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
-            <span className="text-xs text-green-500 font-semibold">● Open</span>
-          </div>
-          <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-            <span className="text-green-500 font-medium">↑ 12%</span>
-            <span>vs yesterday</span>
-          </div>
-        </NavLink>
-
-        {/* ═══ Core Business Cards — performance data only, no status ═══ */}
-        <div className="grid grid-cols-2 gap-2">
-          <NavLink href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
-            <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
-            <div className="mt-2 space-y-0.5">
-              <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
-              <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
+        {visibility.revenue && (
+          <NavLink href="/reports" className="block">
+            <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
+              <span className="text-xs text-green-500 font-semibold">Open</span>
+            </div>
+            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+              <span className="text-green-500 font-medium">Up 12%</span>
+              <span>vs yesterday</span>
             </div>
           </NavLink>
+        )}
+
+        {/* ═══ Core Business Cards — performance data only, no status ═══ */}
+        <div className={`grid gap-2 ${canAccessPath(staff.role, '/dine-in') ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          {canAccessPath(staff.role, '/dine-in') && (
+            <NavLink href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
+              <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
+              {visibility.revenue ? (
+                <>
+                  <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
+                  <div className="mt-2 space-y-0.5">
+                    <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
+                    <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xl font-bold text-gray-900">12 Orders</div>
+                  <div className="mt-2 text-xs text-green-500">Service open</div>
+                </>
+              )}
+            </NavLink>
+          )}
           <NavLink href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
             <div className="text-sm font-semibold text-gray-900 mb-2">Bento</div>
-            <div className="text-xl font-bold text-gray-900">RM {revenueBento.toLocaleString()}</div>
+            <div className="text-xl font-bold text-gray-900">
+              {visibility.revenue ? `RM ${revenueBento.toLocaleString()}` : `${bentoOrders} Orders`}
+            </div>
             <div className="mt-2 space-y-0.5">
-              <div className="text-xs text-gray-400 whitespace-nowrap">{bentoOrders} Orders</div>
+              {visibility.revenue && <div className="text-xs text-gray-400 whitespace-nowrap">{bentoOrders} Orders</div>}
               <div className="text-xs whitespace-nowrap text-orange-500">{bentoPercent}% Done</div>
             </div>
           </NavLink>
         </div>
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
-        <div className="grid grid-cols-4 gap-1.5">
-          <NavLink href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {canAccessPath(staff.role, '/reservations') && <NavLink href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Booking</div>
             <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
             <div className="text-[11px] text-gray-400 mt-0.5 truncate">Today</div>
-          </NavLink>
-          <NavLink href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          </NavLink>}
+          {canAccessPath(staff.role, '/complaints') && <NavLink href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Complaint</div>
             <div className="text-lg font-bold text-red-500">{complaintCount}</div>
             <div className="text-[11px] text-red-400 mt-0.5 truncate">! Urgent</div>
-          </NavLink>
-          <NavLink href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
+          </NavLink>}
+          {canAccessPath(staff.role, '/incidents') && <NavLink href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Incident</div>
             <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
             <div className="text-[11px] text-gray-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
-          </NavLink>
+          </NavLink>}
           <NavLink href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
             <div className="text-[11px] text-gray-500 mb-0.5 truncate">Pending</div>
             <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
@@ -200,7 +227,7 @@ export default async function Home() {
         </div>
 
         {/* ═══ Shift Board — today's staffing ═══ */}
-        <NavLink href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
+        {canAccessPath(staff.role, '/staff') && <NavLink href="/staff" className="bg-white rounded-2xl p-4 shadow-sm block">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-semibold text-gray-800">Shift Board</span>
             <span className="text-xs text-orange-500">→</span>
@@ -213,7 +240,7 @@ export default async function Home() {
             <span className="text-gray-300">·</span>
             <span>10:00–20:00</span>
           </div>
-        </NavLink>
+        </NavLink>}
 
         {/* ═══ Quick Access — low-frequency but essential ═══ */}
         <div>
@@ -224,7 +251,11 @@ export default async function Home() {
               { href: '/staff',       label: 'Staff' },
               { href: '/inventory',   label: 'Inventory' },
               { href: '/finance',     label: 'Finance' },
-            ].map(({ href, label }) => (
+              { href: '/bento/customers', label: 'Customers' },
+              { href: '/reservations', label: 'Bookings' },
+              { href: '/complaints', label: 'Complaints' },
+              { href: '/dine-in', label: 'Dine-in' },
+            ].filter(item => canAccessPath(staff.role, item.href)).map(({ href, label }) => (
               <NavLink key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
                 <div className="text-xs font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{label}</div>
               </NavLink>

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import BackButton from '../components/BackButton'
 import BottomNav from '../components/BottomNav'
 import PageTransition from '../components/PageTransition'
+import Link from 'next/link'
+import { useStaff } from '../components/StaffProvider'
 
 type ShiftType = 'morning' | 'full' | 'afternoon' | 'off' | 'leave'
 
@@ -81,6 +83,7 @@ const weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export default function SchedulePage() {
+  const staff = useStaff()
   const today = new Date()
   const [anchor, setAnchor] = useState(today)
   const week = getWeekDates(anchor)
@@ -116,7 +119,15 @@ export default function SchedulePage() {
           <BackButton href="/" />
           <span className="font-semibold text-base">Schedule</span>
         </div>
-        <span className="text-xs text-green-500 font-medium">{onDutyToday} on duty today</span>
+        <div className="flex items-center gap-2">
+          {staff?.role === 'owner' && (
+            <>
+              <Link href="/staff/activity" className="rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-600">Activity</Link>
+              <Link href="/staff/accounts" className="rounded-md bg-orange-500 px-2.5 py-1.5 text-xs font-medium text-white">Accounts</Link>
+            </>
+          )}
+          <span className="text-xs text-green-500 font-medium">{onDutyToday} on duty</span>
+        </div>
       </div>
 
       {/* Week navigator */}

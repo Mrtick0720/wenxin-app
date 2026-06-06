@@ -1,7 +1,7 @@
 {
-  "name": "文心管理",
-  "short_name": "文心",
-  "description": "文心砂锅餐厅管理系统",
+  "name": "Wenxin Operations",
+  "short_name": "Wenxin",
+  "description": "Wenxin restaurant operations system",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

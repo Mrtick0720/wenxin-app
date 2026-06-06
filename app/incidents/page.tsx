@@ -1,9 +1,19 @@
-'use client'
-
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
+import { requireRole } from '@/lib/auth/currentStaff'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
+
+async function getIncidents() {
+  await requireRole('owner', 'manager', 'front_desk')
+  const supabase = await createServerSupabaseClient()
+  const today = new Date().toISOString().split('T')[0]
+  const { data } = await supabase
+    .from('incidents')
+    .select('*')
+    .eq('date', today)
+    .order('id', { ascending: true })
+  return data || []
+}
 
 const typeLabel: Record<string, string> = {
   attendance: 'Attendance',
@@ -25,23 +35,8 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   resolved: { label: 'Resolved', color: 'text-green-500' },
 }
 
-export default function IncidentsPage() {
-  const [incidents, setIncidents] = useState<Record<string, string>[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0]
-    supabase
-      .from('incidents')
-      .select('*')
-      .eq('date', today)
-      .order('id', { ascending: true })
-      .then(({ data }) => {
-        setIncidents((data || []) as Record<string, string>[])
-        setLoading(false)
-      })
-  }, [])
-
+export default async function IncidentsPage() {
+  const incidents = await getIncidents()
   const open = incidents.filter(i => i.status === 'open').length
   const handling = incidents.filter(i => i.status === 'handling').length
   const resolved = incidents.filter(i => i.status === 'resolved').length
@@ -77,8 +72,7 @@ export default function IncidentsPage() {
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Incident List</div>
           <div className="space-y-3">
-            {loading && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
-            {!loading && incidents.length === 0 && (
+            {incidents.length === 0 && (
               <div className="text-center text-gray-400 py-8">No incidents today</div>
             )}
             {incidents.map((incident) => {

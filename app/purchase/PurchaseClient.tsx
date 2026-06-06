@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
 import BackButton from '../components/BackButton'
 import { useNavigation } from '../components/NavigationStack'

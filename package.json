@@ -3,13 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "bootstrap:owner": "node scripts/create-owner.mjs",
     "dev": "next dev",
     "build": "next build",
+    "test:auth-audit": "node scripts/test-auth-audit.mjs",
+    "test:auth-migration": "node scripts/test-auth-migration.mjs",
+    "test:auth-permissions": "node scripts/test-auth-permissions.mjs",
+    "test:subscription-schedule": "node scripts/test-subscription-schedule.mjs",
     "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
     "framer-motion": "^12.40.0",
     "next": "16.2.7",
