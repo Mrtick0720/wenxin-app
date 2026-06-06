@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface HeroCardProps {
   revenueTotal: number
@@ -11,6 +12,8 @@ interface HeroCardProps {
   bentoPercent: number
 }
 
+const SLIDE_COUNT = 3
+
 export default function HeroCard({
   revenueTotal,
   revenueDineIn,
@@ -19,173 +22,187 @@ export default function HeroCard({
   bentoCompleted,
   bentoPercent,
 }: HeroCardProps) {
+  const router = useRouter()
   const [slide, setSlide] = useState(0)
   const [animating, setAnimating] = useState(false)
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
   const tracking = useRef(false)
-  const axis = useRef<'h' | 'v' | null>(null)
+  const touchAxis = useRef<'h' | 'v' | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   const goTo = (next: number) => {
-    if (animating || next === slide) return
+    if (animating || next === slide || next < 0 || next >= SLIDE_COUNT) return
     setAnimating(true)
     setSlide(next)
     setTimeout(() => setAnimating(false), 320)
   }
 
+  const slidePct = -(slide * (100 / SLIDE_COUNT))
+
   const onTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.touches[0].clientX
     touchStartY.current = e.touches[0].clientY
     tracking.current = true
-    axis.current = null
+    touchAxis.current = null
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
     if (!tracking.current || animating) return
     const dx = e.touches[0].clientX - touchStartX.current
     const dy = e.touches[0].clientY - touchStartY.current
-    if (!axis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      axis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+    if (!touchAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+      touchAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
     }
-    if (axis.current !== 'h') return
+    if (touchAxis.current !== 'h') return
     e.preventDefault()
     const el = trackRef.current
-    if (!el) return
-    const offset = slide === 0 ? Math.min(0, dx) : Math.max(-window.innerWidth, dx - window.innerWidth)
+    const container = containerRef.current
+    if (!el || !container) return
+    const containerW = container.offsetWidth
+    const basePx = slide * -(containerW / SLIDE_COUNT)
+    const clamped = slide === 0 ? Math.min(0, dx)
+      : slide === SLIDE_COUNT - 1 ? Math.max(0, dx)
+      : dx
     el.style.transition = 'none'
-    el.style.transform = `translateX(${offset}px)`
+    el.style.transform = `translateX(${basePx + clamped}px)`
   }
 
   const onTouchEnd = (e: React.TouchEvent) => {
-    if (!tracking.current || axis.current !== 'h') { tracking.current = false; return }
+    if (!tracking.current || touchAxis.current !== 'h') { tracking.current = false; return }
     tracking.current = false
     const dx = e.changedTouches[0].clientX - touchStartX.current
     const threshold = 60
     const el = trackRef.current
     if (!el) return
 
-    if (slide === 0 && dx < -threshold) goTo(1)
-    else if (slide === 1 && dx > threshold) goTo(0)
+    if (slide > 0 && dx > threshold) goTo(slide - 1)
+    else if (slide < SLIDE_COUNT - 1 && dx < -threshold) goTo(slide + 1)
     else {
-      // Spring back
       el.style.transition = 'transform 0.28s cubic-bezier(0.3,0,0.1,1)'
-      el.style.transform = slide === 0 ? 'translateX(0)' : 'translateX(-100%)'
+      el.style.transform = `translateX(${slidePct}%)`
     }
   }
 
-  const dineInAvg = revenueDineIn > 0 ? Math.round(revenueDineIn / 42) : 0 // 42 orders shown in UI
+  const dineInAvg = revenueDineIn > 0 ? Math.round(revenueDineIn / 42) : 0
 
   return (
     <div
-      className="rounded-2xl overflow-hidden relative"
-      style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1a1a2e 100%)', touchAction: 'pan-y' }}
+      ref={containerRef}
+      className="rounded-2xl relative"
+      style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1a1a2e 100%)', touchAction: 'pan-y', overflow: 'hidden' }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      <div className="px-5 pt-5 pb-3 relative overflow-hidden">
-        {/* Slides track */}
+      {/* Status badge — absolute top-right */}
+      <div className="absolute top-3 right-4 z-10">
+        {slide === 0 && (
+          <span className="text-[10px] font-semibold text-green-400 px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.15)' }}>
+            Open
+          </span>
+        )}
+        {slide === 1 && (
+          <span className="text-[10px] font-semibold text-green-400 px-2.5 py-1 rounded-full" style={{ background: 'rgba(34,197,94,0.15)' }}>
+            Open
+          </span>
+        )}
+        {slide === 2 && (
+          <span className="text-[10px] font-semibold text-orange-400 px-2.5 py-1 rounded-full" style={{ background: 'rgba(249,115,22,0.15)' }}>
+            In Progress
+          </span>
+        )}
+      </div>
+
+      <div className="px-4 pt-3 pb-2">
+        {/* Slides track — width = SLIDE_COUNT * 100% */}
         <div
           ref={trackRef}
           className="flex"
           style={{
-            width: '200%',
-            transform: slide === 0 ? 'translateX(0)' : 'translateX(-50%)',
+            width: `${SLIDE_COUNT * 100}%`,
+            transform: `translateX(${slidePct}%)`,
             transition: animating ? 'transform 0.3s cubic-bezier(0.3,0,0.1,1)' : 'none',
           }}
         >
           {/* ── Slide 1: Revenue Today ── */}
-          <div className="flex-shrink-0" style={{ width: '50%' }}>
-            <div className="flex items-start justify-between">
+          <div className="flex-shrink-0 flex items-center justify-between" style={{ width: `${100 / SLIDE_COUNT}%` }}>
+            <div>
+              <div className="text-xs text-slate-400 mb-1">Today&apos;s Revenue</div>
+              <div className="text-3xl font-bold tracking-tight text-white">RM {revenueTotal.toLocaleString()}</div>
+              <div className="flex items-center gap-1.5 mt-1 text-xs">
+                <span className="text-green-400 font-medium">+12%</span>
+                <span className="text-slate-500">vs yesterday (RM 7,614)</span>
+              </div>
+            </div>
+            <button
+              onClick={() => router.push('/reports')}
+              className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ background: 'rgba(255,255,255,0.08)' }}
+              aria-label="Reports"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="20" x2="18" y2="10" />
+                <line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" />
+              </svg>
+            </button>
+          </div>
+
+          {/* ── Slide 2: Dine-in Breakdown ── */}
+          <div className="flex-shrink-0" style={{ width: `${100 / SLIDE_COUNT}%` }}>
+            <div className="text-sm font-semibold text-white mb-3">Dine-in</div>
+            <div className="text-2xl font-bold text-white mb-3">42 Orders</div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Revenue</span>
+                <span className="text-white font-medium">RM {revenueDineIn.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Avg Ticket</span>
+                <span className="text-white font-medium">RM {dineInAvg}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Slide 3: Bento Breakdown ── */}
+          <div className="flex-shrink-0" style={{ width: `${100 / SLIDE_COUNT}%` }}>
+            <div className="text-sm font-semibold text-white mb-3">Bento</div>
+            <div className="text-2xl font-bold text-white mb-3">{bentoOrders} Orders</div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-400">Revenue</span>
+                <span className="text-white font-medium">RM {revenueBento.toLocaleString()}</span>
+              </div>
               <div>
-                <div className="text-4xl font-bold tracking-tight text-white">RM {revenueTotal.toLocaleString()}</div>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-xs text-slate-400">Today&apos;s Revenue</span>
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="text-slate-400">Completion</span>
+                  <span className="text-white font-medium">{bentoPercent}%</span>
                 </div>
-                <div className="flex items-center gap-2 mt-1 text-xs">
-                  <span className="text-green-400 font-medium">+12%</span>
-                  <span className="text-slate-500">vs yesterday (RM 7,614)</span>
+                <div className="w-full bg-white/10 rounded-full h-1">
+                  <div className="h-1 rounded-full bg-orange-400" style={{ width: `${bentoPercent}%` }} />
                 </div>
-              </div>
-              {/* Chart icon block */}
-              <div className="flex-shrink-0 flex items-end gap-1" style={{ height: 48 }}>
-                {[0.6, 0.9, 0.5, 0.8, 0.4, 0.75, 0.95].map((h, i) => (
-                  <div
-                    key={i}
-                    className="w-1.5 rounded-t-sm"
-                    style={{ height: `${h * 100}%`, background: i === 6 ? '#f97316' : 'rgba(255,255,255,0.2)' }}
-                  />
-                ))}
               </div>
             </div>
           </div>
-
-          {/* ── Slide 2: Business Breakdown ── */}
-          <div className="flex-shrink-0" style={{ width: '50%' }}>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Bento card */}
-              <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <div className="text-xs text-slate-400 mb-2">Bento</div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
-                  <span className="text-xs text-orange-400 font-medium">In Progress</span>
-                </div>
-                <div className="text-white font-bold text-lg">{bentoOrders} Orders</div>
-                <div className="text-xs text-slate-400 mt-0.5">RM {revenueBento.toLocaleString()} Revenue</div>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className="flex-1 bg-white/10 rounded-full h-1">
-                    <div className="h-1 rounded-full bg-orange-400" style={{ width: `${bentoPercent}%` }} />
-                  </div>
-                  <span className="text-xs text-slate-400">{bentoPercent}%</span>
-                </div>
-              </div>
-              {/* Dine-in card */}
-              <div className="rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <div className="text-xs text-slate-400 mb-2">Dine-in</div>
-                <div className="flex items-center gap-1.5 mb-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                  <span className="text-xs text-green-400 font-medium">Open</span>
-                </div>
-                <div className="text-white font-bold text-lg">42 Orders</div>
-                <div className="text-xs text-slate-400 mt-0.5">RM {revenueDineIn.toLocaleString()} Revenue</div>
-                <div className="text-xs text-slate-400 mt-2">RM {dineInAvg} Avg Ticket</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Status badge — fixed overlay on slide 1 */}
-        <div
-          className="absolute top-5 right-5 transition-opacity"
-          style={{ opacity: slide === 0 ? 1 : 0, transitionDuration: '0.2s' }}
-        >
-          <span className="text-[10px] font-semibold text-white px-2.5 py-1 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }}>
-            Open
-          </span>
         </div>
       </div>
 
       {/* Page indicators */}
-      <div className="flex items-center justify-center gap-1.5 pb-3">
-        <button
-          onClick={() => goTo(0)}
-          className="rounded-full transition-all"
-          style={{
-            width: slide === 0 ? 16 : 6,
-            height: 6,
-            background: slide === 0 ? '#f97316' : 'rgba(255,255,255,0.25)',
-          }}
-        />
-        <button
-          onClick={() => goTo(1)}
-          className="rounded-full transition-all"
-          style={{
-            width: slide === 1 ? 16 : 6,
-            height: 6,
-            background: slide === 1 ? '#f97316' : 'rgba(255,255,255,0.25)',
-          }}
-        />
+      <div className="flex items-center justify-center gap-1.5 pb-2.5">
+        {Array.from({ length: SLIDE_COUNT }).map((_, i) => (
+          <button
+            key={i}
+            onClick={() => goTo(i)}
+            className="rounded-full transition-all"
+            style={{
+              width: slide === i ? 16 : 5,
+              height: 5,
+              background: slide === i ? '#f97316' : 'rgba(255,255,255,0.25)',
+            }}
+          />
+        ))}
       </div>
     </div>
   )
