@@ -18,6 +18,7 @@ const NewBentoOrder    = lazy(() => import('@/app/bento/new/page'))
 const UnpaidPage       = lazy(() => import('@/app/bento/unpaid/page'))
 const WeeklyMenuPage   = lazy(() => import('@/app/bento/weekly-menu/page'))
 const ProductionPage   = lazy(() => import('@/app/bento/production/page'))
+const CustomersClient  = lazy(() => import('@/app/bento/customers/CustomersClient'))
 
 type Order = {
   id: number
@@ -556,7 +557,7 @@ export default function BentoClient({
                 <div className="text-xs text-gray-400">This week</div>
               </div>
             </button>
-            {canManageCustomers && <Link href="/bento/customers" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            {canManageCustomers && <button onClick={() => push('/bento/customers', <Suspense fallback={pageFallback}><CustomersClient /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -565,7 +566,7 @@ export default function BentoClient({
                 <div className="text-xs font-medium text-gray-700">Customers</div>
                 <div className="text-xs text-gray-400">Subscriptions</div>
               </div>
-            </Link>}
+            </button>}
             {canOpenProduction && <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/>

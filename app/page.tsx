@@ -1,4 +1,5 @@
 import NavLink from "./components/NavLink"
+import HeroCard from "./components/HeroCard"
 import HomeRefresh from './components/HomeRefresh'
 import BottomNav from './components/BottomNav'
 import { canAccessPath, getHomeVisibility } from '@/lib/auth/permissions'
@@ -133,51 +134,15 @@ export default async function Home() {
 
       <div className="px-4 pt-4 pb-28 space-y-4">
         {visibility.revenue && (
-          <NavLink href="/reports" className="block">
-            <div className="text-5xl font-bold tracking-tight text-gray-900">RM {revenueTotal.toLocaleString()}</div>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-xs text-gray-500">Today&apos;s Revenue</span>
-              <span className="text-xs text-green-500 font-semibold">Open</span>
-            </div>
-            <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
-              <span className="text-green-500 font-medium">Up 12%</span>
-              <span>vs yesterday</span>
-            </div>
-          </NavLink>
+          <HeroCard
+            revenueTotal={revenueTotal}
+            revenueDineIn={revenueDineIn}
+            revenueBento={revenueBento}
+            bentoOrders={bentoOrders}
+            bentoCompleted={bentoCompleted}
+            bentoPercent={bentoPercent}
+          />
         )}
-
-        {/* ═══ Core Business Cards — performance data only, no status ═══ */}
-        <div className={`grid gap-2 ${canAccessPath(staff.role, '/dine-in') ? 'grid-cols-2' : 'grid-cols-1'}`}>
-          {canAccessPath(staff.role, '/dine-in') && (
-            <NavLink href="/dine-in" className="bg-white rounded-2xl p-4 shadow-sm block">
-              <div className="text-sm font-semibold text-gray-900 mb-2">Dine-in</div>
-              {visibility.revenue ? (
-                <>
-                  <div className="text-xl font-bold text-gray-900">RM {revenueDineIn.toLocaleString()}</div>
-                  <div className="mt-2 space-y-0.5">
-                    <div className="text-xs text-gray-400 whitespace-nowrap">12 Orders</div>
-                    <div className="text-xs text-gray-400 whitespace-nowrap">Avg RM 106</div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-xl font-bold text-gray-900">12 Orders</div>
-                  <div className="mt-2 text-xs text-green-500">Service open</div>
-                </>
-              )}
-            </NavLink>
-          )}
-          <NavLink href="/bento" className="bg-white rounded-2xl p-4 shadow-sm block">
-            <div className="text-sm font-semibold text-gray-900 mb-2">Bento</div>
-            <div className="text-xl font-bold text-gray-900">
-              {visibility.revenue ? `RM ${revenueBento.toLocaleString()}` : `${bentoOrders} Orders`}
-            </div>
-            <div className="mt-2 space-y-0.5">
-              {visibility.revenue && <div className="text-xs text-gray-400 whitespace-nowrap">{bentoOrders} Orders</div>}
-              <div className="text-xs whitespace-nowrap text-orange-500">{bentoPercent}% Done</div>
-            </div>
-          </NavLink>
-        </div>
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
