@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/refs */
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import BackButton from '../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
@@ -12,6 +12,12 @@ import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'
 import type { StaffRole } from '@/lib/auth/types'
+import { useNavigation } from '../components/NavigationStack'
+
+const NewBentoOrder    = lazy(() => import('@/app/bento/new/page'))
+const UnpaidPage       = lazy(() => import('@/app/bento/unpaid/page'))
+const WeeklyMenuPage   = lazy(() => import('@/app/bento/weekly-menu/page'))
+const ProductionPage   = lazy(() => import('@/app/bento/production/page'))
 
 type Order = {
   id: number
@@ -79,11 +85,13 @@ export default function BentoClient({
   role: StaffRole
 }) {
   const router = useRouter()
+  const { push } = useNavigation()
   const isKitchen = role === 'kitchen'
   const canViewFinancialDetails = role !== 'kitchen'
   const canManageCustomers = role !== 'kitchen'
   const canOpenProduction = role !== 'front_desk'
   const today = todayLocalStr()
+  const pageFallback = <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -494,7 +502,7 @@ export default function BentoClient({
             <BackButton href="/" />
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
-          {!isKitchen && <Link href="/bento/new" className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</Link>}
+          {!isKitchen && <button onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder /></Suspense>)} className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</button>}
         </div>
 
         <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
@@ -528,7 +536,7 @@ export default function BentoClient({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            {canViewFinancialDetails && <Link href="/bento/unpaid" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            {canViewFinancialDetails && <button onClick={() => push('/bento/unpaid', <Suspense fallback={pageFallback}><UnpaidPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
                 <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
@@ -537,8 +545,8 @@ export default function BentoClient({
                 <div className="text-xs font-medium text-gray-700">Unpaid</div>
                 <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} pending` : 'All paid'}</div>
               </div>
-            </Link>}
-            <Link href="/bento/weekly-menu" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            </button>}
+            <button onClick={() => push('/bento/weekly-menu', <Suspense fallback={pageFallback}><WeeklyMenuPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="5" y="2" width="14" height="20" rx="2"/>
                 <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/>
@@ -547,7 +555,7 @@ export default function BentoClient({
                 <div className="text-xs font-medium text-gray-700">Weekly Menu</div>
                 <div className="text-xs text-gray-400">This week</div>
               </div>
-            </Link>
+            </button>
             {canManageCustomers && <Link href="/bento/customers" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
@@ -558,7 +566,7 @@ export default function BentoClient({
                 <div className="text-xs text-gray-400">Subscriptions</div>
               </div>
             </Link>}
-            {canOpenProduction && <Link href={`/bento/production?date=${selectedDate}`} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            {canOpenProduction && <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/>
               </svg>
@@ -566,7 +574,7 @@ export default function BentoClient({
                 <div className="text-xs font-medium text-gray-700">Production</div>
                 <div className="text-xs text-gray-400">Kitchen sheet</div>
               </div>
-            </Link>}
+            </button>}
           </div>
 
           <button onClick={() => openPanel('orders')} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
