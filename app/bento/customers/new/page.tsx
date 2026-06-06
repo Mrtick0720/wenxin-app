@@ -17,6 +17,7 @@ const AREAS = ['Likas', 'Luyang', 'Lintas', 'Other']
 
 export default function NewCustomerPage() {
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     phone: '',
@@ -37,23 +38,33 @@ export default function NewCustomerPage() {
     e.preventDefault()
     if (!form.name.trim()) return
     setSaving(true)
-    await supabase.from('bento_customers').insert({
-      name: form.name.trim(),
-      phone: form.phone,
-      subscription_type: form.subscription_type,
-      delivery_method: form.delivery_method,
-      delivery_address: form.delivery_address,
-      area: form.area,
-      menu_preference: form.menu_preference,
-      taste_notes: form.taste_notes,
-      start_date: form.start_date || null,
-      total_portions: parseInt(form.total_portions) || 0,
-      used_portions: 0,
-      note: form.note,
-      active: true,
-    })
-    setSaving(false)
-    window.location.href = '/bento/customers'
+    setError(null)
+    try {
+      const { error: insertError } = await supabase.from('bento_customers').insert({
+        name: form.name.trim(),
+        phone: form.phone,
+        subscription_type: form.subscription_type,
+        delivery_method: form.delivery_method,
+        delivery_address: form.delivery_address,
+        area: form.area,
+        menu_preference: form.menu_preference,
+        taste_notes: form.taste_notes,
+        start_date: form.start_date || null,
+        total_portions: parseInt(form.total_portions) || 0,
+        used_portions: 0,
+        note: form.note,
+        active: true,
+      })
+      if (insertError) {
+        setError(insertError.message || 'Failed to create customer. Please try again.')
+        setSaving(false)
+        return
+      }
+      window.location.href = '/bento/customers'
+    } catch {
+      setError('Network error. Please check your connection.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -157,6 +168,15 @@ export default function NewCustomerPage() {
           style={{ background: form.name.trim() ? '#f97316' : '#d1d5db' }}>
           {saving ? 'Saving...' : 'Add Customer'}
         </button>
+
+        {error && (
+          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2 mb-8">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
       </form>
     </div>
   )

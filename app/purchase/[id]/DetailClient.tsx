@@ -84,6 +84,7 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -118,33 +119,63 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
   async function handleSave() {
     if (!item) return
     setSaving(true)
-    await supabase.from('purchase_items').update({
-      name: form.name.trim(),
-      category: form.category,
-      unit: form.unit,
-      quantity: qty,
-      unit_price: up,
-      total_price: total,
-      supplier: form.supplier.trim() || null,
-      purchase_method: form.purchase_method,
-      note: form.note.trim() || null,
-    }).eq('id', item.id)
-    setSaving(false)
-    router.push('/purchase')
+    setError(null)
+    try {
+      const { error: saveError } = await supabase.from('purchase_items').update({
+        name: form.name.trim(),
+        category: form.category,
+        unit: form.unit,
+        quantity: qty,
+        unit_price: up,
+        total_price: total,
+        supplier: form.supplier.trim() || null,
+        purchase_method: form.purchase_method,
+        note: form.note.trim() || null,
+      }).eq('id', item.id)
+      if (saveError) {
+        setError(saveError.message || 'Failed to save. Please try again.')
+        setSaving(false)
+        return
+      }
+      router.push('/purchase')
+    } catch {
+      setError('Network error. Please check your connection.')
+      setSaving(false)
+    }
   }
 
   async function handleDelete() {
     if (!item) return
     setDeleting(true)
-    await supabase.from('purchase_items').delete().eq('id', item.id)
-    router.push('/purchase')
+    setError(null)
+    try {
+      const { error: deleteError } = await supabase.from('purchase_items').delete().eq('id', item.id)
+      if (deleteError) {
+        setError(deleteError.message || 'Failed to delete. Please try again.')
+        setDeleting(false)
+        return
+      }
+      router.push('/purchase')
+    } catch {
+      setError('Network error. Please check your connection.')
+      setDeleting(false)
+    }
   }
 
   async function toggleStatus() {
     if (!item) return
+    setError(null)
     const newStatus = isDone ? 'pending' : 'completed'
-    await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
-    router.push('/purchase')
+    try {
+      const { error: toggleError } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
+      if (toggleError) {
+        setError(toggleError.message || 'Failed to update status.')
+        return
+      }
+      router.push('/purchase')
+    } catch {
+      setError('Network error. Please check your connection.')
+    }
   }
 
   if (loading) {
@@ -183,6 +214,15 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
 
       <div className="flex-1 overflow-y-auto">
         <div style={{ height: 4, background: catColor }} />
+
+        {error && (
+          <div className="mx-4 mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
 
         <div className="bg-white px-4">
           <FieldRow label="Name">

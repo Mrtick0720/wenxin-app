@@ -40,6 +40,7 @@ export default function UnpaidPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const loadUnpaid = useCallback(async () => {
     setLoading(true)
@@ -57,11 +58,24 @@ export default function UnpaidPage() {
     loadUnpaid()
   }, [loadUnpaid])
 
-  async function markPaid(order: Order) {
+  async function markPaid(order: Order): Promise<boolean> {
     setUpdating(order.id)
-    await supabase.from('bento_orders').update({ paid: true }).eq('id', order.id)
-    setOrders(prev => prev.filter(o => o.id !== order.id))
-    setUpdating(null)
+    setError(null)
+    try {
+      const { error: updateError } = await supabase.from('bento_orders').update({ paid: true }).eq('id', order.id)
+      if (updateError) {
+        setError(updateError.message || 'Failed to mark as paid.')
+        setUpdating(null)
+        return false
+      }
+      setOrders(prev => prev.filter(o => o.id !== order.id))
+      setUpdating(null)
+      return true
+    } catch {
+      setError('Network error. Please check your connection.')
+      setUpdating(null)
+      return false
+    }
   }
 
   const total = orders.reduce((sum, o) => sum + o.amount, 0)
@@ -86,6 +100,14 @@ export default function UnpaidPage() {
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
+        {error && (
+          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
         {loading && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
         {!loading && orders.length === 0 && (
@@ -127,8 +149,12 @@ export default function UnpaidPage() {
 
               <div className="px-4 pb-4 pt-2">
                 <button
-                  onClick={() => {
-                    customerOrders.forEach(o => markPaid(o))
+                  onClick={async () => {
+                    setError(null)
+                    for (const o of customerOrders) {
+                      const ok = await markPaid(o)
+                      if (!ok) break
+                    }
                   }}
                   disabled={customerOrders.some(o => updating === o.id)}
                   className="w-full py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white"

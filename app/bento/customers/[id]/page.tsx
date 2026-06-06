@@ -138,83 +138,119 @@ export default function CustomerDetailPage() {
     let nextOrders = fetchedOrders
 
     if (!subDaysRes.error && cust.start_date && cust.total_portions > 0) {
-      const defaultMenu = getDefaultMenuType(cust.menu_preference)
-      const plan = buildSubscriptionPlan({
-        startDate: cust.start_date,
-        totalMeals: cust.total_portions,
-        existingDays: fetchedDays,
-        holidays: fetchedHolidays,
-        defaults: { menuType: defaultMenu, timeSlot: 'lunch', note: cust.taste_notes || '' },
-        customerId: cust.id,
-      })
+      try {
+        const defaultMenu = getDefaultMenuType(cust.menu_preference)
+        const plan = buildSubscriptionPlan({
+          startDate: cust.start_date,
+          totalMeals: cust.total_portions,
+          existingDays: fetchedDays,
+          holidays: fetchedHolidays,
+          defaults: { menuType: defaultMenu, timeSlot: 'lunch', note: cust.taste_notes || '' },
+          customerId: cust.id,
+        })
 
-      const generatedRows = plan.days.filter(day => day.is_generated).map(toSubscriptionDay)
-      if (generatedRows.length > 0) {
-        await supabase
+        const generatedRows = plan.days.filter(day => day.is_generated).map(toSubscriptionDay)
+        if (generatedRows.length > 0) {
+          const { error: upsertError } = await supabase
+            .from('bento_subscription_days')
+            .upsert(generatedRows, { onConflict: 'customer_id,date' })
+          if (upsertError) {
+            setScheduleError(upsertError.message || 'Failed to generate subscription days.')
+            setLoading(false)
+            return
+          }
+        }
+
+        const refetchedDays = await supabase
           .from('bento_subscription_days')
-          .upsert(generatedRows, { onConflict: 'customer_id,date' })
+          .select('*')
+          .eq('customer_id', cust.id)
+          .order('date', { ascending: true })
+        nextDays = (refetchedDays.data || generatedRows) as SubscriptionDay[]
+
+        for (const day of nextDays) {
+          if (day.status === 'skipped') {
+            if (day.order_id) {
+              const { error: skipError } = await supabase.from('bento_orders').update({ status: 'canceled' }).eq('id', day.order_id)
+              if (skipError) {
+                setScheduleError(skipError.message || 'Failed to update skipped day order.')
+                setLoading(false)
+                return
+              }
+            }
+            continue
+          }
+
+          const linkedOrder = day.order_id ? nextOrders.find(order => order.id === day.order_id) : undefined
+          const sameDateOrder = nextOrders.find(order => order.date === day.date && order.status !== 'canceled')
+          const existingOrder = linkedOrder || sameDateOrder
+
+          const orderRow = {
+            date: day.date,
+            customer_name: cust.name,
+            phone: cust.phone,
+            address: cust.delivery_address,
+            area: cust.area,
+            menu_type: day.menu_type,
+            time_slot: day.time_slot,
+            items: cust.menu_preference || 'Subscription meal',
+            note: day.note || cust.taste_notes || cust.note || '',
+            amount: 0,
+            quantity: 1,
+            paid: true,
+            status: day.status === 'completed' ? 'completed' : 'pending',
+          }
+
+          if (existingOrder) {
+            const { error: updateOrdError } = await supabase.from('bento_orders').update(orderRow).eq('id', existingOrder.id)
+            if (updateOrdError) {
+              setScheduleError(updateOrdError.message || 'Failed to update existing order.')
+              setLoading(false)
+              return
+            }
+            if (!day.order_id) {
+              const { error: linkError } = await supabase.from('bento_subscription_days').update({ order_id: existingOrder.id }).eq('id', day.id)
+              if (linkError) {
+                setScheduleError(linkError.message || 'Failed to link order to subscription day.')
+                setLoading(false)
+                return
+              }
+            }
+          } else {
+            const insertedOrder = await supabase.from('bento_orders').insert(orderRow).select('id').single()
+            if (insertedOrder.error) {
+              setScheduleError(insertedOrder.error.message || 'Failed to create new order.')
+              setLoading(false)
+              return
+            }
+            if (insertedOrder.data?.id && day.id) {
+              const { error: linkError } = await supabase.from('bento_subscription_days').update({ order_id: insertedOrder.data.id }).eq('id', day.id)
+              if (linkError) {
+                setScheduleError(linkError.message || 'Failed to link new order to subscription day.')
+                setLoading(false)
+                return
+              }
+            }
+          }
+        }
+
+        const refreshedOrders = await supabase
+          .from('bento_orders')
+          .select('id,date,customer_name,phone,address,area,menu_type,time_slot,items,note,quantity,status,amount,paid')
+          .ilike('customer_name', cust.name)
+          .order('date', { ascending: false })
+        nextOrders = (refreshedOrders.data || []) as Order[]
+        const refreshedDays = await supabase
+          .from('bento_subscription_days')
+          .select('*')
+          .eq('customer_id', cust.id)
+          .order('date', { ascending: true })
+        nextDays = (refreshedDays.data || nextDays) as SubscriptionDay[]
+      } catch {
+        setScheduleError('Network error during subscription generation. Please try again.')
+        setLoading(false)
+        return
       }
-
-      const refetchedDays = await supabase
-        .from('bento_subscription_days')
-        .select('*')
-        .eq('customer_id', cust.id)
-        .order('date', { ascending: true })
-      nextDays = (refetchedDays.data || generatedRows) as SubscriptionDay[]
-
-      for (const day of nextDays) {
-        if (day.status === 'skipped') {
-          if (day.order_id) {
-            await supabase.from('bento_orders').update({ status: 'canceled' }).eq('id', day.order_id)
-          }
-          continue
-        }
-
-        const linkedOrder = day.order_id ? nextOrders.find(order => order.id === day.order_id) : undefined
-        const sameDateOrder = nextOrders.find(order => order.date === day.date && order.status !== 'canceled')
-        const existingOrder = linkedOrder || sameDateOrder
-
-        const orderRow = {
-          date: day.date,
-          customer_name: cust.name,
-          phone: cust.phone,
-          address: cust.delivery_address,
-          area: cust.area,
-          menu_type: day.menu_type,
-          time_slot: day.time_slot,
-          items: cust.menu_preference || 'Subscription meal',
-          note: day.note || cust.taste_notes || cust.note || '',
-          amount: 0,
-          quantity: 1,
-          paid: true,
-          status: day.status === 'completed' ? 'completed' : 'pending',
-        }
-
-        if (existingOrder) {
-          await supabase.from('bento_orders').update(orderRow).eq('id', existingOrder.id)
-          if (!day.order_id) {
-            await supabase.from('bento_subscription_days').update({ order_id: existingOrder.id }).eq('id', day.id)
-          }
-        } else {
-          const insertedOrder = await supabase.from('bento_orders').insert(orderRow).select('id').single()
-          if (insertedOrder.data?.id && day.id) {
-            await supabase.from('bento_subscription_days').update({ order_id: insertedOrder.data.id }).eq('id', day.id)
-          }
-        }
-      }
-
-      const refreshedOrders = await supabase
-        .from('bento_orders')
-        .select('id,date,customer_name,phone,address,area,menu_type,time_slot,items,note,quantity,status,amount,paid')
-        .ilike('customer_name', cust.name)
-        .order('date', { ascending: false })
-      nextOrders = (refreshedOrders.data || []) as Order[]
-      const refreshedDays = await supabase
-        .from('bento_subscription_days')
-        .select('*')
-        .eq('customer_id', cust.id)
-        .order('date', { ascending: true })
-      nextDays = (refreshedDays.data || nextDays) as SubscriptionDay[]
     }
 
     setOrders(nextOrders)

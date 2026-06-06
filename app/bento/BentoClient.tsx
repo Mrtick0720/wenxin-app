@@ -86,6 +86,7 @@ export default function BentoClient({
   const today = todayLocalStr()
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
   const [filterArea, setFilterArea] = useState(ALL)
   const [filterType, setFilterType] = useState(ALL)
@@ -367,25 +368,48 @@ export default function BentoClient({
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
     setLoading(order.id)
-    if (isKitchen) {
-      await supabase.rpc('set_bento_order_status', {
-        order_id: order.id,
-        next_status: newStatus,
-      })
-    } else {
-      await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
+    setError(null)
+    try {
+      let result: { error?: { message?: string } | null }
+      if (isKitchen) {
+        result = await supabase.rpc('set_bento_order_status', {
+          order_id: order.id,
+          next_status: newStatus,
+        })
+      } else {
+        result = await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
+      }
+      if (result.error) {
+        setError(result.error.message || 'Failed to update order status.')
+        setLoading(null)
+        return
+      }
+      const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
+      setOrders(updated); cache.current[selectedDate] = updated
+    } catch {
+      setError('Network error. Please check your connection.')
     }
-    const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
-    setOrders(updated); cache.current[selectedDate] = updated; setLoading(null)
+    setLoading(null)
   }
 
   async function togglePaid(order: Order) {
     if (!canViewFinancialDetails) return
     const newPaid = !order.paid
     setLoading(order.id)
-    await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
-    const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
-    setOrders(updated); cache.current[selectedDate] = updated; setLoading(null)
+    setError(null)
+    try {
+      const { error: paidError } = await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
+      if (paidError) {
+        setError(paidError.message || 'Failed to update payment status.')
+        setLoading(null)
+        return
+      }
+      const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
+      setOrders(updated); cache.current[selectedDate] = updated
+    } catch {
+      setError('Network error. Please check your connection.')
+    }
+    setLoading(null)
   }
 
   const filtered = orders.filter(o =>
@@ -586,6 +610,14 @@ export default function BentoClient({
         )}
 
         <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+          {error && (
+            <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2 mb-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
           {fetching && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
           {/* Portions breakdown */}
