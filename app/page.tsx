@@ -107,7 +107,7 @@ export default async function Home() {
     <HomeRefresh>
     <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header — minimal: Avatar + Greeting + Bell only */}
-      <div className="bg-white px-4 pt-3 pb-2.5 border-b border-gray-50">
+      <div className="bg-white px-5 sm:px-8 pt-3 pb-2.5 border-b border-gray-50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-white font-semibold text-[11px] flex-shrink-0">
@@ -132,7 +132,7 @@ export default async function Home() {
         </div>
       </div>
 
-      <div className="px-4 pt-4 pb-28 space-y-4">
+      <div className="px-5 sm:px-8 pt-4 pb-28 space-y-4">
         {visibility.revenue && (
           <HeroCard
             revenueTotal={revenueTotal}
