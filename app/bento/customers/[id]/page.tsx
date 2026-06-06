@@ -6,7 +6,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { buildSubscriptionPlan, getDefaultMenuType, type Holiday, type PlannedSubscriptionDay, type SubscriptionDay } from '@/lib/subscriptionSchedule'
 import { todayLocalStr } from '@/lib/dateUtils'
 

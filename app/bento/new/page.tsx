@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import BackButton from '../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
 const AREAS = ['Likas', 'Luyang', 'Lintas']

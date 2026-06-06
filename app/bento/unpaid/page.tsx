@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import BackButton from '../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 
 type Order = {
   id: number

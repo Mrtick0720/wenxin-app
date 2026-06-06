@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import BackButton from '../../../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 
 const SUB_TYPES = [
   { value: 'weekly', label: 'Weekly' },

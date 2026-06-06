@@ -1,8 +1,11 @@
-import { supabase } from '@/lib/supabase'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
+import { requireCurrentStaff } from '@/lib/auth/currentStaff'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 async function getTasks() {
+  await requireCurrentStaff()
+  const supabase = await createServerSupabaseClient()
   const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('tasks')

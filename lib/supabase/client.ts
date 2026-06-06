@@ -22,3 +22,5 @@ export function createBrowserSupabaseClient(): SupabaseClient {
 
   return browserClient
 }
+
+export const supabase = createBrowserSupabaseClient()

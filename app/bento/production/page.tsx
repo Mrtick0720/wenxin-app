@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import BackButton from '../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
+import { useStaff } from '@/app/components/StaffProvider'
 
 type Order = {
   id: number
@@ -59,6 +60,7 @@ const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 export default function ProductionPage() {
+  const staff = useStaff()
   const today = todayLocalStr()
   const [selectedDate, setSelectedDate] = useState(today)
   const [orders, setOrders] = useState<Order[]>([])
@@ -68,14 +70,15 @@ export default function ProductionPage() {
 
   const loadData = useCallback(async (date: string) => {
     setLoading(true)
+    const source = staff?.role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const [ordersRes, menuRes] = await Promise.all([
-      supabase.from('bento_orders').select('*').eq('date', date).neq('status', 'canceled').order('id'),
+      supabase.from(source).select('*').eq('date', date).neq('status', 'canceled').order('id'),
       supabase.from('bento_weekly_menu').select('*').eq('week_start', getWeekStart(date)).maybeSingle(),
     ])
     setOrders((ordersRes.data || []) as Order[])
     setWeekMenu(menuRes.data as WeekMenu | null)
     setLoading(false)
-  }, [])
+  }, [staff?.role])
 
   useEffect(() => { loadData(selectedDate) }, [loadData, selectedDate])
 

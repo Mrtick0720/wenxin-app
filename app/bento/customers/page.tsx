@@ -1,6 +1,7 @@
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 import BackButton from '../../components/BackButton'
+import { requireRole } from '@/lib/auth/currentStaff'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +29,8 @@ const SUB_LABELS: Record<string, { label: string; color: string; bg: string }> =
 }
 
 export default async function CustomersPage() {
+  await requireRole('owner', 'manager', 'front_desk')
+  const supabase = await createServerSupabaseClient()
   const { data } = await supabase
     .from('bento_customers')
     .select('*')

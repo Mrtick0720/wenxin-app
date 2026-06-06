@@ -4,25 +4,26 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import BackButton from '../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
 import { getBentoGestureAxis, getBentoPanelAction, getBentoPullState, getBentoSwipeThreshold, shouldShowBentoTodayShortcut } from '@/lib/bentoInteractionUtils'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'
+import type { StaffRole } from '@/lib/auth/types'
 
 type Order = {
   id: number
   customer_name: string
-  phone: string
+  phone?: string
   address: string
   area: string
   menu_type: string
   items: string
   note: string
-  amount: number
-  paid: boolean
+  amount?: number
+  paid?: boolean
   status: string
   date: string
   time_slot?: string
@@ -70,8 +71,18 @@ function formatDate(dateStr: string) {
 
 type PanelMode = 'orders' | 'portions' | 'pending' | 'done'
 
-export default function BentoClient({ initialOrders }: { initialOrders: Order[] }) {
+export default function BentoClient({
+  initialOrders,
+  role,
+}: {
+  initialOrders: Order[]
+  role: StaffRole
+}) {
   const router = useRouter()
+  const isKitchen = role === 'kitchen'
+  const canViewFinancialDetails = role !== 'kitchen'
+  const canManageCustomers = role !== 'kitchen'
+  const canOpenProduction = role !== 'front_desk'
   const today = todayLocalStr()
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
@@ -164,11 +175,12 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
 
   // ── Data ──
   const fetchDate = useCallback(async (date: string): Promise<Order[]> => {
-    const { data } = await supabase.from('bento_orders').select('*').eq('date', date).neq('status', 'canceled').order('id', { ascending: true })
-    const result = data || []
+    const source = isKitchen ? 'bento_kitchen_orders' : 'bento_orders'
+    const { data } = await supabase.from(source).select('*').eq('date', date).neq('status', 'canceled').order('id', { ascending: true })
+    const result = (data || []) as Order[]
     cache.current[date] = result
     return result
-  }, [])
+  }, [isKitchen])
 
   const prefetchAdjacent = useCallback((date: string) => {
     const monday = getMondayOfWeek(date)
@@ -349,12 +361,20 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
     setLoading(order.id)
-    await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
+    if (isKitchen) {
+      await supabase.rpc('set_bento_order_status', {
+        order_id: order.id,
+        next_status: newStatus,
+      })
+    } else {
+      await supabase.from('bento_orders').update({ status: newStatus }).eq('id', order.id)
+    }
     const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
     setOrders(updated); cache.current[selectedDate] = updated; setLoading(null)
   }
 
   async function togglePaid(order: Order) {
+    if (!canViewFinancialDetails) return
     const newPaid = !order.paid
     setLoading(order.id)
     await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
@@ -372,7 +392,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
   const completed = orders.filter(o => o.status === 'completed').length
   const pending = orders.filter(o => o.status === 'pending').length
   const totalAmount = orders.reduce((sum, o) => sum + (o.amount || 0), 0)
-  const unpaidCount = orders.filter(o => !o.paid).length
+  const unpaidCount = orders.filter(o => o.paid === false).length
 
   const portionsBreakdown = (() => {
     const groups: Record<string, { qty: number; items: Order[]; menuLabel: string; slotLabel: string }> = {}
@@ -444,7 +464,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
             <BackButton href="/" />
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
-          <Link href="/bento/new" className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</Link>
+          {!isKitchen && <Link href="/bento/new" className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</Link>}
         </div>
 
         <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
@@ -454,13 +474,13 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
         <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
           <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ flexShrink: 0 }}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-gray-500">Bento Revenue</div>
+              <div className="text-sm text-gray-500">{isKitchen ? 'Daily Production' : 'Bento Revenue'}</div>
               <div className={`text-xs font-medium ${pending > 0 ? 'text-orange-500' : 'text-green-500'}`}>
                 ● {pending > 0 ? 'In Progress' : 'All Done'}
               </div>
             </div>
             <div className="text-3xl font-bold text-gray-900 mb-3">
-              RM {totalAmount > 0 ? totalAmount.toFixed(2) : '0.00'}
+              {isKitchen ? `${totalPortions} portions` : `RM ${totalAmount > 0 ? totalAmount.toFixed(2) : '0.00'}`}
             </div>
             <div className="grid grid-cols-4 gap-2">
               {([
@@ -478,7 +498,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Link href="/bento/unpaid" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            {canViewFinancialDetails && <Link href="/bento/unpaid" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
                 <line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/>
@@ -487,7 +507,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs font-medium text-gray-700">Unpaid</div>
                 <div className="text-xs text-gray-400">{unpaidCount > 0 ? `${unpaidCount} pending` : 'All paid'}</div>
               </div>
-            </Link>
+            </Link>}
             <Link href="/bento/weekly-menu" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="5" y="2" width="14" height="20" rx="2"/>
@@ -498,7 +518,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs text-gray-400">This week</div>
               </div>
             </Link>
-            <Link href="/bento/customers" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            {canManageCustomers && <Link href="/bento/customers" className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -507,8 +527,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs font-medium text-gray-700">Customers</div>
                 <div className="text-xs text-gray-400">Subscriptions</div>
               </div>
-            </Link>
-            <Link href={`/bento/production?date=${selectedDate}`} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
+            </Link>}
+            {canOpenProduction && <Link href={`/bento/production?date=${selectedDate}`} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/>
               </svg>
@@ -516,7 +536,7 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                 <div className="text-xs font-medium text-gray-700">Production</div>
                 <div className="text-xs text-gray-400">Kitchen sheet</div>
               </div>
-            </Link>
+            </Link>}
           </div>
 
           <button onClick={() => openPanel('orders')} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
@@ -615,8 +635,8 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                       {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
                       {order.address && <div className="text-sm text-gray-400 mb-1">{order.address}</div>}
                       <div className="flex items-center justify-between mt-2">
-                        <span className="text-sm text-gray-400">📞 {order.phone}</span>
-                        <span className="font-semibold text-gray-900">RM {order.amount}</span>
+                        {order.phone && <span className="text-sm text-gray-400">Phone: {order.phone}</span>}
+                        {canViewFinancialDetails && <span className="font-semibold text-gray-900">RM {order.amount ?? 0}</span>}
                       </div>
                       {isToday && (
                         <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
@@ -624,10 +644,10 @@ export default function BentoClient({ initialOrders }: { initialOrders: Order[] 
                           {loading === order.id ? 'Updating...' : order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
                         </button>
                       )}
-                      <button onClick={() => togglePaid(order)} disabled={loading === order.id}
+                      {canViewFinancialDetails && <button onClick={() => togglePaid(order)} disabled={loading === order.id}
                         className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
                         {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
-                      </button>
+                      </button>}
                     </div>
                   )
                 })}

@@ -1,8 +1,11 @@
-import { supabase } from '@/lib/supabase'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
+import { requireRole } from '@/lib/auth/currentStaff'
+import { createServerSupabaseClient } from '@/lib/supabase/server'
 
 async function getIncidents() {
+  await requireRole('owner', 'manager', 'front_desk')
+  const supabase = await createServerSupabaseClient()
   const today = new Date().toISOString().split('T')[0]
   const { data } = await supabase
     .from('incidents')

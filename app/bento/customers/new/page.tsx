@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import BackButton from '../../../components/BackButton'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase/client'
 
 const SUB_TYPES = [
   { value: 'weekly', label: 'Weekly' },
