@@ -10,6 +10,8 @@ export default function BackButton({ href }: BackButtonProps) {
   const router = useRouter()
 
   const handleBack = () => {
+    document.documentElement.classList.add('nav-back')
+
     // 1. Plain background cover — prevents any flash while destination renders
     const bgEl = document.createElement('div')
     bgEl.style.cssText = 'position:fixed;inset:0;z-index:8;background:#f9fafb;pointer-events:none;'
@@ -32,7 +34,10 @@ export default function BackButton({ href }: BackButtonProps) {
     setTimeout(() => {
       bgEl.style.transition = 'opacity 0.2s ease'
       bgEl.style.opacity = '0'
-      setTimeout(() => bgEl.remove(), 220)
+      setTimeout(() => {
+        bgEl.remove()
+        document.documentElement.classList.remove('nav-back')
+      }, 220)
     }, 320)
   }
 

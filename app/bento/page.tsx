@@ -8,6 +8,7 @@ async function getBentoOrders() {
     .from('bento_orders')
     .select('*')
     .eq('date', today)
+    .neq('status', 'canceled')
     .order('id', { ascending: true })
   return data || []
 }
