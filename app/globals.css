@@ -44,6 +44,7 @@ body {
 [data-stack-layer] .page-slide-in {
   animation: none !important;
   transform: none !important;
+}
 
 .nav-back .page-slide-in {
   animation: none;
@@ -51,26 +52,6 @@ body {
 
 .page-slide-out {
   animation: slideOutRight 0.25s ease-in forwards;
-}
-
-/* View Transitions — back navigation */
-[data-nav-back]::view-transition-old(root) {
-  animation: slideOutRight 0.28s ease-in forwards;
-  z-index: 2;
-}
-[data-nav-back]::view-transition-new(root) {
-  animation: slideInFromLeft 0.28s ease-out forwards;
-  z-index: 1;
-}
-
-/* View Transitions — forward navigation */
-[data-nav-forward]::view-transition-old(root) {
-  animation: none;
-  z-index: 1;
-}
-[data-nav-forward]::view-transition-new(root) {
-  animation: slideInRight 0.28s ease-out forwards;
-  z-index: 2;
 }
 
 /* Month slide animations — next: old goes up, new comes from below; prev: reversed */
