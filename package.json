@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "bootstrap:owner": "node scripts/create-owner.mjs",
     "dev": "next dev",
     "build": "next build",
+    "test:auth-audit": "node scripts/test-auth-audit.mjs",
     "test:auth-permissions": "node scripts/test-auth-permissions.mjs",
     "test:subscription-schedule": "node scripts/test-subscription-schedule.mjs",
     "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
