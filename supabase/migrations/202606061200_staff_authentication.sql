@@ -590,7 +590,7 @@ begin
     execute $policy$
       create policy staff_bento_orders_select on public.bento_orders
       for select to authenticated
-      using (public.staff_role_is(array['owner', 'manager', 'kitchen', 'front_desk']))
+      using (public.staff_role_is(array['owner', 'manager', 'front_desk']))
     $policy$;
     execute $policy$
       create policy staff_bento_orders_insert on public.bento_orders
@@ -608,6 +608,28 @@ begin
       for delete to authenticated
       using (public.staff_role_is(array['owner', 'manager', 'front_desk']))
     $policy$;
+
+    execute $view$
+      create or replace view public.bento_kitchen_orders
+      with (security_barrier = true)
+      as
+      select
+        id,
+        date,
+        customer_name,
+        address,
+        area,
+        menu_type,
+        time_slot,
+        items,
+        note,
+        quantity,
+        status
+      from public.bento_orders
+      where public.staff_role_is(array['owner', 'manager', 'kitchen'])
+    $view$;
+    execute 'revoke all on public.bento_kitchen_orders from anon';
+    execute 'grant select on public.bento_kitchen_orders to authenticated';
   end if;
 
   if to_regclass('public.bento_weekly_menu') is not null then
