@@ -511,10 +511,10 @@ select id, staff_id, display_name, role, active, last_login_at
 from public.staff_profiles
 where public.staff_role_is(array['owner', 'manager']);
 
-revoke all on public.staff_profiles from anon;
-revoke all on public.staff_sessions from anon;
-revoke all on public.audit_logs from anon;
-revoke all on public.staff_directory from anon;
+revoke all on public.staff_profiles from public, anon;
+revoke all on public.staff_sessions from public, anon;
+revoke all on public.audit_logs from public, anon;
+revoke all on public.staff_directory from public, anon;
 
 grant select on public.staff_profiles to authenticated;
 grant select on public.staff_sessions to authenticated;
@@ -549,6 +549,7 @@ grant execute on function public.set_bento_order_status(bigint, text) to authent
 do $$
 declare
   table_name text;
+  policy_name text;
 begin
   foreach table_name in array array[
     'daily_stats',
@@ -563,8 +564,15 @@ begin
   ]
   loop
     if to_regclass('public.' || table_name) is not null then
+      for policy_name in
+        select p.polname
+        from pg_policy p
+        where p.polrelid = to_regclass('public.' || table_name)
+      loop
+        execute format('drop policy if exists %I on public.%I', policy_name, table_name);
+      end loop;
       execute format('alter table public.%I enable row level security', table_name);
-      execute format('revoke all on table public.%I from anon', table_name);
+      execute format('revoke all on table public.%I from public, anon', table_name);
       execute format('grant select, insert, update, delete on table public.%I to authenticated', table_name);
     end if;
   end loop;
@@ -628,7 +636,7 @@ begin
       from public.bento_orders
       where public.staff_role_is(array['owner', 'manager', 'kitchen'])
     $view$;
-    execute 'revoke all on public.bento_kitchen_orders from anon';
+    execute 'revoke all on public.bento_kitchen_orders from public, anon';
     execute 'grant select on public.bento_kitchen_orders to authenticated';
   end if;
 
