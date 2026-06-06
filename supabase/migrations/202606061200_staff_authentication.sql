@@ -579,6 +579,8 @@ begin
 end;
 $$;
 
+alter table public.bento_orders add column if not exists time_slot text;
+
 do $$
 begin
   if to_regclass('public.daily_stats') is not null then
