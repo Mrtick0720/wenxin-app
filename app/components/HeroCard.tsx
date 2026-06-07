@@ -32,9 +32,16 @@ export default function HeroCard({
   const touchAxis = useRef<'h' | 'v' | null>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const containerWidth = useRef(0)
 
   const goTo = (next: number) => {
     if (animating || next === slide || next < 0 || next >= SLIDE_COUNT) return
+    const el = trackRef.current
+    if (el) {
+      // Remove any lingering inline style so React takes over the transition
+      el.style.transition = ''
+      el.style.transform = ''
+    }
     setAnimating(true)
     setSlide(next)
     setTimeout(() => setAnimating(false), 320)
@@ -47,6 +54,8 @@ export default function HeroCard({
     touchStartY.current = e.touches[0].clientY
     tracking.current = true
     touchAxis.current = null
+    // Cache width at touch start — avoids forced layout during drag
+    containerWidth.current = containerRef.current?.offsetWidth ?? 0
   }
 
   const onTouchMove = (e: React.TouchEvent) => {
@@ -59,19 +68,19 @@ export default function HeroCard({
     if (touchAxis.current !== 'h') return
     e.preventDefault()
     const el = trackRef.current
-    const container = containerRef.current
-    if (!el || !container) return
-    const cw = container.offsetWidth
-    const basePx = -(slide * (cw / SLIDE_COUNT))
+    if (!el) return
+    const cw = containerWidth.current
+    const step = cw / SLIDE_COUNT
+    const basePx = -(slide * step)
 
     // Elastic resistance at edges — continuous across boundary
     let offset = basePx + dx
-    const minPx = -((SLIDE_COUNT - 1) * (cw / SLIDE_COUNT))
+    const minPx = -((SLIDE_COUNT - 1) * step)
     if (offset > 0) offset *= ELASTIC
     else if (offset < minPx) offset = minPx + (offset - minPx) * ELASTIC
 
     el.style.transition = 'none'
-    el.style.transform = `translateX(${offset}px)`
+    el.style.transform = `translateX(${Math.round(offset)}px)`
   }
 
   const onTouchEnd = (e: React.TouchEvent) => {
@@ -85,9 +94,12 @@ export default function HeroCard({
     if (slide > 0 && dx > threshold) goTo(slide - 1)
     else if (slide < SLIDE_COUNT - 1 && dx < -threshold) goTo(slide + 1)
     else {
-      // Spring back to current slide
-      el.style.transition = 'transform 0.28s cubic-bezier(0.3,0,0.1,1)'
-      el.style.transform = `translateX(${-(slide * pctPerSlide)}%)`
+      // Spring back — let React's render handle the transition
+      el.style.transition = ''
+      el.style.transform = ''
+      setAnimating(true)
+      setSlide(slide) // triggers re-render with same slide, transition animates back
+      setTimeout(() => setAnimating(false), 300)
     }
   }
 
@@ -114,6 +126,7 @@ export default function HeroCard({
             width: `${SLIDE_COUNT * 100}%`,
             transform: `translateX(${-(slide * pctPerSlide)}%)`,
             transition: animating ? 'transform 0.3s cubic-bezier(0.3,0,0.1,1)' : 'none',
+            willChange: 'transform',
           }}
         >
           {/* ═══ Slide 1: Revenue Today ═══ */}
