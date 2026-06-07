@@ -15,17 +15,6 @@ interface HeroCardProps {
 const SLIDE_COUNT = 3
 const ELASTIC = 0.35
 
-function StatusBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span
-      className="text-[10px] font-semibold px-2.5 py-1 rounded-full"
-      style={{ color, background: `${color}1a` }}
-    >
-      {label}
-    </span>
-  )
-}
-
 export default function HeroCard({
   revenueTotal,
   revenueDineIn,
@@ -75,11 +64,11 @@ export default function HeroCard({
     const cw = container.offsetWidth
     const basePx = -(slide * (cw / SLIDE_COUNT))
 
-    // Elastic resistance at edges
+    // Elastic resistance at edges — continuous across boundary
     let offset = basePx + dx
     const minPx = -((SLIDE_COUNT - 1) * (cw / SLIDE_COUNT))
-    if (offset > 0) offset = dx * ELASTIC                       // left edge — elastic pull
-    else if (offset < minPx) offset = minPx + (dx * ELASTIC)    // right edge — elastic pull
+    if (offset > 0) offset *= ELASTIC
+    else if (offset < minPx) offset = minPx + (offset - minPx) * ELASTIC
 
     el.style.transition = 'none'
     el.style.transform = `translateX(${offset}px)`
@@ -135,28 +124,23 @@ export default function HeroCard({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <div className="text-sm font-semibold text-white">Today&apos;s Revenue</div>
-                <StatusBadge label="Open" color="#22c55e" />
+                <button
+                  onClick={() => router.push('/reports')}
+                  className="opacity-50 hover:opacity-100 transition-opacity"
+                  aria-label="Reports"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="4 16 10 10 15 13 20 5" />
+                  </svg>
+                </button>
               </div>
               <div className="text-3xl font-bold tracking-tight text-white">
                 RM {revenueTotal.toLocaleString()}
               </div>
             </div>
-            <div className="flex items-end justify-between">
-              <div className="flex items-center gap-1.5 text-[13px] pb-0.5">
-                <span className="text-green-400 font-medium">+12%</span>
-                <span className="text-slate-500">vs yesterday (RM 7,614)</span>
-              </div>
-              <button
-                onClick={() => router.push('/reports')}
-                className="flex items-center justify-center opacity-60 hover:opacity-100 transition-opacity pb-0.5"
-                aria-label="Reports"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="20" x2="18" y2="10" />
-                  <line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" />
-                </svg>
-              </button>
+            <div className="flex items-center gap-1.5 text-[13px] pb-0.5">
+              <span className="text-green-400 font-medium">+12%</span>
+              <span className="text-slate-500">vs yesterday (RM 7,614)</span>
             </div>
           </div>
 
@@ -167,15 +151,15 @@ export default function HeroCard({
           >
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-white">Dine-in</div>
-              <StatusBadge label="Open" color="#22c55e" />
+              <span className="text-sm font-medium text-green-400">Active</span>
             </div>
             <div className="text-2xl font-bold text-white mb-3">42 Orders</div>
             <div className="space-y-1.5">
-              <div className="flex justify-between text-xs">
+              <div className="flex gap-6 text-xs">
                 <span className="text-slate-400">Revenue</span>
                 <span className="text-white font-medium">RM {revenueDineIn.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-xs">
+              <div className="flex gap-6 text-xs">
                 <span className="text-slate-400">Avg Ticket</span>
                 <span className="text-white font-medium">RM {dineInAvg}</span>
               </div>
@@ -189,16 +173,16 @@ export default function HeroCard({
           >
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-white">Bento</div>
-              <StatusBadge label="In Progress" color="#f97316" />
+              <span className="text-sm font-medium text-orange-400">Prepping</span>
             </div>
             <div className="text-2xl font-bold text-white mb-3">{bentoOrders} Orders</div>
             <div className="space-y-1.5">
-              <div className="flex justify-between text-xs">
+              <div className="flex gap-6 text-xs">
                 <span className="text-slate-400">Revenue</span>
                 <span className="text-white font-medium">RM {revenueBento.toLocaleString()}</span>
               </div>
               <div>
-                <div className="flex items-center justify-between text-xs mb-1">
+                <div className="flex items-center gap-6 text-xs mb-1">
                   <span className="text-slate-400">Completion</span>
                   <span className="text-white font-medium">{bentoPercent}%</span>
                 </div>
