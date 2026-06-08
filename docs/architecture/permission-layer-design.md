@@ -179,6 +179,7 @@ export const PERMISSION = {
 
   // ── Module: Reports ──
   VIEW_REPORTS:             'reports:view',
+  VIEW_PURCHASE_SALES_RATIO:'reports:purchase_sales_ratio:view',
 
   // ── Module: Dine-in ──
   VIEW_DINE_IN:             'dine_in:view',
@@ -295,6 +296,7 @@ export const ROLE_PERMISSIONS: RolePermissions = {
 
     // Reports
     PERMISSION.VIEW_REPORTS,
+    PERMISSION.VIEW_PURCHASE_SALES_RATIO,
 
     // Dine-in
     PERMISSION.VIEW_DINE_IN,
@@ -371,9 +373,10 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     // No VIEW_BENTO_CUSTOMERS, EDIT_BENTO_CUSTOMERS
     // No VIEW_BENTO_PAYMENTS, EDIT_BENTO_PAYMENTS
 
-    // Purchase
+    // Purchase — request submission only (item, qty, unit — no prices)
     PERMISSION.VIEW_PURCHASE,
     PERMISSION.EDIT_PURCHASE,
+    // Kitchen does NOT see unit prices, supplier prices, or total purchase cost
 
     // Inventory
     PERMISSION.VIEW_INVENTORY,
@@ -382,6 +385,11 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     // Tasks
     PERMISSION.VIEW_TASKS,
     PERMISSION.EDIT_TASKS,
+
+    // Reports — KPI output only (percentage + color, no underlying financial values)
+    PERMISSION.VIEW_PURCHASE_SALES_RATIO,
+    // Kitchen does NOT have VIEW_REPORTS — cannot see any financial reports
+    // Kitchen does NOT see sales amount, purchase amount, unit prices, or supplier prices
 
     // Attendance — self only
     PERMISSION.VIEW_ATTENDANCE_SELF,
@@ -858,6 +866,90 @@ checklist:all:view       — View all checklists regardless of role
 - **Sensitive Data** is always additive — granted in addition to View permissions. A role can view orders without seeing customer phone numbers.
 - **Administrative** is Owner-only in most cases.
 
+### D.3 Operational KPIs with Restricted Visibility
+
+Some operational KPIs are accessible to roles that do not otherwise have access to the parent module. These KPIs follow special visibility rules.
+
+#### Purchase-to-Sales Ratio
+
+**Permission Key:** `VIEW_PURCHASE_SALES_RATIO` (`reports:purchase_sales_ratio:view`)
+
+**Business Meaning:** Kitchen needs to see whether today's purchase amount is proportional to today's sales. High ratios indicate over-purchasing or low sales.
+
+**Formula:**
+```
+Purchase-to-Sales Ratio = Approved / Confirmed Purchase Amount ÷ Sales Amount × 100%
+```
+
+The numerator uses only **approved/confirmed** purchase amounts — not raw purchase requests. Purchase requests submitted by Kitchen and Front Desk do not include prices; prices are entered or confirmed by Supervisor or Owner/Admin. Only purchases with confirmed prices are included in the ratio calculation.
+
+**Data Sources:**
+- Purchase module — today's approved/confirmed purchase amounts (prices entered by Manager/Owner)
+- Cashier module — today's sales amount
+- Reports module — aggregates and calculates the KPI
+
+**Display Thresholds:**
+
+| Range | Color | Meaning |
+|-------|-------|---------|
+| ≤ 25% | Green | Healthy — purchase cost is well within revenue |
+| > 25% and ≤ 35% | Yellow | Warning — purchase cost is elevated relative to sales |
+| > 35% | Red | Alert — purchase cost is too high relative to sales |
+
+Thresholds should be configurable via `restaurant_settings` in a future phase.
+
+**Visibility Rules:**
+
+| Role | Can See Ratio | Can See Raw Revenue | Can See Purchase Amount |
+|------|:------------:|:-------------------:|:----------------------:|
+| Owner | ✅ Full access | ✅ | ✅ |
+| Manager | ✅ Full access | ✅ | ✅ |
+| Kitchen | ✅ KPI output only (pct + color) | ❌ | ❌ |
+| Front Desk | ❌ | ❌ | ❌ |
+| Delivery | ❌ | ❌ | ❌ |
+
+**Kitchen Restriction (KPI-Only Access):**
+- Kitchen receives only the **derived KPI output**: percentage value and status color (green/yellow/red).
+- Kitchen CANNOT view: today's sales amount, today's purchase amount, unit prices, supplier prices, purchase cost breakdown, revenue totals, profit margins, finance reports, or cashier sales totals.
+- Kitchen and Front Desk submit purchase requests without prices (item, quantity, unit, reason, urgency, notes only). Prices are entered by Manager or Owner.
+- The KPI is displayed to Kitchen as an isolated operational metric — a single percentage with a color badge. No underlying financial values are exposed.
+- This is operational guidance ("are we over-purchasing relative to sales?"), not financial disclosure.
+
+**Owner/Manager Access:**
+- Owner and Manager see the full ratio with both numerator and denominator visible.
+- Owner and Manager enter or confirm purchase prices and approve purchase amounts.
+- The ratio appears in the Reports module alongside other financial KPIs.
+
+### D.4 Purchase Price Visibility
+
+Kitchen and Front Desk submit purchase requests with operational details only. Prices are entered or confirmed by Supervisor or Owner/Admin as a separate step.
+
+**Request Submission (Kitchen / Front Desk):**
+
+| Field | Visible | Editable |
+|-------|:-------:|:--------:|
+| Item name | ✅ | ✅ |
+| Quantity | ✅ | ✅ |
+| Unit | ✅ | ✅ |
+| Reason / urgency | ✅ | ✅ |
+| Notes | ✅ | ✅ |
+| Unit price | ❌ | ❌ |
+| Supplier name | ✅ (reference) | ✅ (reference) |
+| Supplier price | ❌ | ❌ |
+| Total cost | ❌ | ❌ |
+
+**Price Confirmation (Manager / Owner):**
+
+| Field | Visible | Editable |
+|-------|:-------:|:--------:|
+| All request fields | ✅ | ✅ |
+| Unit price | ✅ | ✅ |
+| Supplier price | ✅ | ✅ |
+| Total purchase cost | ✅ | ✅ |
+| Approve / confirm | ✅ | ✅ |
+
+**Rationale:** Kitchen and Front Desk identify what needs to be purchased. Manager and Owner control pricing and supplier relationships. This separation ensures purchasing decisions are made by those with budget authority.
+
 ---
 
 ## E. Updated Permission Matrix
@@ -893,6 +985,7 @@ checklist:all:view       — View all checklists regardless of role
 | `finance:edit` | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **Reports** | | | | | |
 | `reports:view` | ✅ | ✅ | ❌ | ❌ | ❌ |
+| `reports:purchase_sales_ratio:view` | ✅ | ✅ | ✅ (KPI output only) | ❌ | ❌ |
 | **Dine-in** | | | | | |
 | `dine_in:view` | ✅ | ✅ | ❌ | ✅ | ❌ |
 | `dine_in:edit` | ✅ | ✅ | ❌ | ✅ | ❌ |
