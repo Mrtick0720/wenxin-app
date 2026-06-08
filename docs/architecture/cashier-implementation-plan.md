@@ -41,14 +41,14 @@ Bundles: Owner=all; Supervisor=ALL/CREATE/CLOSE/EDIT/APPROVE/EXPORT; Front Crew=
 Service layer `lib/cashier/` (server actions / queries), permission-checked:
 - `openShift({ cashierId, openingFloat, businessDate })`
 - `addAdjustment({ shiftId, type, amount, reason })`
-- `closeShift({ shiftId, countedCash, paymentLines[], note? })` → computes `expected_cash`, `cash_variance`, flag
-- `verifyShift({ shiftId, note? })` (Sup/Owner; audited; flag self-verify)
+- `closeShift({ shiftId, countedCash, note? })` → records counted cash; payment totals are **POS-sourced (not entered)**; computes `cash_variance` only when POS data exists, else `derived_cash_takings`
+- `verifyShift({ shiftId, note? })` (Sup/Owner) → **REJECT if verifier == closer / cashier-in-charge (self-verify hard-blocked, server-side)**
 - `reopenShift({ shiftId, reason })` / `voidShift({ shiftId, reason })`
 - `listShifts({ scope: self|all, range })` · `getShift(id)`
 - `getTodayCashierSummary()` → dashboard widget data
 - `listPaymentMethods()` · `upsertPaymentMethod()` (Owner)
 - Reports: `dailyCashReport`, `varianceReport`, `paymentMixReport`, `periodSummary` (+ export)
-- Pure helper: `computeVariance({ openingFloat, cashSales, payIns, payOuts, countedCash, threshold=5 })` (unit-testable)
+- Pure helper: `computeVariance({ openingFloat, cashSales, payIns, payOuts, countedCash, threshold=5 })` (unit-testable). `cashSales` comes from POS only; when absent → return derived takings + variance=N/A.
 - Future: `CashierPosAdapter` interface + `importPosSummary()` (not built now)
 
 ## 6. Development Phases
@@ -76,7 +76,9 @@ Service layer `lib/cashier/` (server actions / queries), permission-checked:
 - [ ] Open → only one OPEN shift per business_date enforced
 - [ ] Close with flagged variance requires note (block submit if missing)
 - [ ] Verify locks edits; Reopen unlocks (audited); Void cannot be edited
-- [ ] Supervisor-as-cashier self-verify is recorded/flagged in audit
+- [ ] **Self-verification is BLOCKED** — verifier ≠ closer enforced server-side (e.g. Supervisor who closed cannot verify; Owner must)
+- [ ] Close screen has **no manual payment fields**; payment breakdown read-only (POS) / "pending POS" when absent
+- [ ] Variance + RM5 flag only when POS data present; pre-POS shows derived takings, no variance
 
 **Permissions / visibility**
 - [ ] Front Crew sees own shifts only; cannot verify/export/see cross-shift totals
@@ -96,4 +98,4 @@ Service layer `lib/cashier/` (server actions / queries), permission-checked:
 - [ ] RLS denies cross-outlet / unauthorized reads
 
 ## Decisions locked (from approval)
-One shift/day (schema flexible) · single counted-cash (no denominations V1) · RM5 threshold + FC flagged-submit-with-note + Sup/Owner verify · Supervisor may be cashier (audited) · POS provider-agnostic, not implemented.
+One shift/day (schema flexible) · single counted-cash (no denominations V1) · **payment totals POS-driven, single source — staff enter counted cash only; variance/RM5 active only with POS** · **segregation of duties hard-enforced — no self-verification (verifier ≠ closer)** · Supervisor may be cashier · POS provider-agnostic, not implemented.
