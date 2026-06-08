@@ -11,6 +11,7 @@
     "test:auth-permissions": "node scripts/test-auth-permissions.mjs",
     "test:subscription-schedule": "node scripts/test-subscription-schedule.mjs",
     "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
+    "test:permission-layer": "npx tsx scripts/test-permission-layer.mjs",
     "start": "next start",
     "lint": "eslint"
   },
