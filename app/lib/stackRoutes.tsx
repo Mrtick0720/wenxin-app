@@ -14,8 +14,10 @@ const ReportsPage      = lazy(() => import('@/app/reports/page'))
 const DineInPage       = lazy(() => import('@/app/dine-in/page'))
 const ReservationsPage = lazy(() => import('@/app/reservations/page'))
 const ComplaintsPage   = lazy(() => import('@/app/complaints/page'))
-
-// tasks/page and incidents/page use server-side auth — fall back to normal navigation.
+const IncidentsPage    = lazy(() => import('@/app/incidents/page'))
+const TasksPage        = lazy(() => import('@/app/tasks/page'))
+const AllModulesPage   = lazy(() => import('@/app/all/page'))
+const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
 
 function PageFallback() {
   return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
@@ -44,9 +46,34 @@ export const routes: Record<string, RouteFactory> = {
   '/dine-in':      () => <S><DineInPage /></S>,
   '/reservations': () => <S><ReservationsPage /></S>,
   '/complaints':   () => <S><ComplaintsPage /></S>,
+  '/incidents':    () => <S><IncidentsPage /></S>,
+  '/tasks':        () => <S><TasksPage /></S>,
+  '/all':          () => <S><AllModulesPage /></S>,
+  '/suppliers':    () => <S><SuppliersPage /></S>,
 }
 
 export function getPageElement(href: string): React.ReactNode | null {
   const factory = routes[href]
   return factory ? factory() : null
+}
+
+/** Preload all lazy page chunks so the first navigation has zero code-loading delay. */
+export function preloadRoutes() {
+  // `.preload()` is a runtime method React attaches to lazy components
+  // but does not expose in the TS types. Cast to access it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = (c: any) => c.preload?.()
+  p(PurchaseClient)
+  p(BentoClient)
+  p(StaffPage)
+  p(FinancePage)
+  p(InventoryPage)
+  p(ReportsPage)
+  p(DineInPage)
+  p(ReservationsPage)
+  p(ComplaintsPage)
+  p(IncidentsPage)
+  p(TasksPage)
+  p(AllModulesPage)
+  p(SuppliersPage)
 }

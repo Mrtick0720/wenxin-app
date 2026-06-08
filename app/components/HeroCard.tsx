@@ -2,6 +2,8 @@
 
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useNavigation } from './NavigationStack'
+import { getPageElement } from '@/app/lib/stackRoutes'
 
 interface HeroCardProps {
   revenueTotal: number
@@ -24,6 +26,7 @@ export default function HeroCard({
   bentoPercent,
 }: HeroCardProps) {
   const router = useRouter()
+  const { push } = useNavigation()
   const [slide, setSlide] = useState(0)
   const [animating, setAnimating] = useState(false)
   const touchStartX = useRef(0)
@@ -34,17 +37,28 @@ export default function HeroCard({
   const containerRef = useRef<HTMLDivElement>(null)
   const containerWidth = useRef(0)
 
+  const animIdRef = useRef(0)
+
   const goTo = (next: number) => {
     if (animating || next === slide || next < 0 || next >= SLIDE_COUNT) return
     const el = trackRef.current
-    if (el) {
-      // Remove any lingering inline style so React takes over the transition
-      el.style.transition = ''
-      el.style.transform = ''
-    }
+    if (!el) return
+    // Drive the transition entirely via inline style so React's style prop
+    // (which writes to the same CSS properties) never causes a flash.
+    el.style.transition = 'transform 0.3s cubic-bezier(0.3,0,0.1,1)'
+    el.style.transform = `translateX(${-(next * pctPerSlide)}%)`
     setAnimating(true)
     setSlide(next)
-    setTimeout(() => setAnimating(false), 320)
+    animIdRef.current++
+    const id = animIdRef.current
+    setTimeout(() => {
+      // Only cleanup if no newer animation started
+      if (id !== animIdRef.current) return
+      // Clear transition only — keep transform so there is no frame where
+      // the track reverts to translateX(0) before React's next render.
+      el.style.transition = ''
+      setAnimating(false)
+    }, 320)
   }
 
   const pctPerSlide = 100 / SLIDE_COUNT
@@ -70,20 +84,40 @@ export default function HeroCard({
     const el = trackRef.current
     if (!el) return
     const cw = containerWidth.current
-    const step = cw / SLIDE_COUNT
-    const basePx = -(slide * step)
+    if (cw <= 0) return
+    const basePx = -(slide * cw)
+    const maxPx = 0
+    const minPx = -((SLIDE_COUNT - 1) * cw)
 
-    // Elastic resistance at edges — continuous across boundary
+    // Clamp + elastic: never allow the track to move beyond valid slide bounds
     let offset = basePx + dx
-    const minPx = -((SLIDE_COUNT - 1) * step)
-    if (offset > 0) offset *= ELASTIC
-    else if (offset < minPx) offset = minPx + (offset - minPx) * ELASTIC
+    if (offset > maxPx) {
+      // Past first slide (right edge) — rubber-band resistance
+      offset = maxPx + (offset - maxPx) * ELASTIC
+    } else if (offset < minPx) {
+      // Past last slide (left edge) — rubber-band resistance
+      offset = minPx + (offset - minPx) * ELASTIC
+    }
 
     el.style.transition = 'none'
     el.style.transform = `translateX(${Math.round(offset)}px)`
   }
 
   const onTouchEnd = (e: React.TouchEvent) => {
+    // ── Tap detection (no directional classification = tap, not a swipe) ──
+    if (tracking.current && touchAxis.current === null) {
+      tracking.current = false
+      if (slide === 1) {
+        const el = getPageElement('/dine-in')
+        if (el) push('/dine-in', el)
+      } else if (slide === 2) {
+        const el = getPageElement('/bento')
+        if (el) push('/bento', el)
+      }
+      // Slide 0: existing reports button handles its own navigation
+      return
+    }
+
     if (!tracking.current || touchAxis.current !== 'h') { tracking.current = false; return }
     tracking.current = false
     const dx = e.changedTouches[0].clientX - touchStartX.current
@@ -91,15 +125,22 @@ export default function HeroCard({
     const el = trackRef.current
     if (!el) return
 
-    if (slide > 0 && dx > threshold) goTo(slide - 1)
-    else if (slide < SLIDE_COUNT - 1 && dx < -threshold) goTo(slide + 1)
-    else {
-      // Spring back — let React's render handle the transition
-      el.style.transition = ''
-      el.style.transform = ''
-      setAnimating(true)
-      setSlide(slide) // triggers re-render with same slide, transition animates back
-      setTimeout(() => setAnimating(false), 300)
+    if (slide > 0 && dx > threshold) {
+      goTo(slide - 1)
+    } else if (slide < SLIDE_COUNT - 1 && dx < -threshold) {
+      goTo(slide + 1)
+    } else {
+      // Spring-back: animate entirely via inline style.
+      // No React state change — avoids React style prop overwriting inline values.
+      el.style.transition = 'transform 0.25s ease-out'
+      el.style.transform = `translateX(${-(slide * pctPerSlide)}%)`
+      animIdRef.current++
+      const id = animIdRef.current
+      setTimeout(() => {
+        if (id !== animIdRef.current) return
+        // Clear transition only — keep transform to avoid translateX(0) flash
+        el.style.transition = ''
+      }, 260)
     }
   }
 
@@ -110,7 +151,7 @@ export default function HeroCard({
       ref={containerRef}
       className="rounded-2xl"
       style={{
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 50%, #1a1a2e 100%)',
+        background: 'linear-gradient(135deg, #1e3a5c 0%, #162238 60%, #1a1818 100%)',
         touchAction: 'pan-y',
         overflow: 'hidden',
       }}
@@ -131,7 +172,7 @@ export default function HeroCard({
         >
           {/* ═══ Slide 1: Revenue Today ═══ */}
           <div
-            className="flex-shrink-0 flex flex-col justify-between px-4"
+            className="flex-shrink-0 flex flex-col justify-between px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
             <div>
@@ -159,21 +200,21 @@ export default function HeroCard({
 
           {/* ═══ Slide 2: Dine-in Breakdown ═══ */}
           <div
-            className="flex-shrink-0 px-4"
+            className="flex-shrink-0 px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-white">Dine-in</div>
-              <span className="text-sm font-medium text-green-400">Active</span>
+              <span className="text-xs text-emerald-500/70">Active</span>
             </div>
             <div className="text-2xl font-bold text-white mb-3">42 Orders</div>
             <div className="space-y-1.5">
-              <div className="flex gap-6 text-xs">
-                <span className="text-slate-400">Revenue</span>
+              <div className="flex gap-2 text-xs">
+                <span className="text-slate-400 w-[72px] flex-shrink-0">Revenue</span>
                 <span className="text-white font-medium">RM {revenueDineIn.toLocaleString()}</span>
               </div>
-              <div className="flex gap-6 text-xs">
-                <span className="text-slate-400">Avg Ticket</span>
+              <div className="flex gap-2 text-xs">
+                <span className="text-slate-400 w-[72px] flex-shrink-0">Avg Ticket</span>
                 <span className="text-white font-medium">RM {dineInAvg}</span>
               </div>
             </div>
@@ -181,12 +222,12 @@ export default function HeroCard({
 
           {/* ═══ Slide 3: Bento Breakdown ═══ */}
           <div
-            className="flex-shrink-0 px-4"
+            className="flex-shrink-0 px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="text-sm font-semibold text-white">Bento</div>
-              <span className="text-sm font-medium text-orange-400">Prepping</span>
+              <span className="text-xs text-orange-400/80">Prepping</span>
             </div>
             <div className="text-2xl font-bold text-white mb-3">{bentoOrders} Orders</div>
             <div className="space-y-1.5">
@@ -194,14 +235,9 @@ export default function HeroCard({
                 <span className="text-slate-400">Revenue</span>
                 <span className="text-white font-medium">RM {revenueBento.toLocaleString()}</span>
               </div>
-              <div>
-                <div className="flex items-center gap-6 text-xs mb-1">
-                  <span className="text-slate-400">Completion</span>
-                  <span className="text-white font-medium">{bentoPercent}%</span>
-                </div>
-                <div className="w-full bg-white/10 rounded-full h-1">
-                  <div className="h-1 rounded-full bg-orange-400" style={{ width: `${bentoPercent}%` }} />
-                </div>
+              <div className="flex gap-6 text-xs">
+                <span className="text-slate-400">Completion</span>
+                <span className="text-white font-medium">{bentoPercent}%</span>
               </div>
             </div>
           </div>

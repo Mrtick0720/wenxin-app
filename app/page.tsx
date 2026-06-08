@@ -146,25 +146,45 @@ export default async function Home() {
 
         {/* ═══ Alert Cards — 4 status cards with priority hints ═══ */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {canAccessPath(staff.role, '/reservations') && <NavLink href="/reservations" className="bg-blue-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Booking</div>
-            <div className="text-lg font-bold text-blue-500">{reservationCount}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 truncate">Today</div>
+          {canAccessPath(staff.role, '/reservations') && <NavLink href="/reservations" className="bg-blue-100 rounded-xl pl-5 pr-3.5 py-2 block overflow-hidden">
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-medium text-gray-600 truncate">Reservations</span>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-blue-600 flex-shrink-0">
+                <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </div>
+            <div className="text-4xl font-bold text-blue-600 leading-none mt-1">{reservationCount}</div>
+            <div className="text-[11px] text-gray-500 mt-0.5 truncate">Today</div>
           </NavLink>}
-          {canAccessPath(staff.role, '/complaints') && <NavLink href="/complaints" className="bg-red-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Complaint</div>
-            <div className="text-lg font-bold text-red-500">{complaintCount}</div>
-            <div className="text-[11px] text-red-400 mt-0.5 truncate">! Urgent</div>
+          {canAccessPath(staff.role, '/complaints') && <NavLink href="/complaints" className="bg-rose-100 rounded-xl pl-5 pr-3.5 py-2 block overflow-hidden">
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-medium text-gray-600 truncate">Complaints</span>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-rose-600 flex-shrink-0">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12" y2="16"/>
+              </svg>
+            </div>
+            <div className="text-4xl font-bold text-rose-600 leading-none mt-1">{complaintCount}</div>
+            <div className="text-[11px] text-rose-500 mt-0.5 truncate">! Urgent</div>
           </NavLink>}
-          {canAccessPath(staff.role, '/incidents') && <NavLink href="/incidents" className="bg-orange-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Incident</div>
-            <div className="text-lg font-bold text-orange-500">{anomalyCount}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
+          {canAccessPath(staff.role, '/incidents') && <NavLink href="/incidents" className="bg-orange-100 rounded-xl pl-5 pr-3.5 py-2 block overflow-hidden">
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-medium text-gray-600 truncate">Incidents</span>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-orange-600 flex-shrink-0">
+                <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12" y2="17"/>
+              </svg>
+            </div>
+            <div className="text-4xl font-bold text-orange-600 leading-none mt-1">{anomalyCount}</div>
+            <div className="text-[11px] text-gray-500 mt-0.5 truncate">{anomalyCount > 0 ? 'Open' : 'Clear'}</div>
           </NavLink>}
-          <NavLink href="/tasks" className="bg-amber-50 rounded-xl p-2.5 text-center block overflow-hidden">
-            <div className="text-[11px] text-gray-500 mb-0.5 truncate">Pending</div>
-            <div className="text-lg font-bold text-amber-500">{pendingCount}</div>
-            <div className="text-[11px] text-amber-400 mt-0.5 truncate">{pendingCount > 0 ? 'Overdue' : 'Clear'}</div>
+          <NavLink href="/tasks" className="bg-yellow-100 rounded-xl pl-5 pr-3.5 py-2 block overflow-hidden">
+            <div className="flex items-start justify-between">
+              <span className="text-xs font-medium text-gray-600 truncate">Tasks</span>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-700 flex-shrink-0">
+                <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>
+              </svg>
+            </div>
+            <div className="text-4xl font-bold text-yellow-700 leading-none mt-1">{pendingCount}</div>
+            <div className="text-[11px] text-yellow-700 mt-0.5 truncate">{pendingCount > 0 ? 'Overdue' : 'Clear'}</div>
           </NavLink>
         </div>
 
@@ -210,19 +230,30 @@ export default async function Home() {
         {/* ═══ Quick Access — low-frequency but essential ═══ */}
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Quick Access</div>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2.5">
             {[
-              { href: '/purchase', label: 'Purchase' },
-              { href: '/staff',       label: 'Staff' },
-              { href: '/inventory',   label: 'Inventory' },
-              { href: '/finance',     label: 'Finance' },
-              { href: '/bento/customers', label: 'Customers' },
-              { href: '/reservations', label: 'Bookings' },
-              { href: '/complaints', label: 'Complaints' },
-              { href: '/dine-in', label: 'Dine-in' },
-            ].filter(item => canAccessPath(staff.role, item.href)).map(({ href, label }) => (
-              <NavLink key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm border border-gray-100 text-center block overflow-hidden">
-                <div className="text-xs font-semibold text-gray-700 whitespace-nowrap overflow-hidden text-ellipsis">{label}</div>
+              { href: '/inventory', label: 'Inventory', always: false, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+              ) },
+              { href: '/finance', label: 'Finance', always: false, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>
+              ) },
+              { href: '/bento/customers', label: 'Customers', always: false, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              ) },
+              { href: '/reports', label: 'Reports', always: false, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+              ) },
+              { href: '/suppliers', label: 'Suppliers', always: false, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+              ) },
+              { href: '/all', label: 'View All', always: true, icon: (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+              ) },
+            ].filter(item => item.always || canAccessPath(staff.role, item.href)).map(({ href, label, icon }) => (
+              <NavLink key={href} href={href} className="bg-white rounded-xl py-3 px-1 border border-gray-100 text-center block overflow-hidden">
+                <div className="flex justify-center mb-1.5 text-gray-400">{icon}</div>
+                <div className="text-base font-medium text-gray-600 whitespace-nowrap">{label}</div>
               </NavLink>
             ))}</div>
         </div>

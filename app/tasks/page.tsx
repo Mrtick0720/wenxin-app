@@ -1,18 +1,18 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
-import { requireCurrentStaff } from '@/lib/auth/currentStaff'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { useStaff } from '../components/StaffProvider'
+import { supabase } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
-async function getTasks() {
-  await requireCurrentStaff()
-  const supabase = await createServerSupabaseClient()
-  const today = new Date().toISOString().split('T')[0]
-  const { data } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('date', today)
-    .order('id', { ascending: true })
-  return data || []
+interface Task {
+  id: number
+  title: string
+  task_type: string
+  priority: string
+  status: string
 }
 
 const typeLabel: Record<string, string> = {
@@ -35,8 +35,27 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   done: { label: 'Done', color: 'text-green-500' },
 }
 
-export default async function TasksPage() {
-  const tasks = await getTasks()
+export default function TasksPage() {
+  const staff = useStaff()
+  const router = useRouter()
+  const [tasks, setTasks] = useState<Task[]>([])
+
+  useEffect(() => {
+    if (!staff) {
+      router.push('/login')
+      return
+    }
+    const today = new Date().toISOString().split('T')[0]
+    supabase
+      .from('tasks')
+      .select('*')
+      .eq('date', today)
+      .order('id', { ascending: true })
+      .then(({ data }) => {
+        setTasks((data || []) as Task[])
+      })
+  }, [staff, router])
+
   const pending = tasks.filter(t => t.status === 'pending').length
   const processing = tasks.filter(t => t.status === 'processing').length
   const done = tasks.filter(t => t.status === 'done').length
@@ -47,7 +66,7 @@ export default async function TasksPage() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <BackButton href="/" />
-        <span className="font-semibold text-base">Pending Tasks</span>
+        <span className="font-semibold text-base">Tasks</span>
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
@@ -73,7 +92,7 @@ export default async function TasksPage() {
           <div className="text-sm font-semibold text-gray-700 mb-2">Task List</div>
           <div className="space-y-3">
             {tasks.length === 0 && (
-              <div className="text-center text-gray-400 py-8">No pending tasks today</div>
+              <div className="text-center text-gray-400 py-8">No tasks today</div>
             )}
             {tasks.map((task) => {
               const priority = priorityConfig[task.priority] || priorityConfig.low

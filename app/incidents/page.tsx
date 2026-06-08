@@ -1,18 +1,18 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
-import { requireRole } from '@/lib/auth/currentStaff'
-import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { useStaff } from '../components/StaffProvider'
+import { supabase } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
-async function getIncidents() {
-  await requireRole('owner', 'manager', 'front_desk')
-  const supabase = await createServerSupabaseClient()
-  const today = new Date().toISOString().split('T')[0]
-  const { data } = await supabase
-    .from('incidents')
-    .select('*')
-    .eq('date', today)
-    .order('id', { ascending: true })
-  return data || []
+interface Incident {
+  id: number
+  title: string
+  incident_type: string
+  severity: string
+  status: string
 }
 
 const typeLabel: Record<string, string> = {
@@ -35,8 +35,27 @@ const statusConfig: Record<string, { label: string; color: string }> = {
   resolved: { label: 'Resolved', color: 'text-green-500' },
 }
 
-export default async function IncidentsPage() {
-  const incidents = await getIncidents()
+export default function IncidentsPage() {
+  const staff = useStaff()
+  const router = useRouter()
+  const [incidents, setIncidents] = useState<Incident[]>([])
+
+  useEffect(() => {
+    if (!staff || !['owner', 'manager', 'front_desk'].includes(staff.role)) {
+      router.push('/access-denied')
+      return
+    }
+    const today = new Date().toISOString().split('T')[0]
+    supabase
+      .from('incidents')
+      .select('*')
+      .eq('date', today)
+      .order('id', { ascending: true })
+      .then(({ data }) => {
+        setIncidents((data || []) as Incident[])
+      })
+  }, [staff, router])
+
   const open = incidents.filter(i => i.status === 'open').length
   const handling = incidents.filter(i => i.status === 'handling').length
   const resolved = incidents.filter(i => i.status === 'resolved').length
@@ -47,7 +66,7 @@ export default async function IncidentsPage() {
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
         <BackButton href="/" />
-        <span className="font-semibold text-base">Today&apos;s Incidents</span>
+        <span className="font-semibold text-base">Incidents</span>
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
