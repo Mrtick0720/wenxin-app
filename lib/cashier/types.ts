@@ -6,7 +6,7 @@
 // A cashier work session. Opened at shift start, closed at shift end.
 // Tracks expected vs. actual cash totals and all payment activity.
 
-export type CashierShiftStatus = 'open' | 'closing' | 'closed' | 'audited'
+export type CashierShiftStatus = 'open' | 'closing' | 'closed' | 'verified'
 
 export type CashierShift = {
   id: number
@@ -22,8 +22,8 @@ export type CashierShift = {
   cashDifference: number        // RM — actual minus expected
   notes: string | null
   closedByStaffUserId: string | null
-  auditedByStaffUserId: string | null
-  auditedAt: string | null
+  verifiedByStaffUserId: string | null
+  verifiedAt: string | null
   createdAt: string
   updatedAt: string
 }
@@ -108,6 +108,6 @@ export type CashierAction =
   | 'close_shift'
   | 'record_payment'
   | 'make_adjustment'
-  | 'audit_shift'
+  | 'verify_shift'
   | 'view_reports'
   | 'manage_settings'

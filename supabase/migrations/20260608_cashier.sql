@@ -56,7 +56,7 @@ create table if not exists public.cashier_shifts (
   business_date date not null default current_date,
   opened_at timestamptz not null default now(),
   closed_at timestamptz,
-  status text not null default 'open' check (status in ('open', 'closing', 'closed', 'audited')),
+  status text not null default 'open' check (status in ('open', 'closing', 'closed', 'verified')),
   opening_balance numeric(10,2) not null default 0,
   expected_cash_total numeric(10,2) not null default 0,
   actual_cash_count numeric(10,2),
@@ -65,8 +65,8 @@ create table if not exists public.cashier_shifts (
   ) stored,
   notes text,
   closed_by_staff_user_id uuid references public.staff_profiles(id),
-  audited_by_staff_user_id uuid references public.staff_profiles(id),
-  audited_at timestamptz,
+  verified_by_staff_user_id uuid references public.staff_profiles(id),
+  verified_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

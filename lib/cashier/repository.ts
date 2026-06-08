@@ -33,8 +33,8 @@ function mapShiftRow(row: Record<string, unknown>): CashierShift {
     cashDifference: Number(row.cash_difference ?? 0),
     notes: (row.notes as string) ?? null,
     closedByStaffUserId: (row.closed_by_staff_user_id as string) ?? null,
-    auditedByStaffUserId: (row.audited_by_staff_user_id as string) ?? null,
-    auditedAt: (row.audited_at as string) ?? null,
+    verifiedByStaffUserId: (row.verified_by_staff_user_id as string) ?? null,
+    verifiedAt: (row.verified_at as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -58,8 +58,8 @@ export async function insertShift(
       actual_cash_count: shift.actualCashCount || null,
       notes: shift.notes,
       closed_by_staff_user_id: shift.closedByStaffUserId,
-      audited_by_staff_user_id: shift.auditedByStaffUserId,
-      audited_at: shift.auditedAt,
+      verified_by_staff_user_id: shift.verifiedByStaffUserId,
+      verified_at: shift.verifiedAt,
     })
     .select('*')
     .single()
@@ -80,8 +80,8 @@ export async function updateShift(
   if (updates.actualCashCount !== undefined) dbUpdates.actual_cash_count = updates.actualCashCount
   if (updates.notes !== undefined) dbUpdates.notes = updates.notes
   if (updates.closedByStaffUserId !== undefined) dbUpdates.closed_by_staff_user_id = updates.closedByStaffUserId
-  if (updates.auditedByStaffUserId !== undefined) dbUpdates.audited_by_staff_user_id = updates.auditedByStaffUserId
-  if (updates.auditedAt !== undefined) dbUpdates.audited_at = updates.auditedAt
+  if (updates.verifiedByStaffUserId !== undefined) dbUpdates.verified_by_staff_user_id = updates.verifiedByStaffUserId
+  if (updates.verifiedAt !== undefined) dbUpdates.verified_at = updates.verifiedAt
 
   const { data, error } = await supabase
     .from('cashier_shifts')

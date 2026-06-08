@@ -12,6 +12,7 @@
     "test:subscription-schedule": "node scripts/test-subscription-schedule.mjs",
     "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
     "test:permission-layer": "npx tsx scripts/test-permission-layer.mjs",
+    "test:cashier-workflow": "npx tsx scripts/test-cashier-workflow.mjs",
     "start": "next start",
     "lint": "eslint"
   },

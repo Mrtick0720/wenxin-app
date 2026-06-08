@@ -1,6 +1,6 @@
 // ── Cashier Service Layer ──
 // Business logic for cashier operations.
-// Phase 2: Real logic for shifts, payment methods, and adjustments.
+// Phase 3: Full shift workflow — open, adjust, close, verify, reopen.
 // Transactions and settings remain stubs pending future phases.
 
 import {
@@ -14,6 +14,17 @@ import {
   findPaymentMethods,
   findActivePaymentMethods,
 } from './repository'
+import {
+  validateShiftStatus,
+  calculateCashDifference,
+  isValidAdjustmentAmount,
+  isValidReason,
+  isClosable,
+  isVerifiable,
+  isReopenable,
+  isAdjustable,
+  isDifferentUser,
+} from './validation'
 import type {
   CashierShift,
   CashierShiftSummary,
@@ -25,6 +36,8 @@ import type {
   PaymentMethod,
 } from './types'
 
+const DEFAULT_OUTLET_ID = '00000000-0000-0000-0000-000000000001'
+
 // ═══════════════════════════════════════════════════════════════════
 // Shift Management
 // ═══════════════════════════════════════════════════════════════════
@@ -34,16 +47,21 @@ export async function openShift(
   openingBalance: number,
   businessDate?: string,
 ): Promise<CashierShift> {
-  // One open shift per outlet — check for existing
-  const existing = await findActiveShift()
+  // Validate: no active OPEN shift exists for the outlet
+  const existing = await findActiveShift(DEFAULT_OUTLET_ID)
   if (existing) {
     throw new Error('An open shift already exists. Close the current shift before opening a new one.')
+  }
+
+  // Validate: opening float must be non-negative
+  if (openingBalance < 0) {
+    throw new Error('Opening balance cannot be negative.')
   }
 
   const today = businessDate ?? new Date().toISOString().split('T')[0]
 
   return insertShift({
-    outletId: '00000000-0000-0000-0000-000000000001',
+    outletId: DEFAULT_OUTLET_ID,
     staffUserId,
     businessDate: today,
     openedAt: new Date().toISOString(),
@@ -54,8 +72,8 @@ export async function openShift(
     actualCashCount: 0,
     notes: null,
     closedByStaffUserId: null,
-    auditedByStaffUserId: null,
-    auditedAt: null,
+    verifiedByStaffUserId: null,
+    verifiedAt: null,
   })
 }
 
@@ -69,11 +87,18 @@ export async function closeShift(
   if (!shift) {
     throw new Error('Shift not found.')
   }
-  if (!validateShiftStatus(shift.status, ['open', 'closing'])) {
-    throw new Error(`Cannot close a shift with status "${shift.status}".`)
+
+  // Validate: shift must be OPEN
+  if (!isClosable(shift.status)) {
+    throw new Error(`Cannot close a shift with status "${shift.status}". Shift must be open.`)
   }
 
-  // Calculate expected cash: opening + cash payments + pay_ins - pay_outs
+  // Validate: closing count cannot be negative
+  if (actualCashCount < 0) {
+    throw new Error('Cash count cannot be negative.')
+  }
+
+  // Calculate expected cash: opening + pay_ins - pay_outs
   const adjustments = await findAdjustmentsByShift(shiftId)
   const payIns = adjustments
     .filter(a => a.type === 'pay_in')
@@ -82,9 +107,8 @@ export async function closeShift(
     .filter(a => a.type === 'pay_out')
     .reduce((sum, a) => sum + a.amount, 0)
 
-  // Transactions not yet implemented — expected total is approximate
+  // Transactions not yet implemented — expected total is opening + adjustments only
   const expectedTotal = shift.openingBalance + payIns - payOuts
-  const difference = calculateCashDifference(expectedTotal, actualCashCount)
 
   return updateShift(shiftId, {
     status: 'closed',
@@ -96,8 +120,71 @@ export async function closeShift(
   })
 }
 
+export async function verifyShift(
+  shiftId: number,
+  verifiedByStaffUserId: string,
+): Promise<CashierShift> {
+  const shift = await findShiftById(shiftId)
+  if (!shift) {
+    throw new Error('Shift not found.')
+  }
+
+  // Validate: shift must be CLOSED
+  if (!isVerifiable(shift.status)) {
+    throw new Error(`Cannot verify a shift with status "${shift.status}". Shift must be closed first.`)
+  }
+
+  // Validate: verifier must not equal closer
+  if (!isDifferentUser(shift.closedByStaffUserId ?? '', verifiedByStaffUserId)) {
+    throw new Error('The person who closed the shift cannot verify it. A different staff member must verify.')
+  }
+
+  return updateShift(shiftId, {
+    status: 'verified',
+    verifiedByStaffUserId,
+    verifiedAt: new Date().toISOString(),
+  })
+}
+
+export async function reopenShift(
+  shiftId: number,
+  reason: string,
+  reopenedByStaffUserId: string,
+): Promise<CashierShift> {
+  const shift = await findShiftById(shiftId)
+  if (!shift) {
+    throw new Error('Shift not found.')
+  }
+
+  // Validate: VERIFIED shifts cannot be reopened
+  if (shift.status === 'verified') {
+    throw new Error('Verified shifts cannot be reopened.')
+  }
+
+  // Validate: only CLOSED shifts may be reopened
+  if (!isReopenable(shift.status)) {
+    throw new Error(`Cannot reopen a shift with status "${shift.status}". Only closed shifts can be reopened.`)
+  }
+
+  // Validate: reason required
+  if (!isValidReason(reason)) {
+    throw new Error('A reason is required to reopen a shift.')
+  }
+
+  // Reopen: reset closing fields, keep the shift open
+  return updateShift(shiftId, {
+    status: 'open',
+    closedAt: null,
+    closedByStaffUserId: null,
+    actualCashCount: 0,
+    notes: shift.notes
+      ? `${shift.notes}\nReopened by ${reopenedByStaffUserId}: ${reason.trim()}`
+      : `Reopened: ${reason.trim()}`,
+  })
+}
+
 export async function getActiveShift(): Promise<CashierShift | null> {
-  return findActiveShift()
+  return findActiveShift(DEFAULT_OUTLET_ID)
 }
 
 export async function getShiftById(
@@ -148,25 +235,6 @@ export async function getShiftSummary(
   }
 }
 
-export async function auditShift(
-  shiftId: number,
-  auditedByStaffUserId: string,
-): Promise<CashierShift> {
-  const shift = await findShiftById(shiftId)
-  if (!shift) {
-    throw new Error('Shift not found.')
-  }
-  if (!validateShiftStatus(shift.status, ['closed'])) {
-    throw new Error(`Cannot audit a shift with status "${shift.status}". Shift must be closed first.`)
-  }
-
-  return updateShift(shiftId, {
-    status: 'audited',
-    auditedByStaffUserId,
-    auditedAt: new Date().toISOString(),
-  })
-}
-
 // ═══════════════════════════════════════════════════════════════════
 // Transactions — Stubs (pending future phase)
 // ═══════════════════════════════════════════════════════════════════
@@ -202,14 +270,20 @@ export async function recordAdjustment(
   if (!shift) {
     throw new Error('Shift not found.')
   }
-  if (!validateShiftStatus(shift.status, ['open'])) {
+
+  // Validate: shift must be OPEN
+  if (!isAdjustable(shift.status)) {
     throw new Error(`Cannot record adjustments on a shift with status "${shift.status}". Shift must be open.`)
   }
-  if (!reason.trim()) {
-    throw new Error('A reason is required for all adjustments.')
-  }
-  if (amount <= 0) {
+
+  // Validate: amount > 0
+  if (!isValidAdjustmentAmount(amount)) {
     throw new Error('Adjustment amount must be greater than zero.')
+  }
+
+  // Validate: reason required
+  if (!isValidReason(reason)) {
+    throw new Error('A reason is required for all adjustments.')
   }
 
   return insertAdjustment({
@@ -256,27 +330,20 @@ export async function updateCashierSettings(
   throw new Error('Not yet implemented — cashier_settings pending')
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Validation
-// ═══════════════════════════════════════════════════════════════════
+// ── Validation re-exports ──
+// Pure functions live in validation.ts for testability.
+// Re-exported here for backward compatibility.
 
-export function validateShiftStatus(
-  status: CashierShiftStatus,
-  allowedStatuses: CashierShiftStatus[],
-): boolean {
-  return allowedStatuses.includes(status)
-}
-
-export function calculateCashDifference(
-  expectedTotal: number,
-  actualCount: number,
-): number {
-  return actualCount - expectedTotal
-}
-
-export function isWithinAllowedDifference(
-  difference: number,
-  maxDifference: number,
-): boolean {
-  return Math.abs(difference) <= maxDifference
-}
+export {
+  validateShiftStatus,
+  calculateCashDifference,
+  isWithinAllowedDifference,
+  isValidAmount,
+  isValidAdjustmentAmount,
+  isValidReason,
+  isClosable,
+  isVerifiable,
+  isReopenable,
+  isAdjustable,
+  isDifferentUser,
+} from './validation'
