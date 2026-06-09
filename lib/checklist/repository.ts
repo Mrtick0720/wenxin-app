@@ -238,3 +238,156 @@ export async function scheduleDailyChecklists(
   if (error) throw error
   return (data ?? []).map(mapInstanceRow)
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Instance Mutations (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function updateInstance(
+  instanceId: number,
+  updates: {
+    status?: string
+    completedBy?: string
+    completedAt?: string
+    verifiedBy?: string
+    verifiedAt?: string
+    verificationNote?: string
+    rejectionNote?: string
+    startedAt?: string
+  },
+): Promise<ChecklistInstance> {
+  const supabase = await createServerSupabaseClient()
+  const db: Record<string, unknown> = {}
+  if (updates.status !== undefined) db.status = updates.status
+  if (updates.completedBy !== undefined) db.completed_by = updates.completedBy
+  if (updates.completedAt !== undefined) db.completed_at = updates.completedAt
+  if (updates.verifiedBy !== undefined) db.verified_by = updates.verifiedBy
+  if (updates.verifiedAt !== undefined) db.verified_at = updates.verifiedAt
+  if (updates.verificationNote !== undefined) db.verification_note = updates.verificationNote
+  if (updates.rejectionNote !== undefined) db.rejection_note = updates.rejectionNote
+  if (updates.startedAt !== undefined) db.started_at = updates.startedAt
+
+  const { data, error } = await supabase
+    .from('checklist_instances')
+    .update(db)
+    .eq('id', instanceId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapInstanceRow(data)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Item Response Mutations (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function upsertItemResponse(
+  response: {
+    instanceId: number
+    templateItemId: number
+    status: string
+    note?: string | null
+    respondedBy?: string
+  },
+): Promise<ChecklistItemResponse> {
+  const supabase = await createServerSupabaseClient()
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('checklist_item_responses')
+    .upsert({
+      instance_id: response.instanceId,
+      template_item_id: response.templateItemId,
+      status: response.status,
+      note: response.note ?? null,
+      responded_by: response.respondedBy ?? null,
+      responded_at: now,
+    }, { onConflict: 'instance_id, template_item_id' })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapItemResponseRow(data)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Incident & Task Creation (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function insertIncident(data: {
+  date: string
+  title: string
+  incidentType: string
+  severity: string
+  status: string
+  checklistInstanceId: number
+  reportedBy: string | null
+}): Promise<number | null> {
+  const supabase = await createServerSupabaseClient()
+
+  // Prevent duplicates
+  const { data: existing } = await supabase
+    .from('incidents')
+    .select('id')
+    .eq('checklist_instance_id', data.checklistInstanceId)
+    .eq('title', data.title)
+    .maybeSingle()
+
+  if (existing) return null
+
+  const { data: created, error } = await supabase
+    .from('incidents')
+    .insert({
+      date: data.date,
+      title: data.title,
+      incident_type: data.incidentType,
+      severity: data.severity,
+      status: data.status,
+      checklist_instance_id: data.checklistInstanceId,
+      reported_by: data.reportedBy,
+    })
+    .select('id')
+    .single()
+
+  if (error) return null
+  return (created as { id: number }).id
+}
+
+export async function insertTask(data: {
+  date: string
+  title: string
+  taskType: string
+  priority: string
+  status: string
+  checklistInstanceId: number
+  assignedRole: string | null
+}): Promise<number | null> {
+  const supabase = await createServerSupabaseClient()
+
+  // Prevent duplicates
+  const { data: existing } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('checklist_instance_id', data.checklistInstanceId)
+    .eq('title', data.title)
+    .maybeSingle()
+
+  if (existing) return null
+
+  const { data: created, error } = await supabase
+    .from('tasks')
+    .insert({
+      date: data.date,
+      title: data.title,
+      task_type: data.taskType,
+      priority: data.priority,
+      status: data.status,
+      checklist_instance_id: data.checklistInstanceId,
+      assigned_role: data.assignedRole,
+    })
+    .select('id')
+    .single()
+
+  if (error) return null
+  return (created as { id: number }).id
+}

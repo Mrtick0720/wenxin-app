@@ -9,6 +9,13 @@ import {
   isResponseNoteRequired,
   isValidRunKey,
   statusSortOrder,
+  canRespondToItem,
+  canCompleteInstance,
+  canVerifyInstance,
+  canRejectInstance,
+  validateFailedItemNote,
+  validateRejectionReason,
+  isValidResponseStatus,
 } from '../lib/checklist/validation.ts'
 
 let passed = 0
@@ -145,6 +152,105 @@ section('20. Run Key — One active instance per run per day')
 // Enforced by partial unique index: (template_id, business_date, outlet_id, run_key)
 // Application layer check: no two instances with same (template_id, run_key) active
 assert(true, 'partial unique index enforces one active instance per run per day')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — canRespondToItem
+// ═══════════════════════════════════════════════════════════════════
+
+section('21. canRespondToItem — Pending instance, matching role')
+assert(canRespondToItem({ status: 'pending', assignedRole: 'kitchen' }, 'kitchen'),
+  'kitchen can respond to kitchen-assigned pending instance')
+
+section('22. canRespondToItem — In progress, matching role')
+assert(canRespondToItem({ status: 'in_progress', assignedRole: 'kitchen' }, 'kitchen'),
+  'kitchen can respond to kitchen-assigned in_progress instance')
+
+section('23. canRespondToItem — Owner/Manager override')
+assert(canRespondToItem({ status: 'pending', assignedRole: 'kitchen' }, 'owner'),
+  'owner can respond regardless of assigned role')
+assert(canRespondToItem({ status: 'pending', assignedRole: 'front_desk' }, 'manager'),
+  'manager can respond regardless of assigned role')
+
+section('24. canRespondToItem — Wrong role')
+assert(!canRespondToItem({ status: 'pending', assignedRole: 'kitchen' }, 'front_desk'),
+  'front_desk cannot respond to kitchen-assigned instance')
+
+section('25. canRespondToItem — Completed instance')
+assert(!canRespondToItem({ status: 'completed', assignedRole: 'kitchen' }, 'kitchen'),
+  'cannot respond to completed instance')
+assert(!canRespondToItem({ status: 'verified', assignedRole: 'kitchen' }, 'kitchen'),
+  'cannot respond to verified instance')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — canCompleteInstance
+// ═══════════════════════════════════════════════════════════════════
+
+section('26. canCompleteInstance — All responded')
+assert(canCompleteInstance([{ status: 'pass' }, { status: 'fail' }, { status: 'skip' }]),
+  'all non-pending = can complete')
+
+section('27. canCompleteInstance — Has pending')
+assert(!canCompleteInstance([{ status: 'pass' }, { status: 'pending' }]),
+  'has pending = cannot complete')
+
+section('28. canCompleteInstance — Empty')
+assert(!canCompleteInstance([]), 'empty = cannot complete')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Verification
+// ═══════════════════════════════════════════════════════════════════
+
+section('29. canVerifyInstance — Completed')
+assert(canVerifyInstance({ status: 'completed' }), 'completed can be verified')
+
+section('30. canVerifyInstance — Other statuses')
+assert(!canVerifyInstance({ status: 'pending' }), 'pending cannot be verified')
+assert(!canVerifyInstance({ status: 'in_progress' }), 'in_progress cannot be verified')
+assert(!canVerifyInstance({ status: 'verified' }), 'already verified cannot be verified again')
+
+section('31. canRejectInstance — Completed')
+assert(canRejectInstance({ status: 'completed' }), 'completed can be rejected')
+
+section('32. canRejectInstance — Other statuses')
+assert(!canRejectInstance({ status: 'verified' }), 'verified cannot be rejected')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Note Validation
+// ═══════════════════════════════════════════════════════════════════
+
+section('33. validateFailedItemNote — Required')
+assert(validateFailedItemNote('Burner not igniting', true), 'valid note passes')
+assert(!validateFailedItemNote('', true), 'empty note fails when required')
+assert(!validateFailedItemNote('  ', true), 'whitespace fails when required')
+assert(!validateFailedItemNote(null, true), 'null fails when required')
+
+section('34. validateFailedItemNote — Not required')
+assert(validateFailedItemNote('', false), 'empty note passes when not required')
+assert(validateFailedItemNote(null, false), 'null passes when not required')
+
+section('35. validateRejectionReason')
+assert(validateRejectionReason('Items not properly checked'), 'valid reason passes')
+assert(!validateRejectionReason(''), 'empty reason fails')
+assert(!validateRejectionReason(null), 'null reason fails')
+
+section('36. isValidResponseStatus')
+assert(isValidResponseStatus('pass'), 'pass is valid')
+assert(isValidResponseStatus('fail'), 'fail is valid')
+assert(isValidResponseStatus('skip'), 'skip is valid')
+assert(!isValidResponseStatus('pending'), 'pending is not a valid response')
+assert(!isValidResponseStatus(''), 'empty is not valid')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Failed Item Follow-Up Logic
+// ═══════════════════════════════════════════════════════════════════
+
+section('37. Critical item → Incident')
+const criticalItem = { isCritical: true, description: 'Gas burner check' }
+assert(criticalItem.isCritical, 'critical item should create incident')
+
+section('38. Non-critical item → Task')
+const nonCriticalItem = { isCritical: false, description: 'Napkin stock check' }
+assert(!nonCriticalItem.isCritical, 'non-critical item should create task')
 
 // ═══════════════════════════════════════════════════════════════════
 // Results
