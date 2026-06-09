@@ -18,6 +18,10 @@ const IncidentsPage    = lazy(() => import('@/app/incidents/page'))
 const TasksPage        = lazy(() => import('@/app/tasks/page'))
 const AllModulesPage   = lazy(() => import('@/app/all/page'))
 const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
+const AttendancePage   = lazy(() => import('@/app/attendance/page'))
+const ChecklistPage    = lazy(() => import('@/app/checklist/page'))
+const AssetsPage       = lazy(() => import('@/app/assets/page'))
+const CashierPage      = lazy(() => import('@/app/cashier/page'))
 
 function PageFallback() {
   return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
@@ -50,6 +54,10 @@ export const routes: Record<string, RouteFactory> = {
   '/tasks':        () => <S><TasksPage /></S>,
   '/all':          () => <S><AllModulesPage /></S>,
   '/suppliers':    () => <S><SuppliersPage /></S>,
+  '/attendance':   () => <S><AttendancePage /></S>,
+  '/checklist':    () => <S><ChecklistPage /></S>,
+  '/assets':       () => <S><AssetsPage /></S>,
+  '/cashier':      () => <S><CashierPage /></S>,
 }
 
 export function getPageElement(href: string): React.ReactNode | null {
@@ -76,4 +84,8 @@ export function preloadRoutes() {
   p(TasksPage)
   p(AllModulesPage)
   p(SuppliersPage)
+  p(AttendancePage)
+  p(ChecklistPage)
+  p(AssetsPage)
+  p(CashierPage)
 }
