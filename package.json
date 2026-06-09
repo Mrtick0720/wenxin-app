@@ -18,6 +18,7 @@
     "test:purchase": "npx tsx scripts/test-purchase.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "test:assets": "npx tsx scripts/test-assets.mjs",
+    "test:suppliers": "npx tsx scripts/test-suppliers.mjs",
     "start": "next start",
     "lint": "eslint"
   },
