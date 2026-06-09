@@ -16,6 +16,7 @@
     "test:attendance": "npx tsx scripts/test-attendance.mjs",
     "test:checklist": "npx tsx scripts/test-checklist.mjs",
     "test:purchase": "npx tsx scripts/test-purchase.mjs",
+    "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "start": "next start",
     "lint": "eslint"
   },
