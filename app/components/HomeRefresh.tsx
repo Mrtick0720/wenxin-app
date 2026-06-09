@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import PullToRefresh from './PullToRefresh'
 import { refreshHomeData } from '@/app/actions'
-import { preloadRoutes } from '@/app/lib/stackRoutes'
+import { preloadRoutes } from '@/app/lib/stackPages'
 
 export default function HomeRefresh({ children }: { children: React.ReactNode }) {
   const router = useRouter()

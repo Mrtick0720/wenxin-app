@@ -1,7 +1,7 @@
 'use client'
 
 import { useNavigation } from './NavigationStack'
-import { getPageElement } from '@/app/lib/stackRoutes'
+import { getPageElement } from '@/app/lib/stackPages'
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

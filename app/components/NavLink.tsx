@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useNavigation } from './NavigationStack'
-import { getPageElement } from '@/app/lib/stackRoutes'
+import { getPageElement } from '@/app/lib/stackPages'
 
 interface NavLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string

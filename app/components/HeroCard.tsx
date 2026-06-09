@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useNavigation } from './NavigationStack'
-import { getPageElement } from '@/app/lib/stackRoutes'
+import { getPageElement } from '@/app/lib/stackPages'
 
 interface HeroCardProps {
   revenueTotal: number

@@ -1,91 +1,51 @@
-'use client'
+// Route metadata registry.
+//
+// PURE DATA — this module intentionally imports NO page modules. Client
+// navigation UIs can consume it freely without pulling Server Components (and
+// their `server-only` dependencies, e.g. lib/auth/currentStaff via the
+// cashier / attendance / checklist pages) into the client bundle.
+//
+// Client-side stack rendering for client-safe routes lives in ./stackPages.
+// Routes not registered there navigate by URL (standard Next.js App Router).
 
-import React, { lazy, Suspense } from 'react'
-import { todayLocalStr } from '@/lib/dateUtils'
-import { useStaff } from '@/app/components/StaffProvider'
-import type { StaffRole } from '@/lib/auth/types'
+export type RouteSection =
+  | 'operations'
+  | 'finance'
+  | 'people'
+  | 'inventory'
+  | 'system'
 
-const PurchaseClient   = lazy(() => import('@/app/purchase/PurchaseClient'))
-const BentoClient      = lazy(() => import('@/app/bento/BentoClient'))
-const StaffPage        = lazy(() => import('@/app/staff/page'))
-const FinancePage      = lazy(() => import('@/app/finance/page'))
-const InventoryPage    = lazy(() => import('@/app/inventory/page'))
-const ReportsPage      = lazy(() => import('@/app/reports/page'))
-const DineInPage       = lazy(() => import('@/app/dine-in/page'))
-const ReservationsPage = lazy(() => import('@/app/reservations/page'))
-const ComplaintsPage   = lazy(() => import('@/app/complaints/page'))
-const IncidentsPage    = lazy(() => import('@/app/incidents/page'))
-const TasksPage        = lazy(() => import('@/app/tasks/page'))
-const AllModulesPage   = lazy(() => import('@/app/all/page'))
-const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
-const AttendancePage   = lazy(() => import('@/app/attendance/page'))
-const ChecklistPage    = lazy(() => import('@/app/checklist/page'))
-const AssetsPage       = lazy(() => import('@/app/assets/page'))
-const CashierPage      = lazy(() => import('@/app/cashier/page'))
-
-function PageFallback() {
-  return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
+export interface RouteMeta {
+  /** URL path (Next.js App Router route) */
+  path: string
+  /** Human-readable label for nav menus */
+  label: string
+  /** Grouping for nav sections */
+  section: RouteSection
+  /** Stable key for menus / analytics */
+  key: string
 }
 
-function S({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<PageFallback />}>{children}</Suspense>
-}
+export const routeMeta: RouteMeta[] = [
+  { path: '/purchase',     label: 'Purchase',     section: 'inventory',  key: 'purchase' },
+  { path: '/bento',        label: 'Bento',        section: 'operations', key: 'bento' },
+  { path: '/staff',        label: 'Staff',        section: 'people',     key: 'staff' },
+  { path: '/finance',      label: 'Finance',      section: 'finance',    key: 'finance' },
+  { path: '/inventory',    label: 'Inventory',    section: 'inventory',  key: 'inventory' },
+  { path: '/reports',      label: 'Reports',      section: 'finance',    key: 'reports' },
+  { path: '/dine-in',      label: 'Dine-in',      section: 'operations', key: 'dine-in' },
+  { path: '/reservations', label: 'Reservations', section: 'operations', key: 'reservations' },
+  { path: '/complaints',   label: 'Complaints',   section: 'operations', key: 'complaints' },
+  { path: '/incidents',    label: 'Incidents',    section: 'operations', key: 'incidents' },
+  { path: '/tasks',        label: 'Tasks',        section: 'operations', key: 'tasks' },
+  { path: '/all',          label: 'All Modules',  section: 'system',     key: 'all' },
+  { path: '/suppliers',    label: 'Suppliers',    section: 'inventory',  key: 'suppliers' },
+  { path: '/attendance',   label: 'Attendance',   section: 'people',     key: 'attendance' },
+  { path: '/checklist',    label: 'Checklist',    section: 'operations', key: 'checklist' },
+  { path: '/assets',       label: 'Assets',       section: 'inventory',  key: 'assets' },
+  { path: '/cashier',      label: 'Cashier',      section: 'finance',    key: 'cashier' },
+]
 
-// BentoClient requires a role — read from StaffProvider context
-function BentoStack() {
-  const staff = useStaff()
-  const role = (staff?.role ?? 'front_desk') as StaffRole
-  return <BentoClient initialOrders={[]} role={role} />
-}
-
-type RouteFactory = () => React.ReactNode
-
-export const routes: Record<string, RouteFactory> = {
-  '/purchase':     () => <S><PurchaseClient   initialItems={[]} initialDate={todayLocalStr()} /></S>,
-  '/bento':        () => <S><BentoStack /></S>,
-  '/staff':        () => <S><StaffPage /></S>,
-  '/finance':      () => <S><FinancePage /></S>,
-  '/inventory':    () => <S><InventoryPage /></S>,
-  '/reports':      () => <S><ReportsPage /></S>,
-  '/dine-in':      () => <S><DineInPage /></S>,
-  '/reservations': () => <S><ReservationsPage /></S>,
-  '/complaints':   () => <S><ComplaintsPage /></S>,
-  '/incidents':    () => <S><IncidentsPage /></S>,
-  '/tasks':        () => <S><TasksPage /></S>,
-  '/all':          () => <S><AllModulesPage /></S>,
-  '/suppliers':    () => <S><SuppliersPage /></S>,
-  '/attendance':   () => <S><AttendancePage /></S>,
-  '/checklist':    () => <S><ChecklistPage /></S>,
-  '/assets':       () => <S><AssetsPage /></S>,
-  '/cashier':      () => <S><CashierPage /></S>,
-}
-
-export function getPageElement(href: string): React.ReactNode | null {
-  const factory = routes[href]
-  return factory ? factory() : null
-}
-
-/** Preload all lazy page chunks so the first navigation has zero code-loading delay. */
-export function preloadRoutes() {
-  // `.preload()` is a runtime method React attaches to lazy components
-  // but does not expose in the TS types. Cast to access it.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const p = (c: any) => c.preload?.()
-  p(PurchaseClient)
-  p(BentoClient)
-  p(StaffPage)
-  p(FinancePage)
-  p(InventoryPage)
-  p(ReportsPage)
-  p(DineInPage)
-  p(ReservationsPage)
-  p(ComplaintsPage)
-  p(IncidentsPage)
-  p(TasksPage)
-  p(AllModulesPage)
-  p(SuppliersPage)
-  p(AttendancePage)
-  p(ChecklistPage)
-  p(AssetsPage)
-  p(CashierPage)
-}
+export const routeMetaByPath: Record<string, RouteMeta> = Object.fromEntries(
+  routeMeta.map((r) => [r.path, r]),
+)
