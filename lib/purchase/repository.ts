@@ -23,6 +23,10 @@ function mapRequestRow(row: Record<string, unknown>): PurchaseRequest {
     confirmedBy: (row.confirmed_by as string) ?? null,
     confirmedAt: (row.confirmed_at as string) ?? null,
     rejectionReason: (row.rejection_reason as string) ?? null,
+    rejectedBy: (row.rejected_by as string) ?? null,
+    rejectedAt: (row.rejected_at as string) ?? null,
+    cancelledBy: (row.cancelled_by as string) ?? null,
+    cancelledAt: (row.cancelled_at as string) ?? null,
     notes: (row.notes as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -53,28 +57,20 @@ export async function createPurchaseRequest(data: {
   return mapRequestRow(created)
 }
 
+// Phase 2.1: this generic updater NO LONGER writes `status` or decision audit
+// columns. All status changes go through transitionRequestStatus() (status-guarded,
+// single boundary owned by purchaseLifecycleService). This updater handles only
+// non-lifecycle fields (urgency, notes) on editable requests.
 export async function updatePurchaseRequest(
   requestId: number,
   updates: {
-    status?: string
     urgency?: string
-    approvedBy?: string
-    approvedAt?: string
-    confirmedBy?: string
-    confirmedAt?: string
-    rejectionReason?: string | null
     notes?: string | null
   },
 ): Promise<PurchaseRequest> {
   const supabase = await createServerSupabaseClient()
   const db: Record<string, unknown> = {}
-  if (updates.status !== undefined) db.status = updates.status
   if (updates.urgency !== undefined) db.urgency = updates.urgency
-  if (updates.approvedBy !== undefined) db.approved_by = updates.approvedBy
-  if (updates.approvedAt !== undefined) db.approved_at = updates.approvedAt
-  if (updates.confirmedBy !== undefined) db.confirmed_by = updates.confirmedBy
-  if (updates.confirmedAt !== undefined) db.confirmed_at = updates.confirmedAt
-  if (updates.rejectionReason !== undefined) db.rejection_reason = updates.rejectionReason
   if (updates.notes !== undefined) db.notes = updates.notes
 
   const { data, error } = await supabase
@@ -86,6 +82,70 @@ export async function updatePurchaseRequest(
 
   if (error) throw error
   return mapRequestRow(data)
+}
+
+// Phase 2.1: the ONLY status-mutation path. Conditional on the expected current
+// status (optimistic concurrency); returns null if no row matched (caller maps to
+// a conflict error). Sets status + the relevant decision audit columns atomically.
+export async function transitionRequestStatus(
+  requestId: number,
+  fromStatus: string,
+  patch: {
+    status: string
+    approvedBy?: string
+    approvedAt?: string
+    confirmedBy?: string
+    confirmedAt?: string
+    rejectionReason?: string | null
+    rejectedBy?: string
+    rejectedAt?: string
+    cancelledBy?: string
+    cancelledAt?: string
+  },
+): Promise<PurchaseRequest | null> {
+  const supabase = await createServerSupabaseClient()
+  const db: Record<string, unknown> = { status: patch.status }
+  if (patch.approvedBy !== undefined) db.approved_by = patch.approvedBy
+  if (patch.approvedAt !== undefined) db.approved_at = patch.approvedAt
+  if (patch.confirmedBy !== undefined) db.confirmed_by = patch.confirmedBy
+  if (patch.confirmedAt !== undefined) db.confirmed_at = patch.confirmedAt
+  if (patch.rejectionReason !== undefined) db.rejection_reason = patch.rejectionReason
+  if (patch.rejectedBy !== undefined) db.rejected_by = patch.rejectedBy
+  if (patch.rejectedAt !== undefined) db.rejected_at = patch.rejectedAt
+  if (patch.cancelledBy !== undefined) db.cancelled_by = patch.cancelledBy
+  if (patch.cancelledAt !== undefined) db.cancelled_at = patch.cancelledAt
+
+  const { data, error } = await supabase
+    .from('purchase_requests')
+    .update(db)
+    .eq('id', requestId)
+    .eq('status', fromStatus) // optimistic guard — 0 rows if status changed under us
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw error
+  return data ? mapRequestRow(data) : null
+}
+
+// Phase 2.1: approval configuration from restaurant_settings (text values).
+export async function getApprovalSettings(): Promise<{ managerLimit: number; allowSelfApprove: boolean }> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('restaurant_settings')
+    .select('key, value')
+    .in('key', ['purchase.approval.manager_limit', 'purchase.approval.allow_self_approve'])
+
+  const defaults = { managerLimit: 500, allowSelfApprove: true }
+  if (error || !data) return defaults
+
+  const map = new Map(data.map((r: { key: string; value: string }) => [r.key, r.value]))
+  const limitRaw = map.get('purchase.approval.manager_limit')
+  const selfRaw = map.get('purchase.approval.allow_self_approve')
+  const parsedLimit = limitRaw != null ? Number(limitRaw) : NaN
+  return {
+    managerLimit: Number.isFinite(parsedLimit) && parsedLimit >= 0 ? parsedLimit : defaults.managerLimit,
+    allowSelfApprove: selfRaw != null ? selfRaw === 'true' : defaults.allowSelfApprove,
+  }
 }
 
 export async function findPurchaseRequestById(

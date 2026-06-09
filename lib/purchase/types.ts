@@ -20,10 +20,37 @@ export type PurchaseRequest = {
   confirmedBy: string | null
   confirmedAt: string | null
   rejectionReason: string | null
+  rejectedBy: string | null
+  rejectedAt: string | null
+  cancelledBy: string | null
+  cancelledAt: string | null
   notes: string | null
   createdAt: string
   updatedAt: string
 }
+
+// ── Phase 2.1 Lifecycle Hardening ──
+
+/** Approval tier required at a given request value. */
+export type ApprovalTier = 'manager' | 'owner'
+
+/** Approval configuration (sourced from restaurant_settings). */
+export type ApprovalSettings = {
+  managerLimit: number
+  allowSelfApprove: boolean
+}
+
+/** Stable lifecycle error codes (see lifecycleErrors.ts). */
+export type PurchaseLifecycleErrorCode =
+  | 'PR_INVALID_TRANSITION'
+  | 'PR_RESERVED'
+  | 'PR_NOT_PRICED'
+  | 'PR_LIMIT_EXCEEDED'
+  | 'PR_SELF_APPROVAL'
+  | 'PR_REASON_REQUIRED'
+  | 'PR_NOT_FOUND'
+  | 'PR_FORBIDDEN'
+  | 'PR_CONFLICT'
 
 export type PurchaseRequestItem = {
   id: number
