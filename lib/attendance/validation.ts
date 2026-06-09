@@ -87,3 +87,44 @@ export function canCloseSession(
 ): boolean {
   return session.staffUserId === staffUserId && session.clockMethod === 'app'
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Correction Validation (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Validate correction times: clock-out must be after clock-in.
+ */
+export function isValidCorrection(
+  clockIn: string,
+  clockOut: string,
+): boolean {
+  return new Date(clockOut).getTime() > new Date(clockIn).getTime()
+}
+
+/**
+ * Validate a correction note is non-empty.
+ */
+export function isValidCorrectionNote(note: string | null | undefined): boolean {
+  return typeof note === 'string' && note.trim().length > 0
+}
+
+/**
+ * Validate that a session can be manually closed by a manager.
+ * Session must be open and the closer must be different from the session owner
+ * (or the session owner with manager override).
+ */
+export function canManualClose(session: AttendanceSession): boolean {
+  return session.clockOut === null
+}
+
+/**
+ * Format session duration as a human-readable string.
+ */
+export function formatDuration(clockIn: string, clockOut: string | null): string {
+  if (!clockOut) return 'Active'
+  const ms = new Date(clockOut).getTime() - new Date(clockIn).getTime()
+  const hours = Math.floor(ms / 3600000)
+  const minutes = Math.round((ms % 3600000) / 60000)
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`
+}

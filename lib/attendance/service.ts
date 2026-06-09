@@ -5,14 +5,17 @@ import {
   createSession,
   closeSession,
   autoCloseOrphanedSession,
+  updateSession,
   findOpenSession,
   findSessionById,
   findSessionsByDate,
   findSessionsByStaff,
+  findSessionsByDateRange,
   findTodaySessions,
   findShiftsByDate,
   findShiftByStaffAndDate,
   findLateThreshold,
+  findStaffProfiles,
 } from './repository'
 import {
   getShiftWindow,
@@ -22,6 +25,9 @@ import {
   isWorkingShift,
   isClosable,
   canCloseSession,
+  isValidCorrection,
+  isValidCorrectionNote,
+  canManualClose,
 } from './validation'
 import type {
   AttendanceSession,
@@ -183,17 +189,25 @@ export async function getStaffStatus(
   return now < shiftEnd ? 'pending' : 'absent'
 }
 
-export async function getTodayBoard(): Promise<Array<{
+export type BoardEntry = {
   staffUserId: string
+  staffId: string
+  displayName: string
+  role: string
   status: AttendanceStatus
   sessions: AttendanceSession[]
   shift: StaffShift | null
-}>> {
+}
+
+export async function getTodayBoard(): Promise<BoardEntry[]> {
   const today = new Date().toISOString().split('T')[0]
-  const [allSessions, allShifts] = await Promise.all([
+  const [allSessions, allShifts, profiles] = await Promise.all([
     findSessionsByDate(today, DEFAULT_OUTLET_ID),
     findShiftsByDate(today),
+    findStaffProfiles(),
   ])
+
+  const profileMap = new Map(profiles.map(p => [p.id, p]))
 
   // Group sessions by staff
   const sessionMap = new Map<string, AttendanceSession[]>()
@@ -209,18 +223,22 @@ export async function getTodayBoard(): Promise<Array<{
     ...allShifts.map(s => s.staffUserId),
   ])
 
-  const board: Array<{
-    staffUserId: string
-    status: AttendanceStatus
-    sessions: AttendanceSession[]
-    shift: StaffShift | null
-  }> = []
+  const board: BoardEntry[] = []
 
   for (const staffUserId of staffIds) {
     const sessions = sessionMap.get(staffUserId) ?? []
     const shift = allShifts.find(s => s.staffUserId === staffUserId) ?? null
     const status = await getStaffStatus(staffUserId, shift, sessions)
-    board.push({ staffUserId, status, sessions, shift })
+    const profile = profileMap.get(staffUserId)
+    board.push({
+      staffUserId,
+      staffId: profile?.staffId ?? 'unknown',
+      displayName: profile?.displayName ?? 'Unknown',
+      role: profile?.role ?? 'unknown',
+      status,
+      sessions,
+      shift,
+    })
   }
 
   // Sort: present → late → pending → absent → on_leave → off
@@ -230,6 +248,82 @@ export async function getTodayBoard(): Promise<Array<{
   board.sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
 
   return board
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Attendance History (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function getAttendanceHistory(
+  staffUserId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<AttendanceSession[]> {
+  return findSessionsByDateRange(staffUserId, fromDate, toDate)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Manual Correction (Phase 2 — Owner/Manager only)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function correctSession(
+  sessionId: number,
+  clockIn: string,
+  clockOut: string,
+  note: string,
+  correctedByStaffUserId: string,
+): Promise<AttendanceSession> {
+  // Validate times
+  if (!isValidCorrection(clockIn, clockOut)) {
+    throw new Error('Clock-out time must be after clock-in time.')
+  }
+  if (!isValidCorrectionNote(note)) {
+    throw new Error('A correction note is required.')
+  }
+
+  const session = await findSessionById(sessionId)
+  if (!session) {
+    throw new Error('Session not found.')
+  }
+
+  return updateSession(sessionId, {
+    clockIn,
+    clockOut,
+    clockMethod: 'owner_correction',
+    correctionNote: note.trim(),
+    correctedBy: correctedByStaffUserId,
+  })
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Manual Session Close (Phase 2 — Owner/Manager only)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function manualCloseSession(
+  sessionId: number,
+  note: string,
+  closedByStaffUserId: string,
+): Promise<AttendanceSession> {
+  if (!isValidCorrectionNote(note)) {
+    throw new Error('A note is required to manually close a session.')
+  }
+
+  const session = await findSessionById(sessionId)
+  if (!session) {
+    throw new Error('Session not found.')
+  }
+  if (!canManualClose(session)) {
+    throw new Error('Session is already closed.')
+  }
+
+  const now = new Date().toISOString()
+  return updateSession(sessionId, {
+    clockOut: now,
+    clockMethod: 'manager_manual',
+    endReason: 'manager_manual',
+    correctionNote: note.trim(),
+    correctedBy: closedByStaffUserId,
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -244,4 +338,8 @@ export {
   isWorkingShift,
   isClosable,
   canCloseSession,
+  isValidCorrection,
+  isValidCorrectionNote,
+  canManualClose,
+  formatDuration,
 } from './validation'

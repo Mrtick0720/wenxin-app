@@ -1,5 +1,6 @@
-// ── Attendance Module Tests (Phase 1) ──
-// Pure-function tests for validation, session logic, and status derivation.
+// ── Attendance Module Tests (Phase 1 + Phase 2) ──
+// Pure-function tests for validation, session logic, status derivation,
+// corrections, and manual close.
 
 import {
   getShiftWindow,
@@ -10,6 +11,10 @@ import {
   isWorkingShift,
   isClosable,
   canCloseSession,
+  isValidCorrection,
+  isValidCorrectionNote,
+  canManualClose,
+  formatDuration,
   SHIFT_WINDOWS,
 } from '../lib/attendance/validation.ts'
 
@@ -172,6 +177,63 @@ section('24. Multi-Shift — Status is derived, not stored')
 const sessionFields = ['clockIn', 'clockOut', 'clockMethod', 'endReason', 'businessDate']
 const hasNoStatus = !sessionFields.includes('status')
 assert(hasNoStatus, 'Session fields should not include a stored status — status is derived')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Correction Validation
+// ═══════════════════════════════════════════════════════════════════
+
+section('25. isValidCorrection — Valid times')
+assert(isValidCorrection('2026-06-09T01:00:00Z', '2026-06-09T05:00:00Z'),
+  'clock-out after clock-in is valid')
+
+section('26. isValidCorrection — Invalid times')
+assert(!isValidCorrection('2026-06-09T05:00:00Z', '2026-06-09T01:00:00Z'),
+  'clock-out before clock-in is invalid')
+assert(!isValidCorrection('2026-06-09T01:00:00Z', '2026-06-09T01:00:00Z'),
+  'clock-out equal to clock-in is invalid')
+
+section('27. isValidCorrectionNote — Valid notes')
+assert(isValidCorrectionNote('Corrected after reviewing footage'),
+  'detailed note is valid')
+assert(isValidCorrectionNote('Fix'), 'short note is valid')
+
+section('28. isValidCorrectionNote — Invalid notes')
+assert(!isValidCorrectionNote(''), 'empty string is invalid')
+assert(!isValidCorrectionNote('   '), 'whitespace is invalid')
+assert(!isValidCorrectionNote(null), 'null is invalid')
+assert(!isValidCorrectionNote(undefined), 'undefined is invalid')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Manual Close Validation
+// ═══════════════════════════════════════════════════════════════════
+
+section('29. canManualClose — Open session')
+assert(canManualClose({ clockIn: '2026-06-09T01:00:00Z', clockOut: null }),
+  'open session can be manually closed')
+
+section('30. canManualClose — Already closed')
+assert(!canManualClose({ clockIn: '2026-06-09T01:00:00Z', clockOut: '2026-06-09T05:00:00Z' }),
+  'closed session cannot be manually closed again')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Format Duration
+// ═══════════════════════════════════════════════════════════════════
+
+section('31. formatDuration — Full hours')
+assert(formatDuration('2026-06-09T01:00:00Z', '2026-06-09T05:00:00Z') === '4h 0m',
+  '4 hours should format as "4h 0m"')
+
+section('32. formatDuration — With minutes')
+assert(formatDuration('2026-06-09T01:00:00Z', '2026-06-09T05:30:00Z') === '4h 30m',
+  '4.5 hours should format as "4h 30m"')
+
+section('33. formatDuration — Active session')
+assert(formatDuration('2026-06-09T01:00:00Z', null) === 'Active',
+  'null clockOut should show "Active"')
+
+section('34. formatDuration — Less than 1 hour')
+assert(formatDuration('2026-06-09T01:00:00Z', '2026-06-09T01:45:00Z') === '45m',
+  '45 minutes should format as "45m"')
 
 // ═══════════════════════════════════════════════════════════════════
 // Results

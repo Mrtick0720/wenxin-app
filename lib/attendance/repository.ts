@@ -238,3 +238,88 @@ export async function findLateThreshold(): Promise<number> {
   const parsed = parseInt(data.value, 10)
   return Number.isFinite(parsed) && parsed >= 5 && parsed <= 60 ? parsed : 15
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// Corrections & Manual Actions (Phase 2)
+// ═══════════════════════════════════════════════════════════════════
+
+export async function updateSession(
+  sessionId: number,
+  updates: {
+    clockIn?: string
+    clockOut?: string
+    clockMethod?: string
+    endReason?: string
+    correctionNote?: string
+    correctedBy?: string
+  },
+): Promise<AttendanceSession> {
+  const supabase = await createServerSupabaseClient()
+  const dbUpdates: Record<string, unknown> = {}
+  if (updates.clockIn !== undefined) dbUpdates.clock_in = updates.clockIn
+  if (updates.clockOut !== undefined) dbUpdates.clock_out = updates.clockOut
+  if (updates.clockMethod !== undefined) dbUpdates.clock_method = updates.clockMethod
+  if (updates.endReason !== undefined) dbUpdates.end_reason = updates.endReason
+  if (updates.correctionNote !== undefined) dbUpdates.correction_note = updates.correctionNote
+  if (updates.correctedBy !== undefined) dbUpdates.corrected_by = updates.correctedBy
+
+  const { data, error } = await supabase
+    .from('attendance_sessions')
+    .update(dbUpdates)
+    .eq('id', sessionId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapSessionRow(data)
+}
+
+export async function findSessionsByDateRange(
+  staffUserId: string,
+  fromDate: string,
+  toDate: string,
+): Promise<AttendanceSession[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('attendance_sessions')
+    .select('*')
+    .eq('staff_user_id', staffUserId)
+    .gte('business_date', fromDate)
+    .lte('business_date', toDate)
+    .order('clock_in', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []).map(mapSessionRow)
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Staff Profiles (for attendance board display names)
+// ═══════════════════════════════════════════════════════════════════
+
+export type StaffProfileBrief = {
+  id: string
+  staffId: string
+  displayName: string
+  role: string
+}
+
+function mapProfileRow(row: Record<string, unknown>): StaffProfileBrief {
+  return {
+    id: row.id as string,
+    staffId: row.staff_id as string,
+    displayName: row.display_name as string,
+    role: row.role as string,
+  }
+}
+
+export async function findStaffProfiles(): Promise<StaffProfileBrief[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('staff_profiles')
+    .select('id, staff_id, display_name, role')
+    .eq('active', true)
+    .order('display_name')
+
+  if (error) throw error
+  return (data ?? []).map(mapProfileRow)
+}
