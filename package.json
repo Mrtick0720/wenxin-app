@@ -14,6 +14,7 @@
     "test:permission-layer": "npx tsx scripts/test-permission-layer.mjs",
     "test:cashier-workflow": "npx tsx scripts/test-cashier-workflow.mjs",
     "test:attendance": "npx tsx scripts/test-attendance.mjs",
+    "test:checklist": "npx tsx scripts/test-checklist.mjs",
     "start": "next start",
     "lint": "eslint"
   },
