@@ -1,7 +1,6 @@
 // ── Cashier Service Layer ──
 // Business logic for cashier operations.
-// Phase 3: Full shift workflow — open, adjust, close, verify, reopen.
-// Transactions and settings remain stubs pending future phases.
+// Phase 4: Full shift workflow + transactions + sales amount for KPI.
 
 import {
   insertShift,
@@ -13,6 +12,10 @@ import {
   findAdjustmentsByShift,
   findPaymentMethods,
   findActivePaymentMethods,
+  insertTransaction,
+  findTransactionsByShift,
+  getTodaySalesAmount as getSalesAmountByDateRepo,
+  getSalesAmountByDateRange as getSalesAmountByDateRangeRepo,
 } from './repository'
 import {
   validateShiftStatus,
@@ -24,6 +27,10 @@ import {
   isReopenable,
   isAdjustable,
   isDifferentUser,
+  isValidPaymentMethod,
+  isValidTransactionAmount,
+  isValidTransactionCount,
+  shiftAllowsTransactions,
 } from './validation'
 import type {
   CashierShift,
@@ -107,8 +114,12 @@ export async function closeShift(
     .filter(a => a.type === 'pay_out')
     .reduce((sum, a) => sum + a.amount, 0)
 
-  // Transactions not yet implemented — expected total is opening + adjustments only
-  const expectedTotal = shift.openingBalance + payIns - payOuts
+  // Expected total: opening + cash transactions + pay_ins - pay_outs
+  const txns = await findTransactionsByShift(shiftId)
+  const cashPayments = txns
+    .filter(t => t.paymentMethod === 'cash')
+    .reduce((sum, t) => sum + t.amount, 0)
+  const expectedTotal = shift.openingBalance + cashPayments + payIns - payOuts
 
   return updateShift(shiftId, {
     status: 'closed',
@@ -207,15 +218,17 @@ export async function getShiftSummary(
 
   const adjustments = await findAdjustmentsByShift(shiftId)
 
-  // Transactions not yet implemented — empty array
-  const transactions: CashierTransaction[] = []
+  const transactions = await findTransactionsByShift(shiftId)
 
   const paymentBreakdown: Record<string, number> = {
     cash: 0,
+    touch_n_go: 0,
+    alipay: 0,
     card: 0,
-    ewallet: 0,
-    transfer: 0,
     other: 0,
+  }
+  for (const t of transactions) {
+    paymentBreakdown[t.paymentMethod] = (paymentBreakdown[t.paymentMethod] ?? 0) + t.amount
   }
 
   const totalPayments = transactions.reduce((sum, t) => sum + t.amount, 0)
@@ -236,23 +249,73 @@ export async function getShiftSummary(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Transactions — Stubs (pending future phase)
+// Transactions (Phase 4)
 // ═══════════════════════════════════════════════════════════════════
 
 export async function recordPayment(
-  _shiftId: number,
-  _paymentMethodId: number,
-  _amount: number,
-  _reference: string | null,
-  _note: string | null,
+  shiftId: number,
+  paymentMethod: string,
+  amount: number,
+  transactionCount: number,
+  staffUserId: string,
+  source?: string,
 ): Promise<CashierTransaction> {
-  throw new Error('Not yet implemented — cashier_transactions table pending')
+  if (!isValidPaymentMethod(paymentMethod)) {
+    throw new Error(`Invalid payment method: "${paymentMethod}".`)
+  }
+  if (!isValidTransactionAmount(amount)) {
+    throw new Error('Amount must be greater than zero.')
+  }
+  if (!isValidTransactionCount(transactionCount)) {
+    throw new Error('Transaction count cannot be negative.')
+  }
+
+  const shift = await findShiftById(shiftId)
+  if (!shift) throw new Error('Shift not found.')
+  if (!shiftAllowsTransactions(shift.status)) {
+    throw new Error(`Cannot record payments on a shift with status "${shift.status}".`)
+  }
+
+  const today = new Date().toISOString().split('T')[0]
+  return insertTransaction({
+    shiftId,
+    businessDate: today,
+    paymentMethod,
+    amount,
+    transactionCount,
+    source: source ?? 'manual',
+    createdBy: staffUserId,
+  })
 }
 
 export async function getShiftTransactions(
-  _shiftId: number,
+  shiftId: number,
 ): Promise<CashierTransaction[]> {
-  throw new Error('Not yet implemented — cashier_transactions table pending')
+  return findTransactionsByShift(shiftId)
+}
+
+/**
+ * Get today's total sales amount.
+ * This is the denominator for Purchase-to-Sales Ratio KPI.
+ */
+export async function getTodaySalesAmount(
+  businessDate?: string,
+): Promise<number> {
+  const today = businessDate ?? new Date().toISOString().split('T')[0]
+  return getSalesAmountByDate(today)
+}
+
+export async function getSalesAmountByDate(
+  businessDate: string,
+): Promise<number> {
+  return getSalesAmountByDateRepo(businessDate)
+}
+
+export async function getSalesAmountByDateRange(
+  fromDate: string,
+  toDate: string,
+): Promise<number> {
+  return getSalesAmountByDateRangeRepo(fromDate, toDate)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -346,4 +409,8 @@ export {
   isReopenable,
   isAdjustable,
   isDifferentUser,
+  isValidPaymentMethod,
+  isValidTransactionAmount,
+  isValidTransactionCount,
+  shiftAllowsTransactions,
 } from './validation'

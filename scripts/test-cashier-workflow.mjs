@@ -14,6 +14,11 @@ import {
   isReopenable,
   isAdjustable,
   isDifferentUser,
+  isValidPaymentMethod,
+  isValidTransactionAmount,
+  isValidTransactionCount,
+  shiftAllowsTransactions,
+  VALID_PAYMENT_METHODS,
 } from '../lib/cashier/validation.ts'
 
 let passed = 0
@@ -171,6 +176,45 @@ assert(!isVerifiable('verified'), 'Cannot verify an already verified shift')
 
 section('20. Invalid Workflow — Close then Close (Blocked)')
 assert(!isClosable('closed'), 'Cannot close an already closed shift')
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 4 — Transaction Validation
+// ═══════════════════════════════════════════════════════════════════
+
+section('21. isValidPaymentMethod')
+for (const method of VALID_PAYMENT_METHODS) {
+  assert(isValidPaymentMethod(method), `${method} is valid`)
+}
+assert(!isValidPaymentMethod('ewallet'), 'ewallet is invalid (not in v1 methods)')
+assert(!isValidPaymentMethod(''), 'empty is invalid')
+assert(!isValidPaymentMethod('bitcoin'), 'bitcoin is invalid')
+
+section('22. VALID_PAYMENT_METHODS count')
+assert(VALID_PAYMENT_METHODS.length === 5, '5 payment methods: cash, touch_n_go, alipay, card, other')
+
+section('23. isValidTransactionAmount')
+assert(isValidTransactionAmount(10), '10 is valid')
+assert(isValidTransactionAmount(0.01), '0.01 is valid')
+assert(!isValidTransactionAmount(0), '0 is invalid')
+assert(!isValidTransactionAmount(-5), 'negative is invalid')
+
+section('24. isValidTransactionCount')
+assert(isValidTransactionCount(1), '1 is valid')
+assert(isValidTransactionCount(0), '0 is valid (batch with unknown count)')
+assert(isValidTransactionCount(50), '50 is valid')
+assert(!isValidTransactionCount(-1), 'negative is invalid')
+
+section('25. shiftAllowsTransactions — OPEN')
+assert(shiftAllowsTransactions('open'), 'open shift allows transactions')
+
+section('26. shiftAllowsTransactions — CLOSED')
+assert(shiftAllowsTransactions('closed'), 'closed shift allows transaction entry')
+
+section('27. shiftAllowsTransactions — VERIFIED rejected')
+assert(!shiftAllowsTransactions('verified'), 'verified shift does NOT allow transactions')
+
+section('28. shiftAllowsTransactions — CLOSING rejected')
+assert(!shiftAllowsTransactions('closing'), 'closing shift does NOT allow transactions')
 
 // ═══════════════════════════════════════════════════════════════════
 // Results

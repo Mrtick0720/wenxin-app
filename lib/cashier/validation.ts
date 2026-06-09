@@ -2,7 +2,7 @@
 // Pure validation functions. No Supabase, no database, no side effects.
 // Importable by both service.ts (server) and test scripts (any environment).
 
-import type { CashierShiftStatus } from './types'
+import type { CashierShiftStatus, TransactionPaymentMethod } from './types'
 
 /**
  * Check if a shift status is in the allowed set.
@@ -89,4 +89,32 @@ export function isAdjustable(status: CashierShiftStatus): boolean {
  */
 export function isDifferentUser(userIdA: string, userIdB: string): boolean {
   return userIdA !== userIdB
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 4 — Transaction Validation
+// ═══════════════════════════════════════════════════════════════════
+
+export const VALID_PAYMENT_METHODS: TransactionPaymentMethod[] = [
+  'cash', 'touch_n_go', 'alipay', 'card', 'other',
+]
+
+export function isValidPaymentMethod(method: string): boolean {
+  return VALID_PAYMENT_METHODS.includes(method as TransactionPaymentMethod)
+}
+
+export function isValidTransactionAmount(amount: number): boolean {
+  return amount > 0
+}
+
+export function isValidTransactionCount(count: number): boolean {
+  return count >= 0
+}
+
+/**
+ * Check if a shift status allows transaction entry.
+ * OPEN and CLOSED shifts allow entry. VERIFIED does not.
+ */
+export function shiftAllowsTransactions(status: CashierShiftStatus): boolean {
+  return status === 'open' || status === 'closed'
 }

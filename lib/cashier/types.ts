@@ -45,16 +45,24 @@ export type PaymentMethod = {
 }
 
 // ── Cashier Transaction ──
-// A payment received during a shift. Linked to a shift and a payment method.
+// A payment batch recorded during a shift. Sales amount source for KPI.
+
+export type TransactionPaymentMethod = 'cash' | 'touch_n_go' | 'alipay' | 'card' | 'other'
+
+export type TransactionSource = 'manual' | 'pos'
 
 export type CashierTransaction = {
   id: number
+  outletId: string
   shiftId: number
-  paymentMethodId: number
+  businessDate: string
+  paymentMethod: TransactionPaymentMethod
   amount: number                 // RM
-  reference: string | null       // Order number, bill reference, etc.
-  note: string | null
+  transactionCount: number       // number of individual transactions in this batch
+  source: TransactionSource
+  createdBy: string | null
   createdAt: string
+  updatedAt: string
 }
 
 // ── Cashier Adjustment ──

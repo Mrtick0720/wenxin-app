@@ -142,19 +142,121 @@ export async function findShiftsByDate(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Transactions — Stubs (pending future phase)
+// Transactions (Phase 4)
 // ═══════════════════════════════════════════════════════════════════
 
-export async function insertTransaction(
-  _transaction: Omit<CashierTransaction, 'id' | 'createdAt'>,
-): Promise<CashierTransaction> {
-  throw new Error('Not yet implemented — cashier_transactions table pending')
+function mapTransactionRow(row: Record<string, unknown>): CashierTransaction {
+  return {
+    id: row.id as number,
+    outletId: row.outlet_id as string,
+    shiftId: row.shift_id as number,
+    businessDate: row.business_date as string,
+    paymentMethod: row.payment_method as CashierTransaction['paymentMethod'],
+    amount: Number(row.amount ?? 0),
+    transactionCount: row.transaction_count as number,
+    source: row.source as CashierTransaction['source'],
+    createdBy: (row.created_by as string) ?? null,
+    createdAt: row.created_at as string,
+    updatedAt: row.updated_at as string,
+  }
+}
+
+export async function insertTransaction(data: {
+  shiftId: number
+  businessDate: string
+  paymentMethod: string
+  amount: number
+  transactionCount?: number
+  source?: string
+  createdBy?: string | null
+}): Promise<CashierTransaction> {
+  const supabase = await createServerSupabaseClient()
+  const { data: created, error } = await supabase
+    .from('cashier_transactions')
+    .insert({
+      outlet_id: DEFAULT_OUTLET_ID,
+      shift_id: data.shiftId,
+      business_date: data.businessDate,
+      payment_method: data.paymentMethod,
+      amount: data.amount,
+      transaction_count: data.transactionCount ?? 1,
+      source: data.source ?? 'manual',
+      created_by: data.createdBy ?? null,
+    })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapTransactionRow(created)
 }
 
 export async function findTransactionsByShift(
-  _shiftId: number,
+  shiftId: number,
 ): Promise<CashierTransaction[]> {
-  throw new Error('Not yet implemented — cashier_transactions table pending')
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('cashier_transactions')
+    .select('*')
+    .eq('shift_id', shiftId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map(mapTransactionRow)
+}
+
+export async function findTransactionsByDate(
+  businessDate: string,
+  outletId: string = DEFAULT_OUTLET_ID,
+): Promise<CashierTransaction[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('cashier_transactions')
+    .select('*')
+    .eq('business_date', businessDate)
+    .eq('outlet_id', outletId)
+    .order('created_at', { ascending: true })
+
+  if (error) throw error
+  return (data ?? []).map(mapTransactionRow)
+}
+
+/**
+ * Get total sales amount for a business date.
+ * Used by Purchase-to-Sales Ratio KPI as the denominator.
+ */
+export async function getTodaySalesAmount(
+  businessDate: string,
+  outletId: string = DEFAULT_OUTLET_ID,
+): Promise<number> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('cashier_transactions')
+    .select('amount')
+    .eq('business_date', businessDate)
+    .eq('outlet_id', outletId)
+
+  if (error || !data) return 0
+  return data.reduce((sum: number, row: { amount: number }) => sum + (row.amount ?? 0), 0)
+}
+
+/**
+ * Get total sales amount for a date range.
+ */
+export async function getSalesAmountByDateRange(
+  fromDate: string,
+  toDate: string,
+  outletId: string = DEFAULT_OUTLET_ID,
+): Promise<number> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('cashier_transactions')
+    .select('amount')
+    .gte('business_date', fromDate)
+    .lte('business_date', toDate)
+    .eq('outlet_id', outletId)
+
+  if (error || !data) return 0
+  return data.reduce((sum: number, row: { amount: number }) => sum + (row.amount ?? 0), 0)
 }
 
 // ═══════════════════════════════════════════════════════════════════
