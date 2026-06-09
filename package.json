@@ -17,6 +17,7 @@
     "test:checklist": "npx tsx scripts/test-checklist.mjs",
     "test:purchase": "npx tsx scripts/test-purchase.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
+    "test:assets": "npx tsx scripts/test-assets.mjs",
     "start": "next start",
     "lint": "eslint"
   },
