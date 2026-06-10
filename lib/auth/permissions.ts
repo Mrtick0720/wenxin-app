@@ -42,6 +42,7 @@ const ROUTE_RULES: RouteRule[] = [
   { prefix: '/dine-in', roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/incidents', roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/reports', roles: { owner: true, manager: true } },
+  { prefix: '/marketing', roles: { owner: true, manager: true } },
   { prefix: '/finance', roles: { owner: true } },
   { prefix: '/staff', roles: { owner: true, manager: true } },
   { prefix: '/bento', roles: ALL_ROLES },
@@ -54,8 +55,8 @@ const ROUTE_RULES: RouteRule[] = [
 const BOTTOM_NAV_ITEMS: Array<NavigationItem & { roles: RoleMap }> = [
   { href: '/', label: 'Home', roles: ALL_ROLES },
   { href: '/tasks', label: 'Approvals', roles: ALL_ROLES },
-  { href: '/staff', label: 'Schedule', roles: { owner: true, manager: true } },
   { href: '/purchase', label: 'Purchase', roles: { owner: true, manager: true, kitchen: true } },
+  { href: '/marketing', label: 'Marketing', roles: { owner: true, manager: true } },
   { href: '/profile', label: 'Me', roles: ALL_ROLES },
 ]
 

@@ -1,5 +1,6 @@
 'use client'
 
+import { usePathname } from 'next/navigation'
 import { useNavigation } from './NavigationStack'
 import { getPageElement } from '@/app/lib/stackPages'
 
@@ -17,17 +18,10 @@ const ApprovalIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const StaffIcon = ({ active }: { active: boolean }) => (
+const MarketingIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2"/>
-    <line x1="16" y1="2" x2="16" y2="6"/>
-    <line x1="8" y1="2" x2="8" y2="6"/>
-    <line x1="3" y1="10" x2="21" y2="10"/>
-    <line x1="8" y1="14" x2="8" y2="14"/>
-    <line x1="12" y1="14" x2="12" y2="14"/>
-    <line x1="16" y1="14" x2="16" y2="14"/>
-    <line x1="8" y1="18" x2="8" y2="18"/>
-    <line x1="12" y1="18" x2="12" y2="18"/>
+    <path d="M3 11l18-5v12L3 14v-3z"/>
+    <path d="M11.6 16.8a3 3 0 11-5.8-1.6"/>
   </svg>
 )
 
@@ -49,28 +43,45 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
 const tabs = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
-  { href: '/staff', label: 'Schedule', Icon: StaffIcon },
   { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
+  { href: '/marketing', label: 'Marketing', Icon: MarketingIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
   const { push, reset, currentPath } = useNavigation()
+  const pathname = usePathname()
 
+  // On a standalone URL route (e.g. /profile, or a directly-loaded page), the
+  // in-app stack model doesn't apply — let the anchor navigate by URL so every
+  // tab, including Home, actually moves. On the dashboard ('/') we drive the
+  // client navigation stack instead, and fall back to URL navigation for tabs
+  // with no client-renderable page (mirrors NavLink).
   const handleTap = (e: React.MouseEvent, href: string) => {
-    e.preventDefault()
+    if (pathname !== '/') return
     if (href === '/') {
+      e.preventDefault()
       reset()
       return
     }
     const el = getPageElement(href)
-    if (el) push(href, el)
+    if (el) {
+      e.preventDefault()
+      push(href, el)
+    }
   }
 
+  // Active tab: use the real URL when on a standalone route, otherwise the top
+  // of the navigation stack. Detail pages (e.g. /purchase/123) keep their parent
+  // tab highlighted.
+  const activePath = pathname !== '/' ? pathname : currentPath
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-40">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-[300]">
       {tabs.map(({ href, label, Icon, badge }) => {
-        const active = currentPath === href
+        const active = href === '/'
+          ? activePath === '/'
+          : activePath === href || activePath.startsWith(`${href}/`)
         return (
           <a key={label} href={href} onClick={e => handleTap(e, href)}
             className="flex-1 flex flex-col items-center justify-center relative py-1">

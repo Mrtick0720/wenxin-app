@@ -212,7 +212,7 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
         <div style={{ height: 4, background: catColor }} />
 
         {error && (

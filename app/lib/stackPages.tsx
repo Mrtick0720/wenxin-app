@@ -30,6 +30,7 @@ const TasksPage        = lazy(() => import('@/app/tasks/page'))
 const AllModulesPage   = lazy(() => import('@/app/all/page'))
 const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
 const AssetsPage       = lazy(() => import('@/app/assets/page'))
+const MarketingPage    = lazy(() => import('@/app/marketing/page'))
 
 function PageFallback() {
   return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
@@ -63,6 +64,7 @@ const pages: Record<string, RouteFactory> = {
   '/all':          () => <S><AllModulesPage /></S>,
   '/suppliers':    () => <S><SuppliersPage /></S>,
   '/assets':       () => <S><AssetsPage /></S>,
+  '/marketing':    () => <S><MarketingPage /></S>,
 }
 
 /**
@@ -95,4 +97,5 @@ export function preloadRoutes() {
   p(AllModulesPage)
   p(SuppliersPage)
   p(AssetsPage)
+  p(MarketingPage)
 }

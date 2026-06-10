@@ -454,7 +454,7 @@ export default function PurchaseClient({ initialItems, initialDate }: { initialI
       </div>
 
       {/* List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ background: '#fff' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ background: '#fff', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
         <div style={{ height: refreshing ? THRESHOLD : pullDist, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: refreshing || pullDist === 0 ? 'height 0.3s ease' : 'none', overflow: 'hidden' }}>
           {(pullDist > 5 || refreshing) && (
             <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2.5px solid #f97316', borderTopColor: 'transparent', animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none', transform: !refreshing ? `rotate(${(pullDist / THRESHOLD) * 300}deg)` : undefined }} />
