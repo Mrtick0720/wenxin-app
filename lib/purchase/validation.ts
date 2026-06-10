@@ -56,7 +56,7 @@ export function isValidRejectionReason(reason: string | null | undefined): boole
  */
 const STATUS_TRANSITIONS: Record<PurchaseRequestStatus, PurchaseRequestStatus[]> = {
   draft:      ['submitted', 'cancelled'],
-  submitted:  ['approved', 'rejected'],
+  submitted:  ['approved', 'rejected', 'draft', 'cancelled'], // 2.1: send-back + cancel
   approved:   ['confirmed', 'cancelled'],
   rejected:   ['draft'],           // can edit and resubmit
   confirmed:  ['purchased', 'cancelled'],
@@ -88,4 +88,23 @@ export function canSetPrices(role: string): boolean {
  */
 export function isPriceRestrictedRole(role: string): boolean {
   return !canSetPrices(role)
+}
+
+// ── Phase 2.1: tiered approval + segregation of duties (pure) ──
+
+/** The approval tier required for a given request total. */
+export function approvalTierFor(total: number, managerLimit: number): 'manager' | 'owner' {
+  return total <= managerLimit ? 'manager' : 'owner'
+}
+
+/** Whether a role may confirm a request at the given tier (Owner unlimited; Manager ≤ limit tier). */
+export function meetsApprovalTier(role: string, tier: 'manager' | 'owner'): boolean {
+  if (role === 'owner') return true
+  if (role === 'manager') return tier === 'manager'
+  return false
+}
+
+/** True when the actor is the same staff member who raised the request. */
+export function isSelfApproval(requestedBy: string, actorStaffUserId: string): boolean {
+  return requestedBy === actorStaffUserId
 }

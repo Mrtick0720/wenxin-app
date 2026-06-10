@@ -16,6 +16,7 @@
     "test:attendance": "npx tsx scripts/test-attendance.mjs",
     "test:checklist": "npx tsx scripts/test-checklist.mjs",
     "test:purchase": "npx tsx scripts/test-purchase.mjs",
+    "test:purchase-lifecycle": "npx tsx scripts/test-purchase-lifecycle.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "test:assets": "npx tsx scripts/test-assets.mjs",
     "test:suppliers": "npx tsx scripts/test-suppliers.mjs",

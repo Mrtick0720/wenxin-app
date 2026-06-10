@@ -5,7 +5,6 @@
 
 import {
   createPurchaseRequest,
-  updatePurchaseRequest,
   findPurchaseRequestById,
   findPurchaseRequestsByDate,
   findPurchaseRequestsByStatus,
@@ -13,6 +12,8 @@ import {
   updatePurchaseItem,
   findRequestItems,
   findConfirmedPurchaseTotal,
+  transitionRequestStatus,
+  getApprovalSettings,
 } from './repository'
 import {
   isValidItemName,
@@ -23,7 +24,20 @@ import {
   isValidRejectionReason,
   isValidStatusTransition,
   canSetPrices,
+  approvalTierFor,
+  meetsApprovalTier,
+  isSelfApproval,
 } from './validation'
+import {
+  InvalidTransitionError,
+  NotPricedError,
+  ApprovalLimitExceededError,
+  SelfApprovalForbiddenError,
+  RejectionReasonRequiredError,
+  RequestNotFoundError,
+  PermissionDeniedError,
+  ConcurrentModificationError,
+} from './lifecycleErrors'
 import type { PurchaseRequest, PurchaseRequestItem } from './types'
 
 // ═══════════════════════════════════════════════════════════════════
@@ -100,12 +114,12 @@ export async function submitRequest(
   staffUserId: string,
 ): Promise<PurchaseRequest> {
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
   if (request.requestedBy !== staffUserId) {
-    throw new Error('You can only submit your own requests.')
+    throw PermissionDeniedError('You can only submit your own requests.')
   }
   if (!isValidStatusTransition(request.status, 'submitted')) {
-    throw new Error(`Cannot submit a request with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'submitted')
   }
 
   const items = await findRequestItems(requestId)
@@ -113,7 +127,9 @@ export async function submitRequest(
     throw new Error('Add at least one item before submitting.')
   }
 
-  return updatePurchaseRequest(requestId, { status: 'submitted' })
+  const updated = await transitionRequestStatus(requestId, request.status, { status: 'submitted' })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -126,20 +142,28 @@ export async function approveRequest(
   staffRole: string,
 ): Promise<PurchaseRequest> {
   if (!canSetPrices(staffRole)) {
-    throw new Error('Only Manager or Owner can approve purchase requests.')
+    throw PermissionDeniedError('Only Manager or Owner can approve purchase requests.')
   }
 
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
   if (!isValidStatusTransition(request.status, 'approved')) {
-    throw new Error(`Cannot approve a request with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'approved')
   }
 
-  return updatePurchaseRequest(requestId, {
+  // Segregation of duties: requester cannot approve own request (unless configured).
+  const { allowSelfApprove } = await getApprovalSettings()
+  if (!allowSelfApprove && isSelfApproval(request.requestedBy, staffUserId)) {
+    throw SelfApprovalForbiddenError()
+  }
+
+  const updated = await transitionRequestStatus(requestId, request.status, {
     status: 'approved',
     approvedBy: staffUserId,
     approvedAt: new Date().toISOString(),
   })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 export async function rejectRequest(
@@ -149,22 +173,32 @@ export async function rejectRequest(
   reason: string,
 ): Promise<PurchaseRequest> {
   if (!canSetPrices(staffRole)) {
-    throw new Error('Only Manager or Owner can reject purchase requests.')
+    throw PermissionDeniedError('Only Manager or Owner can reject purchase requests.')
   }
   if (!isValidRejectionReason(reason)) {
-    throw new Error('A rejection reason is required.')
+    throw RejectionReasonRequiredError()
   }
 
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
   if (!isValidStatusTransition(request.status, 'rejected')) {
-    throw new Error(`Cannot reject a request with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'rejected')
   }
 
-  return updatePurchaseRequest(requestId, {
+  // Segregation of duties: requester cannot reject own request (unless configured).
+  const { allowSelfApprove } = await getApprovalSettings()
+  if (!allowSelfApprove && isSelfApproval(request.requestedBy, staffUserId)) {
+    throw SelfApprovalForbiddenError()
+  }
+
+  const updated = await transitionRequestStatus(requestId, request.status, {
     status: 'rejected',
     rejectionReason: reason.trim(),
+    rejectedBy: staffUserId,
+    rejectedAt: new Date().toISOString(),
   })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -178,13 +212,13 @@ export async function confirmPrices(
   items: Array<{ itemId: number; unitPrice: number; totalPrice: number }>,
 ): Promise<PurchaseRequest> {
   if (!canSetPrices(staffRole)) {
-    throw new Error('Only Manager or Owner can confirm prices.')
+    throw PermissionDeniedError('Only Manager or Owner can confirm prices.')
   }
 
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
   if (!isValidStatusTransition(request.status, 'confirmed')) {
-    throw new Error(`Cannot confirm prices for a request with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'confirmed')
   }
 
   for (const item of items) {
@@ -196,6 +230,7 @@ export async function confirmPrices(
     }
   }
 
+  // Apply prices first so the spend-commit tier reflects the priced lines.
   for (const item of items) {
     await updatePurchaseItem(item.itemId, {
       unitPrice: item.unitPrice,
@@ -203,11 +238,27 @@ export async function confirmPrices(
     })
   }
 
-  return updatePurchaseRequest(requestId, {
+  // Priced precondition: every line of the request must now carry a unit price.
+  const allItems = await findRequestItems(requestId)
+  if (allItems.length === 0 || allItems.some((i) => i.unitPrice == null)) {
+    throw NotPricedError()
+  }
+
+  // Tiered spend approval: Manager limited; Owner unlimited.
+  const total = allItems.reduce((sum, i) => sum + (i.totalPrice ?? 0), 0)
+  const { managerLimit } = await getApprovalSettings()
+  const tier = approvalTierFor(total, managerLimit)
+  if (!meetsApprovalTier(staffRole, tier)) {
+    throw ApprovalLimitExceededError(total, managerLimit)
+  }
+
+  const updated = await transitionRequestStatus(requestId, request.status, {
     status: 'confirmed',
     confirmedBy: staffUserId,
     confirmedAt: new Date().toISOString(),
   })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -220,16 +271,18 @@ export async function markPurchased(
   staffRole: string,
 ): Promise<PurchaseRequest> {
   if (!canSetPrices(staffRole)) {
-    throw new Error('Only Manager or Owner can mark as purchased.')
+    throw PermissionDeniedError('Only Manager or Owner can mark as purchased.')
   }
 
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
   if (!isValidStatusTransition(request.status, 'purchased')) {
-    throw new Error(`Cannot mark as purchased with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'purchased')
   }
 
-  return updatePurchaseRequest(requestId, { status: 'purchased' })
+  const updated = await transitionRequestStatus(requestId, request.status, { status: 'purchased' })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -242,17 +295,23 @@ export async function cancelRequest(
   staffRole: string,
 ): Promise<PurchaseRequest> {
   const request = await findPurchaseRequestById(requestId)
-  if (!request) throw new Error('Purchase request not found.')
+  if (!request) throw RequestNotFoundError(requestId)
 
   const isOwner = request.requestedBy === staffUserId || canSetPrices(staffRole)
   if (!isOwner) {
-    throw new Error('You can only cancel your own requests.')
+    throw PermissionDeniedError('You can only cancel your own requests.')
   }
   if (!isValidStatusTransition(request.status, 'cancelled')) {
-    throw new Error(`Cannot cancel a request with status "${request.status}".`)
+    throw InvalidTransitionError(request.status, 'cancelled')
   }
 
-  return updatePurchaseRequest(requestId, { status: 'cancelled' })
+  const updated = await transitionRequestStatus(requestId, request.status, {
+    status: 'cancelled',
+    cancelledBy: staffUserId,
+    cancelledAt: new Date().toISOString(),
+  })
+  if (!updated) throw ConcurrentModificationError()
+  return updated
 }
 
 // ═══════════════════════════════════════════════════════════════════

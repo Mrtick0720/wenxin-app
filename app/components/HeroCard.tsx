@@ -151,7 +151,7 @@ export default function HeroCard({
       ref={containerRef}
       className="rounded-2xl"
       style={{
-        background: 'linear-gradient(135deg, #1e3a5c 0%, #162238 60%, #1a1818 100%)',
+        background: 'linear-gradient(150deg, #fb923c 0%, #f97316 45%, #ea580c 100%)',
         touchAction: 'pan-y',
         overflow: 'hidden',
       }}
@@ -170,74 +170,90 @@ export default function HeroCard({
             willChange: 'transform',
           }}
         >
-          {/* ═══ Slide 1: Revenue Today ═══ */}
+          {/* ═══ Slide 1: Revenue ═══ */}
           <div
-            className="flex-shrink-0 flex flex-col justify-between px-5"
+            className="flex-shrink-0 flex flex-col px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-white/90">Today&apos;s Revenue</div>
+              <button
+                onClick={() => router.push('/reports')}
+                className="opacity-70 hover:opacity-100 transition-opacity"
+                aria-label="Reports"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="4 16 10 10 15 13 20 5" />
+                </svg>
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <div className="text-3xl font-bold tracking-tight text-white leading-none">RM {revenueTotal.toLocaleString()}</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold tracking-tight text-white leading-none">+12%</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Growth</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-orange-100/90">vs Yesterday <span className="text-white/90 font-medium">RM 7,614</span></div>
+              <span className="bg-white/20 text-white text-xs font-medium rounded-full px-3 py-1">Excellent</span>
+            </div>
+          </div>
+
+          {/* ═══ Slide 2: Dine-in ═══ */}
+          <div
+            className="flex-shrink-0 flex flex-col px-5"
+            style={{ width: `${pctPerSlide}%` }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-white/90">Dine-in</div>
+              <span className="text-xs text-white/70">Active</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <div className="text-3xl font-bold text-white leading-none">RM {revenueDineIn.toLocaleString()}</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-white leading-none">42</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Orders</div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="text-xs text-orange-100/90">Avg Ticket <span className="text-white/90 font-medium">RM {dineInAvg}</span></div>
+              <span className="bg-white/20 text-white text-xs font-medium rounded-full px-3 py-1">On Track</span>
+            </div>
+          </div>
+
+          {/* ═══ Slide 3: Bento ═══ */}
+          <div
+            className="flex-shrink-0 flex flex-col px-5"
+            style={{ width: `${pctPerSlide}%` }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-white/90">Bento</div>
+              <span className="text-xs text-white/70">Prepping</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div>
+                <div className="text-3xl font-bold text-white leading-none">RM {revenueBento.toLocaleString()}</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-white leading-none">{bentoOrders}</div>
+                <div className="text-xs text-orange-100/80 mt-1.5">Orders</div>
+              </div>
+            </div>
             <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm font-semibold text-white">Today&apos;s Revenue</div>
-                <button
-                  onClick={() => router.push('/reports')}
-                  className="opacity-50 hover:opacity-100 transition-opacity"
-                  aria-label="Reports"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="4 16 10 10 15 13 20 5" />
-                  </svg>
-                </button>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs text-orange-100/90">Completion Rate</span>
+                <span className="text-xs font-semibold text-white">{bentoPercent}%</span>
               </div>
-              <div className="text-3xl font-bold tracking-tight text-white">
-                RM {revenueTotal.toLocaleString()}
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 text-[13px] pb-0.5">
-              <span className="text-green-400 font-medium">+12%</span>
-              <span className="text-slate-500">vs yesterday (RM 7,614)</span>
-            </div>
-          </div>
-
-          {/* ═══ Slide 2: Dine-in Breakdown ═══ */}
-          <div
-            className="flex-shrink-0 px-5"
-            style={{ width: `${pctPerSlide}%` }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-white">Dine-in</div>
-              <span className="text-xs text-emerald-500/70">Active</span>
-            </div>
-            <div className="text-2xl font-bold text-white mb-3">42 Orders</div>
-            <div className="space-y-1.5">
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-400 w-[72px] flex-shrink-0">Revenue</span>
-                <span className="text-white font-medium">RM {revenueDineIn.toLocaleString()}</span>
-              </div>
-              <div className="flex gap-2 text-xs">
-                <span className="text-slate-400 w-[72px] flex-shrink-0">Avg Ticket</span>
-                <span className="text-white font-medium">RM {dineInAvg}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* ═══ Slide 3: Bento Breakdown ═══ */}
-          <div
-            className="flex-shrink-0 px-5"
-            style={{ width: `${pctPerSlide}%` }}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-semibold text-white">Bento</div>
-              <span className="text-xs text-orange-400/80">Prepping</span>
-            </div>
-            <div className="text-2xl font-bold text-white mb-3">{bentoOrders} Orders</div>
-            <div className="space-y-1.5">
-              <div className="flex gap-6 text-xs">
-                <span className="text-slate-400">Revenue</span>
-                <span className="text-white font-medium">RM {revenueBento.toLocaleString()}</span>
-              </div>
-              <div className="flex gap-6 text-xs">
-                <span className="text-slate-400">Completion</span>
-                <span className="text-white font-medium">{bentoPercent}%</span>
+              <div className="h-1.5 rounded-full bg-white/20 overflow-hidden">
+                <div className="h-full rounded-full bg-white" style={{ width: `${bentoPercent}%` }} />
               </div>
             </div>
           </div>
@@ -254,7 +270,7 @@ export default function HeroCard({
             style={{
               width: slide === i ? 16 : 5,
               height: 5,
-              background: slide === i ? '#f97316' : 'rgba(255,255,255,0.25)',
+              background: slide === i ? '#ffffff' : 'rgba(255,255,255,0.35)',
             }}
           />
         ))}

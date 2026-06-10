@@ -20,7 +20,7 @@ export default async function ProfilePage() {
         <BackButton href="/" />
         <h1 className="text-base font-semibold text-gray-900">Profile</h1>
       </header>
-      <div className="mx-auto max-w-lg px-4 py-6">
+      <div className="mx-auto max-w-lg px-4 pt-6 pb-28">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-900 text-lg font-semibold text-white">
             {staff.displayName.slice(0, 1).toUpperCase()}

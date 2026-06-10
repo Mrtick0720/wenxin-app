@@ -72,7 +72,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
       <div
         ref={containerRef}
-        style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch' }}
+        style={{ flex: 1, overflowY: 'auto', overscrollBehavior: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}
       >
         {/* Pull-to-refresh indicator */}
         <div

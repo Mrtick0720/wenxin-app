@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import BackButton from '../components/BackButton'
-import BottomNav from '../components/BottomNav'
 import PageTransition from '../components/PageTransition'
 import Link from 'next/link'
 import { useStaff } from '../components/StaffProvider'
@@ -214,8 +213,6 @@ export default function SchedulePage() {
           ))}
         </div>
       </div>
-
-      <BottomNav />
     </main>
     </PageTransition>
   )
