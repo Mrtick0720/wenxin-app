@@ -3,16 +3,11 @@
 // Upstream throttling lives in getFeedMeDailyRevenue() (3-min TTL).
 
 import { NextResponse } from 'next/server'
-import { getFeedMeDailyRevenue, feedmeDiagnostics } from '@/lib/feedme/liveDailySales'
+import { getFeedMeDailyRevenue } from '@/lib/feedme/liveDailySales'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
-  // TEMPORARY: ?debug=1 returns safe booleans (no secrets) to diagnose prod.
-  if (new URL(request.url).searchParams.get('debug') === '1') {
-    return NextResponse.json({ debug: await feedmeDiagnostics() })
-  }
-
+export async function GET() {
   const result = await getFeedMeDailyRevenue()
 
   if (!result) {
