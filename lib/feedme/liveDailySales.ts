@@ -174,6 +174,7 @@ export async function feedmeDiagnostics() {
   }
 
   let upstreamStatus: number | string = 'not-attempted'
+  let upstreamStatusBrowser: number | string = 'not-attempted'
   let upstreamServer = ''
   let upstreamCf = ''
   let upstreamBody = ''
@@ -197,6 +198,22 @@ export async function feedmeDiagnostics() {
       upstreamServer = res.headers.get('server') ?? ''
       upstreamCf = res.headers.get('cf-ray') ? 'cloudflare' : (res.headers.get('cf-mitigated') ?? '')
       upstreamBody = (await res.text()).replace(/\s+/g, ' ').slice(0, 200)
+
+      // Second attempt with browser-like headers — does Cloudflare let it through?
+      const res2 = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          Accept: 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        body: bodyText,
+        cache: 'no-store',
+      })
+      upstreamStatusBrowser = res2.status
     } catch (e) {
       upstreamStatus = `error:${(e as Error).name}`
     }
@@ -209,6 +226,7 @@ export async function feedmeDiagnostics() {
     queryFileExists,
     bearerResolved,
     upstreamStatus,
+    upstreamStatusBrowser,
     upstreamServer,
     upstreamCf,
     upstreamBody,
