@@ -3,6 +3,11 @@ import 'server-only'
 import { redirect } from 'next/navigation'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { CurrentStaff, StaffProfile, StaffRole } from './types'
+import {
+  SessionVerificationUnavailableError,
+  classifyAuthError,
+  classifySessionValidity,
+} from './sessionVerification'
 
 type LoginProfile = Pick<
   StaffProfile,
@@ -19,22 +24,33 @@ export async function getCurrentStaff(): Promise<CurrentStaff | null> {
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims()
   const claims = claimsData?.claims as { sub?: string; session_id?: string } | undefined
 
-  if (claimsError || !claims?.sub || !claims.session_id) return null
+  if (claimsError) {
+    if (classifyAuthError(claimsError) === 'invalid') return null
+    throw new SessionVerificationUnavailableError()
+  }
+  if (!claims?.sub || !claims.session_id) return null
 
-  const [{ data: profileData, error: profileError }, { data: validData }] = await Promise.all([
+  const [
+    { data: profileData, error: profileError },
+    { data: validData, error: validityError },
+  ] = await Promise.all([
     supabase.rpc('get_login_staff_profile'),
     supabase.rpc('is_current_staff_session_valid'),
   ])
 
   const profile = firstRow(profileData as LoginProfile[] | LoginProfile | null)
-  if (profileError || !profile?.active || validData !== true) return null
+  if (profileError || classifySessionValidity(validData, validityError) === 'unavailable') {
+    throw new SessionVerificationUnavailableError()
+  }
+  if (!profile?.active || validData !== true) return null
 
-  const { data: session } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from('staff_sessions')
     .select('expires_at')
     .eq('id', claims.session_id)
     .maybeSingle()
 
+  if (sessionError) throw new SessionVerificationUnavailableError()
   if (!session?.expires_at) return null
 
   return {

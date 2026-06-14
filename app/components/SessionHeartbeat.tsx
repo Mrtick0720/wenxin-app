@@ -18,14 +18,18 @@ export default function SessionHeartbeat() {
     async function touchSession() {
       if (document.visibilityState !== 'visible') return
 
-      const response = await fetch('/api/session/heartbeat', {
-        method: 'POST',
-        cache: 'no-store',
-      })
+      try {
+        const response = await fetch('/api/session/heartbeat', {
+          method: 'POST',
+          cache: 'no-store',
+        })
 
-      if (!stopped && response.status === 401) {
-        router.replace('/login?reason=session-ended')
-        router.refresh()
+        if (!stopped && response.status === 401) {
+          router.replace('/login?reason=session-ended')
+          router.refresh()
+        }
+      } catch {
+        // Network changes are retryable; the next heartbeat will try again.
       }
     }
 

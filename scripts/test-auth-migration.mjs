@@ -22,5 +22,15 @@ assert.ok(
   addTimeSlot < createKitchenView,
   'bento_orders.time_slot must exist before the kitchen order view is created',
 )
+assert.match(
+  migration,
+  /s\.created_at \+ interval '12 hours' > now\(\)/,
+  'staff sessions must remain limited to twelve hours',
+)
+assert.match(
+  migration,
+  /delete from auth\.sessions\s+where user_id = target_user;/,
+  'owner session invalidation must continue revoking Supabase auth sessions',
+)
 
 console.log('staff auth migration schema tests passed')

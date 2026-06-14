@@ -1,17 +1,33 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 import { useNavigation } from './NavigationStack'
 import { getPageElement } from '@/app/lib/stackPages'
+import { useHideAmounts } from '@/app/hooks/useHideAmounts'
+import { useRevenueRefresh } from '@/app/hooks/useRevenueRefresh'
+import { formatAmount } from '@/app/lib/formatAmount'
+import { formatGrowthPercent } from '@/app/lib/formatGrowthPercent'
+import type { FeedMeDailyRevenue, FeedMeMtdSummary, FeedMe7DaySummary } from '@/lib/feedme/liveDailySales'
+
+const RevenueTodayStack = lazy(() => import('@/app/revenue/RevenueTodayStack'))
+const RevenueAnalyticsStack = lazy(() => import('@/app/revenue/RevenueAnalyticsStack'))
 
 interface HeroCardProps {
-  revenueTotal: number
-  revenueDineIn: number
+  revenueTotal: number | null
+  revenueYesterday: number | null
+  growthPercent: number | null
+  mtdRevenue: number | null
+  mtdAverage: number | null
+  bestDayRevenue: number | null
   revenueBento: number
   bentoOrders: number
   bentoCompleted: number
   bentoPercent: number
+  feedMeRevenue: FeedMeDailyRevenue | null
+  feedMeMtd: FeedMeMtdSummary | null
+  feedMe7Day: FeedMe7DaySummary | null
 }
 
 const SLIDE_COUNT = 3
@@ -19,16 +35,43 @@ const ELASTIC = 0.35
 
 export default function HeroCard({
   revenueTotal,
-  revenueDineIn,
+  revenueYesterday,
+  growthPercent,
+  mtdRevenue,
+  mtdAverage,
+  bestDayRevenue,
   revenueBento,
   bentoOrders,
   bentoCompleted,
   bentoPercent,
+  feedMeRevenue,
+  feedMeMtd,
+  feedMe7Day,
 }: HeroCardProps) {
   const router = useRouter()
   const { push } = useNavigation()
+  const [hidden, toggleHidden] = useHideAmounts()
   const [slide, setSlide] = useState(0)
   const [animating, setAnimating] = useState(false)
+
+  // Auto-refresh revenue data every 60s (slides 1 & 2).
+  // When refresh data is available, it takes precedence over initial SSR props.
+  // On error, the hook preserves the last successful values — never blanks.
+  const refreshed = useRevenueRefresh()
+
+  // Merge: prefer live refresh data when available, fall back to server props.
+  const mergedRevenueTotal =
+    refreshed.daily?.revenueTotal !== undefined ? refreshed.daily.revenueTotal : revenueTotal
+  const mergedRevenueYesterday =
+    refreshed.daily?.revenueYesterday !== undefined ? refreshed.daily.revenueYesterday : revenueYesterday
+  const mergedGrowthPercent =
+    refreshed.daily?.growthPercent !== undefined ? refreshed.daily.growthPercent : growthPercent
+  const mergedMtdRevenue =
+    refreshed.mtd?.mtdRevenue !== undefined ? refreshed.mtd.mtdRevenue : mtdRevenue
+  const mergedMtdAverage =
+    refreshed.mtd?.mtdAverage !== undefined ? refreshed.mtd.mtdAverage : mtdAverage
+  const mergedBestDayRevenue =
+    refreshed.mtd?.bestDayRevenue !== undefined ? refreshed.mtd.bestDayRevenue : bestDayRevenue
   const touchStartX = useRef(0)
   const touchStartY = useRef(0)
   const tracking = useRef(false)
@@ -107,14 +150,18 @@ export default function HeroCard({
     // ── Tap detection (no directional classification = tap, not a swipe) ──
     if (tracking.current && touchAxis.current === null) {
       tracking.current = false
-      if (slide === 1) {
-        const el = getPageElement('/dine-in')
-        if (el) push('/dine-in', el)
+      if (slide === 0) {
+        if (feedMeRevenue) {
+          push('/revenue/today', <Suspense fallback={null}><RevenueTodayStack data={feedMeRevenue} /></Suspense>)
+        } else {
+          router.push('/revenue/today')
+        }
+      } else if (slide === 1) {
+        push('/revenue/analytics', <Suspense fallback={null}><RevenueAnalyticsStack mtd={feedMeMtd} week={feedMe7Day} /></Suspense>)
       } else if (slide === 2) {
         const el = getPageElement('/bento')
         if (el) push('/bento', el)
       }
-      // Slide 0: existing reports button handles its own navigation
       return
     }
 
@@ -144,7 +191,34 @@ export default function HeroCard({
     }
   }
 
-  const dineInAvg = revenueDineIn > 0 ? Math.round(revenueDineIn / 42) : 0
+  const mtdRevenueLabel =
+    mergedMtdRevenue === null ? '—' : `RM ${Math.floor(mergedMtdRevenue).toLocaleString('en-US')}`
+  const mtdAverageLabel =
+    mergedMtdAverage === null ? '—' : `RM ${Math.floor(mergedMtdAverage).toLocaleString('en-US')}`
+  const bestDayLabel =
+    mergedBestDayRevenue === null ? '—' : `RM ${Math.floor(mergedBestDayRevenue).toLocaleString('en-US')}`
+
+  // FeedMe-derived: show "—" when yesterday/growth data is unavailable.
+  // Uses merged values — live refresh data when available, server props as fallback.
+  const revenueLabel = formatAmount(mergedRevenueTotal, hidden)
+  // Privacy mode masks the Growth % too (alongside the Today/Yesterday amounts).
+  // All numeric formatting goes through formatGrowthPercent so the rendered value
+  // is consistent on every browser (never a raw float). Precedence: when hidden
+  // and a real value exists → masked; otherwise formatGrowthPercent ("—" for no
+  // baseline). Status badge stays computed from the raw mergedGrowthPercent below.
+  const growthLabel =
+    hidden && mergedGrowthPercent !== null ? '*****' : formatGrowthPercent(mergedGrowthPercent)
+  // Status badge is derived from the SAME mergedGrowthPercent as the label, so
+  // the two can never disagree. Null = no valid baseline → neutral "No Baseline",
+  // never a misleading positive label like "Excellent".
+  const revenueStatus =
+    mergedGrowthPercent === null ? 'No Baseline'
+    : mergedGrowthPercent > 20 ? 'Excellent'
+    : mergedGrowthPercent > 10 ? 'Strong'
+    : mergedGrowthPercent > 0 ? 'Good'
+    : mergedGrowthPercent < 0 ? 'Weak'
+    : 'Flat'
+  const yesterdayLabel = formatAmount(mergedRevenueYesterday, hidden)
 
   return (
     <div
@@ -175,56 +249,64 @@ export default function HeroCard({
             className="flex-shrink-0 flex flex-col px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium text-white/90">Today&apos;s Revenue</div>
-              <button
-                onClick={() => router.push('/reports')}
-                className="opacity-70 hover:opacity-100 transition-opacity"
-                aria-label="Reports"
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="4 16 10 10 15 13 20 5" />
-                </svg>
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div>
-                <div className="text-3xl font-bold tracking-tight text-white leading-none">RM {revenueTotal.toLocaleString()}</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold tracking-tight text-white leading-none">+12%</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Growth</div>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium text-white/90">Today's Revenue</div>
             </div>
             <div className="flex items-center justify-between">
-              <div className="text-xs text-orange-100/90">vs Yesterday <span className="text-white/90 font-medium">RM 7,614</span></div>
-              <span className="bg-white/20 text-white text-xs font-medium rounded-full px-3 py-1">Excellent</span>
+              <div className="text-3xl font-bold tracking-tight text-white leading-none">{revenueLabel}</div>
+              <button
+                onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleHidden() }}
+                onTouchStart={(e) => e.stopPropagation()}
+                onTouchEnd={(e) => e.stopPropagation()}
+                aria-label={hidden ? 'Show amounts' : 'Hide amounts'}
+                className="flex-shrink-0 flex items-center justify-center w-10 h-10 -mr-2 opacity-70 hover:opacity-100 transition-opacity"
+              >
+                {hidden ? (
+                  <EyeOff size={20} stroke="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+                ) : (
+                  <Eye size={20} stroke="rgba(255,255,255,0.8)" strokeWidth={1.5} />
+                )}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0" />
+            <div className="flex items-end justify-between">
+              <div className="grid grid-cols-[7rem_4rem] gap-2">
+                <div>
+                  <div className="text-[10px] text-orange-100/70 uppercase tracking-wide">Yesterday</div>
+                  <div className="text-base font-bold text-white leading-tight whitespace-nowrap">{yesterdayLabel}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-orange-100/70 uppercase tracking-wide">Growth</div>
+                  <div className="text-base font-bold text-white leading-tight whitespace-nowrap">{growthLabel}</div>
+                </div>
+              </div>
+              <span className="bg-white/20 text-white text-xs font-medium rounded-full px-3 py-1">{revenueStatus}</span>
             </div>
           </div>
 
-          {/* ═══ Slide 2: Dine-in ═══ */}
+          {/* ═══ Slide 2: Month-to-Date ═══ */}
           <div
             className="flex-shrink-0 flex flex-col px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium text-white/90">Dine-in</div>
-              <span className="text-xs text-white/70">Active</span>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium text-white/90">Month-to-Date</div>
             </div>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div>
-                <div className="text-3xl font-bold text-white leading-none">RM {revenueDineIn.toLocaleString()}</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-white leading-none">42</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Orders</div>
-              </div>
+            <div>
+              <div className="text-3xl font-bold tracking-tight text-white leading-none">{mtdRevenueLabel}</div>
             </div>
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-orange-100/90">Avg Ticket <span className="text-white/90 font-medium">RM {dineInAvg}</span></div>
-              <span className="bg-white/20 text-white text-xs font-medium rounded-full px-3 py-1">On Track</span>
+            <div className="flex-1 min-h-0" />
+            <div className="flex items-end justify-between">
+              <div className="grid grid-cols-[7rem_4rem] gap-2">
+                <div>
+                  <div className="text-[10px] text-orange-100/70 uppercase tracking-wide">Avg Daily</div>
+                  <div className="text-base font-bold text-white leading-tight whitespace-nowrap">{mtdAverageLabel}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-orange-100/70 uppercase tracking-wide">Best Day</div>
+                  <div className="text-base font-bold text-white leading-tight whitespace-nowrap">{bestDayLabel}</div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -233,18 +315,14 @@ export default function HeroCard({
             className="flex-shrink-0 flex flex-col px-5"
             style={{ width: `${pctPerSlide}%` }}
           >
-            <div className="flex items-center justify-between mb-3">
-              <div className="text-sm font-medium text-white/90">Bento</div>
-              <span className="text-xs text-white/70">Prepping</span>
-            </div>
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div>
+                <div className="text-sm font-medium text-white/90 mb-2">Bento Revenue</div>
                 <div className="text-3xl font-bold text-white leading-none">RM {revenueBento.toLocaleString()}</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Revenue</div>
               </div>
               <div>
+                <div className="text-xs text-white/70 leading-5 mb-2">Orders</div>
                 <div className="text-3xl font-bold text-white leading-none">{bentoOrders}</div>
-                <div className="text-xs text-orange-100/80 mt-1.5">Orders</div>
               </div>
             </div>
             <div>

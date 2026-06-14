@@ -111,6 +111,17 @@ assert.equal(
   }),
   '/account-disabled'
 )
+assert.equal(
+  getAuthRedirect({
+    path: '/',
+    authenticated: true,
+    active: true,
+    mustChangePassword: false,
+    role: 'owner',
+    sessionValid: false,
+  }),
+  '/login?reason=session-ended'
+)
 
 assert.deepEqual(
   getNavigationItems('kitchen').map(item => item.href),

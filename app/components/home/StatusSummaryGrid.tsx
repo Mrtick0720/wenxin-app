@@ -4,6 +4,8 @@
 // element. Sizing / typography / icon scale match the compact home layout
 // (px-4 py-3, text-2xl number, 18px icons) — only the card coloring differs.
 
+import NavLink from '@/app/components/NavLink'
+
 interface ToneStyle {
   bg: string
   title: string
@@ -40,6 +42,7 @@ const clockIcon = (
 
 interface StatusCard {
   title: string
+  href: string
   value: number
   status: string
   isClear: boolean
@@ -58,6 +61,7 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
   const cards: StatusCard[] = [
     {
       title: 'Reservations',
+      href: '/reservations',
       value: reservations,
       status: 'Today',
       isClear: false,
@@ -66,6 +70,7 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
     },
     {
       title: 'Complaints',
+      href: '/complaints',
       value: complaints,
       status: complaints > 0 ? '! Urgent' : 'Clear',
       isClear: complaints === 0,
@@ -74,6 +79,7 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
     },
     {
       title: 'Incidents',
+      href: '/incidents',
       value: incidents,
       status: incidents > 0 ? `${incidents} Active` : 'Clear',
       isClear: incidents === 0,
@@ -82,6 +88,7 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
     },
     {
       title: 'Tasks',
+      href: '/tasks',
       value: tasks,
       status: tasks > 0 ? `${tasks} Pending` : 'Clear',
       isClear: tasks === 0,
@@ -93,14 +100,14 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
   return (
     <div className="grid grid-cols-2 gap-2">
       {cards.map((card) => (
-        <div key={card.title} className={`${card.tone.bg} rounded-2xl px-4 py-3 overflow-hidden`}>
+        <NavLink key={card.title} href={card.href} className={`${card.tone.bg} rounded-2xl px-4 py-3 overflow-hidden block`}>
           <div className="flex items-start justify-between gap-2">
             <span className={`text-xs ${card.tone.title} truncate`}>{card.title}</span>
             <span className={`flex-shrink-0 ${card.tone.icon}`}>{card.icon}</span>
           </div>
           <div className={`text-2xl font-bold leading-tight mt-1 ${card.tone.number}`}>{card.value}</div>
           <div className={`text-[11px] font-medium mt-0.5 truncate ${card.isClear ? CLEAR_STATUS : card.tone.status}`}>{card.status}</div>
-        </div>
+        </NavLink>
       ))}
     </div>
   )

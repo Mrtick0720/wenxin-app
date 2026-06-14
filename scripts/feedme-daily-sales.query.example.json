@@ -1,0 +1,5 @@
+{
+  "_README": "PLACEHOLDER — not a real query. To use: copy this file to scripts/feedme-daily-sales.query.json (gitignored) and replace its entire contents with the REAL request body you captured from the FeedMe `postgres-query` request (Chrome DevTools -> Network -> postgres-query -> Payload -> copy the JSON body). Keep ids OUT of the file by using the ${FEEDME_BUSINESS_ID} / ${FEEDME_RESTAURANT_ID} placeholders below — the script substitutes them from .env.local at runtime. The <<PASTE...>> marker must be gone or the script refuses to run.",
+  "restaurantId": "${FEEDME_RESTAURANT_ID}",
+  "query": "<<PASTE THE CAPTURED DAILY SALES postgres-query BODY HERE>>"
+}

@@ -34,6 +34,11 @@ yarn-error.log*
 .env*
 !.env.example
 
+# FeedMe local-only read verification — captured query body stays local
+scripts/feedme-daily-sales.query.json
+# FeedMe last-successful revenue cache (local data, not committed)
+lib/feedme/.cache/
+
 # vercel
 .vercel
 

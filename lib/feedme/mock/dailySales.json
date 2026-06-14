@@ -1,0 +1,10 @@
+{
+  "report": "daily-sales",
+  "businessId": "65614a71f37713001be87943",
+  "restaurantId": "65645e00ce21e4001b1c3974",
+  "currency": "MYR",
+  "_provenance": "Contains ONLY days confirmed from real captured FeedMe data. The 2026-06-11 row is the captured Product Sales rollup (Nett 1318.01, Gross 1263.50, Qty 61, SC 54.51), corroborated by the Overview dashboard screenshot (销售 1,318.00 / 账单 15 / 项目 61). NO yesterday row and NO multi-day history are included, because no FeedMe Daily Sales response covering those dates has been captured. Pax is omitted: it is not present in the captured data and must not be fabricated. When a real Daily Sales response is captured, paste its rows here (including Pax and payments) and history/trend/payment-mix will populate automatically.",
+  "rows": [
+    { "Date": "2026-06-11", "Gross": 1263.50, "SC": 54.51, "Nett": 1318.01, "Qty": 61, "isRollup": false }
+  ]
+}

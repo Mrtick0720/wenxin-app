@@ -5,6 +5,7 @@
   "scripts": {
     "bootstrap:owner": "node scripts/create-owner.mjs",
     "dev": "next dev",
+    "dev:lan": "next dev --hostname 0.0.0.0 --port 3000",
     "build": "next build",
     "test:auth-audit": "node scripts/test-auth-audit.mjs",
     "test:auth-migration": "node scripts/test-auth-migration.mjs",
@@ -20,6 +21,7 @@
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "test:assets": "npx tsx scripts/test-assets.mjs",
     "test:suppliers": "npx tsx scripts/test-suppliers.mjs",
+    "test:feedme-dates": "npx tsx scripts/test-feedme-dates.mjs",
     "start": "next start",
     "lint": "eslint"
   },
@@ -27,6 +29,7 @@
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
     "framer-motion": "^12.40.0",
+    "lucide-react": "^1.17.0",
     "next": "16.2.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",

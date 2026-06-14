@@ -11,6 +11,8 @@ import { requireCurrentStaff } from '@/lib/auth/currentStaff'
 import type { StaffRole } from '@/lib/auth/types'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { getFeedMeDailyRevenue, getFeedMeMonthToDate, getFeedMe7DayRange } from '@/lib/feedme/liveDailySales'
+import { businessToday } from '@/lib/feedme/parseQueryResult'
 
 export const dynamic = 'force-dynamic'
 
@@ -79,6 +81,19 @@ async function getComplaintCount() { return 1 }
 // Placeholder — no reservations data source yet; static UI count only.
 async function getReservationCount() { return 8 }
 
+// Per-request fault isolation: resolve to `fallback` instead of rejecting, so a
+// single failed data source (FeedMe timeout, token-refresh failure, a flaky DB
+// query) degrades only its own metric and never blocks or crashes the dashboard
+// render. Errors are swallowed deliberately — never logged, to avoid leaking any
+// token/credential carried in an error message.
+async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await p
+  } catch {
+    return fallback
+  }
+}
+
 // ── Today's Issues — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
 function getTodayIssues(role: StaffRole): Issue[] {
@@ -96,17 +111,73 @@ export default async function Home() {
   const staff = await requireCurrentStaff()
   const supabase = await createServerSupabaseClient()
   const visibility = getHomeVisibility(staff.role)
-  const [stats, bentoStats, anomalyCount, pendingCount, complaintCount, reservationCount] = await Promise.all([
-    getStats(supabase, visibility.revenue),
-    getBentoStats(supabase, staff.role, visibility.revenue),
-    getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')),
-    getPendingCount(supabase),
-    canAccessPath(staff.role, '/complaints') ? getComplaintCount() : 0,
-    getReservationCount(),
+  // Each source is wrapped in safe() so it resolves independently. The outer
+  // Promise.all therefore never rejects — one failed metric falls back without
+  // blocking the others or the page render. FeedMe metrics fall back to null,
+  // which the UI renders as "—".
+  const [stats, bentoStats, anomalyCount, pendingCount, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day] = await Promise.all([
+    safe(getStats(supabase, visibility.revenue), null),
+    safe(getBentoStats(supabase, staff.role, visibility.revenue), { total: 0, completed: 0, revenue: 0 }),
+    safe(getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')), 0),
+    safe(getPendingCount(supabase), 0),
+    safe(canAccessPath(staff.role, '/complaints') ? getComplaintCount() : Promise.resolve(0), 0),
+    safe(getReservationCount(), 0),
+    safe(visibility.revenue ? getFeedMeDailyRevenue() : Promise.resolve(null), null),
+    safe(visibility.revenue ? getFeedMeMonthToDate() : Promise.resolve(null), null),
+    safe(visibility.revenue ? getFeedMe7DayRange() : Promise.resolve(null), null),
   ])
 
-  const revenueTotal = stats?.revenue_total ?? 0
-  const revenueDineIn = stats?.revenue_dine_in ?? 0
+  // Today's Revenue is the LIVE FeedMe parser result (source of truth). If the
+  // live call is unavailable, getFeedMeDailyRevenue() returns the last
+  // successful cached value — never a fabricated demo value. Growth / vs
+  // Yesterday remain disabled for now (null → "—").
+  // FeedMe returns the latest COMPLETED business day. Today's Revenue is ONLY
+  // that value when its date equals today's Malaysia (UTC+8) date. If FeedMe's
+  // date is earlier (today not open yet), today is unknown → "—", and the FeedMe
+  // value is the last business day's revenue → shown as "vs Yesterday". We never
+  // fabricate today's revenue, and growth stays "—" for now.
+  const feedMeDate = feedMeRevenue?.value.date ?? null
+  const feedMeRevenueValue = feedMeRevenue?.value.revenue ?? null
+  const bizToday = businessToday()
+  const revenueIsToday = feedMeDate !== null && feedMeDate === bizToday
+  const revenueTotal = revenueIsToday ? feedMeRevenueValue : null
+
+  // Yesterday revenue: prefer the 7-day range data (endDate = yesterday MYT).
+  // The 7-day dailyList is sorted by date ascending; the last entry with
+  // revenue > 0 on a date before today is yesterday's revenue.
+  // Compute yesterday's date (YYYY-MM-DD) in MYT using UTC-safe arithmetic
+  // to avoid timezone offsets affecting setDate/getDate on the Date object.
+  const bizYesterday = (() => {
+    const [y, m, d] = bizToday.split('-').map(Number)
+    const prev = new Date(Date.UTC(y, m - 1, d - 1))
+    return prev.toISOString().slice(0, 10)
+  })()
+  const yesterdayFromWeek = feedMe7Day?.dailyList?.find(d => d.date === bizYesterday)?.revenue ?? null
+  // If today has data, use 7-day's yesterday value; otherwise FeedMe value IS the
+  // latest completed business day (= yesterday).
+  const revenueYesterday = revenueIsToday ? yesterdayFromWeek : feedMeRevenueValue
+
+  // Growth vs yesterday — derived from the same today/yesterday values shown on
+  // the card. Null when today is unknown or yesterday is 0/unavailable, so the
+  // card renders "—" with no baseline rather than a fabricated figure.
+  const growthPercent =
+    revenueTotal !== null && revenueYesterday !== null && revenueYesterday !== 0
+      ? ((revenueTotal - revenueYesterday) / revenueYesterday) * 100
+      : null
+
+  console.log('[dashboard] bizToday=', bizToday, 'bizYesterday=', bizYesterday,
+    'feedMeDate=', feedMeDate,
+    'revenueIsToday=', revenueIsToday,
+    'revenueTotal=', revenueTotal,
+    'revenueYesterday=', revenueYesterday,
+    'yesterdayFromWeek=', yesterdayFromWeek,
+    'feedMeSource=', feedMeRevenue?.source,
+    'feedMeMtd=', feedMeMtd ? `${feedMeMtd.mtdRevenue} (${feedMeMtd.operatingDays}d)` : null,
+    'feedMe7Day=', feedMe7Day ? `${feedMe7Day.totalRevenue} (${feedMe7Day.operatingDays}d)` : null)
+  // Hero slide 2 — live month-to-date (FeedMe Daily Sales range). Null → "—".
+  const mtdRevenue = feedMeMtd?.mtdRevenue ?? null
+  const mtdAverage = feedMeMtd?.mtdAverage ?? null
+  const bestDayRevenue = feedMeMtd?.bestDayRevenue ?? null
   const revenueBento = bentoStats.revenue
   const bentoOrders = bentoStats.total
   const bentoCompleted = bentoStats.completed
@@ -175,11 +246,18 @@ export default async function Home() {
         {visibility.revenue && (
           <HeroCard
             revenueTotal={revenueTotal}
-            revenueDineIn={revenueDineIn}
+            revenueYesterday={revenueYesterday}
+            growthPercent={growthPercent}
+            mtdRevenue={mtdRevenue}
+            mtdAverage={mtdAverage}
+            bestDayRevenue={bestDayRevenue}
             revenueBento={revenueBento}
             bentoOrders={bentoOrders}
             bentoCompleted={bentoCompleted}
             bentoPercent={bentoPercent}
+            feedMeRevenue={feedMeRevenue}
+            feedMeMtd={feedMeMtd}
+            feedMe7Day={feedMe7Day}
           />
         )}
 

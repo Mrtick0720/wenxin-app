@@ -1,0 +1,18 @@
+{
+  "report": "product-sales",
+  "businessId": "65614a71f37713001be87943",
+  "restaurantId": "65645e00ce21e4001b1c3974",
+  "currency": "MYR",
+  "dateRange": { "start": "2026-06-11", "end": "2026-06-11" },
+  "note": "MOCK / CAPTURED FeedMe Product Sales response — used for local proof-of-concept only. No live endpoint, no auth. Product rows carry per-item Gross (SC applied at bill level, so per-product SC is 0 and Nett == Gross). The isRollup row carries the financial totals: Nett = Gross + SC.",
+  "rows": [
+    { "product": "C01 土豆萝卜牛腩煲 Beef with Potatoes & Carrots Casserole", "Qty": 10, "Gross": 380.00, "SC": 0, "Nett": 380.00, "isRollup": false },
+    { "product": "C02 番茄牛腩煲 Beef with Tomato Casserole", "Qty": 8, "Gross": 304.00, "SC": 0, "Nett": 304.00, "isRollup": false },
+    { "product": "咸蛋黄炒鸡套餐 Salted Egg Yolk Fried Chicken SET", "Qty": 8, "Gross": 200.00, "SC": 0, "Nett": 200.00, "isRollup": false },
+    { "product": "双椒牛肉丝套餐 Double Pepper Shredded Beef SET", "Qty": 6, "Gross": 138.00, "SC": 0, "Nett": 138.00, "isRollup": false },
+    { "product": "鸡肉炒饭 Chicken Fried Rice", "Qty": 9, "Gross": 108.00, "SC": 0, "Nett": 108.00, "isRollup": false },
+    { "product": "其他 Others (assorted à la carte)", "Qty": 13, "Gross": 123.00, "SC": 0, "Nett": 123.00, "isRollup": false },
+    { "product": "白饭 White Rice", "Qty": 7, "Gross": 10.50, "SC": 0, "Nett": 10.50, "isRollup": false },
+    { "product": "TOTAL", "Qty": 61, "Gross": 1263.50, "SC": 54.51, "Nett": 1318.01, "isRollup": true }
+  ]
+}
