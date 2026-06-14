@@ -174,6 +174,9 @@ export async function feedmeDiagnostics() {
   }
 
   let upstreamStatus: number | string = 'not-attempted'
+  let upstreamServer = ''
+  let upstreamCf = ''
+  let upstreamBody = ''
   if (bearerResolved && businessId && queryFileExists) {
     try {
       const token = await resolveBearer()
@@ -191,6 +194,9 @@ export async function feedmeDiagnostics() {
         cache: 'no-store',
       })
       upstreamStatus = res.status
+      upstreamServer = res.headers.get('server') ?? ''
+      upstreamCf = res.headers.get('cf-ray') ? 'cloudflare' : (res.headers.get('cf-mitigated') ?? '')
+      upstreamBody = (await res.text()).replace(/\s+/g, ' ').slice(0, 200)
     } catch (e) {
       upstreamStatus = `error:${(e as Error).name}`
     }
@@ -203,6 +209,9 @@ export async function feedmeDiagnostics() {
     queryFileExists,
     bearerResolved,
     upstreamStatus,
+    upstreamServer,
+    upstreamCf,
+    upstreamBody,
   }
 }
 
