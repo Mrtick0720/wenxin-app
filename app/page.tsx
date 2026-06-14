@@ -11,7 +11,7 @@ import { requireCurrentStaff } from '@/lib/auth/currentStaff'
 import type { StaffRole } from '@/lib/auth/types'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getFeedMeDailyRevenue, getFeedMeMonthToDate, getFeedMe7DayRange } from '@/lib/feedme/liveDailySales'
+import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayStore'
 import { businessToday } from '@/lib/feedme/parseQueryResult'
 
 export const dynamic = 'force-dynamic'
@@ -122,9 +122,9 @@ export default async function Home() {
     safe(getPendingCount(supabase), 0),
     safe(canAccessPath(staff.role, '/complaints') ? getComplaintCount() : Promise.resolve(0), 0),
     safe(getReservationCount(), 0),
-    safe(visibility.revenue ? getFeedMeDailyRevenue() : Promise.resolve(null), null),
-    safe(visibility.revenue ? getFeedMeMonthToDate() : Promise.resolve(null), null),
-    safe(visibility.revenue ? getFeedMe7DayRange() : Promise.resolve(null), null),
+    safe(visibility.revenue ? readRelayDaily() : Promise.resolve(null), null),
+    safe(visibility.revenue ? readRelayMtd() : Promise.resolve(null), null),
+    safe(visibility.revenue ? readRelayWeek() : Promise.resolve(null), null),
   ])
 
   // Today's Revenue is the LIVE FeedMe parser result (source of truth). If the

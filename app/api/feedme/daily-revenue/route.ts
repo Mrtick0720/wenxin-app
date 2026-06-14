@@ -3,12 +3,12 @@
 // Upstream throttling lives in getFeedMeDailyRevenue() (3-min TTL).
 
 import { NextResponse } from 'next/server'
-import { getFeedMeDailyRevenue } from '@/lib/feedme/liveDailySales'
+import { readRelayDaily } from '@/lib/feedme/relayStore'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const result = await getFeedMeDailyRevenue()
+  const result = await readRelayDaily()
 
   if (!result) {
     // No live data and no last-successful value — caller shows "—".

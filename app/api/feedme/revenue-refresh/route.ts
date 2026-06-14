@@ -1,22 +1,19 @@
 // Server-side refresh endpoint for HeroCard revenue metrics (slides 1 & 2).
 // GET /api/feedme/revenue-refresh → combined daily + MTD data for auto-refresh.
-// Upstream throttling lives in getFeedMeDailyRevenue/getFeedMeMonthToDate (3-min TTL).
+// Data is served from the Supabase relay cache (the relay job fetches FeedMe from
+// an allowed IP; Vercel cannot reach FeedMe directly). See lib/feedme/relayStore.
 
 import { NextResponse } from 'next/server'
-import {
-  getFeedMeDailyRevenue,
-  getFeedMeMonthToDate,
-  getFeedMe7DayRange,
-} from '@/lib/feedme/liveDailySales'
+import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayStore'
 import { businessToday } from '@/lib/feedme/parseQueryResult'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
   const [daily, mtd, week] = await Promise.all([
-    getFeedMeDailyRevenue(),
-    getFeedMeMonthToDate(),
-    getFeedMe7DayRange(),
+    readRelayDaily(),
+    readRelayMtd(),
+    readRelayWeek(),
   ])
 
   const feedMeDate = daily?.value.date ?? null
