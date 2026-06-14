@@ -55,7 +55,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const staff = await getCurrentStaff()
+  // Transient session-verification failures (Supabase hiccup, missing/incorrect
+  // env on the deployment) must not crash the entire app via the root layout.
+  // Degrade to logged-out; proxy + SessionHeartbeat recover on the next request.
+  const staff = await getCurrentStaff().catch(() => null)
   const pendingCount = staff ? await getPendingTaskCount() : 0
 
   return (
