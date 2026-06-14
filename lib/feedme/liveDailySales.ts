@@ -158,6 +158,54 @@ export async function getFeedMeDailyRevenue(): Promise<FeedMeDailyRevenue | null
   return null
 }
 
+// ── Safe runtime diagnostics (no secrets) ────────────────────────────────────
+// Booleans + upstream HTTP status only, so a prod misconfig can be pinpointed via
+// /api/feedme/daily-revenue?debug=1 without ever exposing tokens. TEMPORARY.
+export async function feedmeDiagnostics() {
+  const businessId = process.env.FEEDME_BUSINESS_ID
+  const file = queryFilePath()
+  const queryFileExists = existsSync(file)
+
+  let bearerResolved = false
+  try {
+    bearerResolved = Boolean(await resolveBearer())
+  } catch {
+    bearerResolved = false
+  }
+
+  let upstreamStatus: number | string = 'not-attempted'
+  if (bearerResolved && businessId && queryFileExists) {
+    try {
+      const token = await resolveBearer()
+      let bodyText = readFileSync(file, 'utf8')
+      bodyText = bodyText.split('${FEEDME_BUSINESS_ID}').join(businessId)
+      if (process.env.FEEDME_RESTAURANT_ID) {
+        bodyText = bodyText.split('${FEEDME_RESTAURANT_ID}').join(process.env.FEEDME_RESTAURANT_ID)
+      }
+      bodyText = singleDayPayload(bodyText, businessToday())
+      const url = `${ENDPOINT_BASE}/${encodeURIComponent(businessId)}/postgres-query`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: bodyText,
+        cache: 'no-store',
+      })
+      upstreamStatus = res.status
+    } catch (e) {
+      upstreamStatus = `error:${(e as Error).name}`
+    }
+  }
+
+  return {
+    envBusinessIdSet: Boolean(process.env.FEEDME_BUSINESS_ID),
+    envRestaurantIdSet: Boolean(process.env.FEEDME_RESTAURANT_ID),
+    hasRefreshToken: hasRefreshToken(),
+    queryFileExists,
+    bearerResolved,
+    upstreamStatus,
+  }
+}
+
 // ── Month-to-date summary (Hero slide 2) ─────────────────────────────────────
 
 const MTD_CACHE_FILE = resolve(process.cwd(), 'lib/feedme/.cache/last-mtd.json')
