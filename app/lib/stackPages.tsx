@@ -1,7 +1,6 @@
 'use client'
 
 import React, { lazy, Suspense } from 'react'
-import { todayLocalStr } from '@/lib/dateUtils'
 import { useStaff } from '@/app/components/StaffProvider'
 import type { StaffRole } from '@/lib/auth/types'
 
@@ -50,7 +49,7 @@ function BentoStack() {
 type RouteFactory = () => React.ReactNode
 
 const pages: Record<string, RouteFactory> = {
-  '/purchase':     () => <S><PurchaseClient   initialItems={[]} initialDate={todayLocalStr()} /></S>,
+  '/purchase':     () => <S><PurchaseClient /></S>,
   '/bento':        () => <S><BentoStack /></S>,
   '/staff':        () => <S><StaffPage /></S>,
   '/finance':      () => <S><FinancePage /></S>,

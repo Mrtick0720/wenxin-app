@@ -2,56 +2,52 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
+import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
+import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import BackButton from '../../components/BackButton'
+import CatalogCombobox from '../CatalogCombobox'
+import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
+import {
+  fetchRecordContextAction,
+  fetchCatalogAction,
+  updateRecordAction,
+  deleteRecordAction,
+} from '../actions'
 
-type PurchaseItem = {
-  id: number
-  date: string
-  name: string
-  category: string
-  unit: string
-  quantity: number
-  unit_price: number
-  total_price: number
-  supplier: string | null
-  note: string | null
-  purchase_method: string | null
-  status: string
+const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
+
+function formatCreatedAt(iso: string | null): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Kuching',
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  }).format(d)
 }
 
-const CATEGORIES = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'portion']
-const PURCHASE_METHODS = ['Supplier Delivery', 'Self Purchase']
-
-const CATEGORY_COLOR: Record<string, string> = {
-  'Meat': '#ef4444', 'Seafood': '#3b82f6', 'Vegetables': '#22c55e',
-  'Condiments': '#f59e0b', 'Staples': '#8b5cf6', 'Supplies': '#64748b', 'Other': '#9ca3af',
-}
-
-function InlinePicker({ value, options, onChange, label }: {
-  value: string; options: string[]; onChange: (v: string) => void; label: string
+function InlinePicker({ value, options, onChange, label, disabled }: {
+  value: string; options: string[]; onChange: (v: string) => void; label: string; disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)}
+      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)}
         className="w-full text-left flex items-center justify-between py-3 border-b border-gray-100">
         <span className="text-xs text-gray-400 w-28 flex-shrink-0">{label}</span>
         <span className="flex-1 text-gray-900" style={{ fontSize: 16 }}>{value}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
+        {!disabled && (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}><polyline points="6 9 12 15 18 9" /></svg>
+        )}
       </button>
-      {open && (
-        <div className="absolute left-0 right-0 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden" style={{ top: '100%' }}>
-          {options.map(opt => (
+      {open && !disabled && (
+        <div className="absolute left-0 right-0 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-y-auto" style={{ top: '100%', maxHeight: 240 }}>
+          {options.map((opt) => (
             <button key={opt} type="button" onClick={() => { onChange(opt); setOpen(false) }}
               className="w-full text-left px-4 py-3 hover:bg-orange-50 border-b border-gray-50 last:border-0"
-              style={{ fontSize: 16, color: opt === value ? '#f97316' : '#374151', fontWeight: opt === value ? 600 : 400 }}>
-              {opt}
-            </button>
+              style={{ fontSize: 16, color: opt === value ? '#f97316' : '#374151', fontWeight: opt === value ? 600 : 400 }}>{opt}</button>
           ))}
         </div>
       )}
@@ -68,18 +64,28 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
   )
 }
 
-export default function DetailClient({ itemId }: { itemId?: number }) {
+type Props = { itemId?: number; onChanged?: () => void }
+
+export default function DetailClient({ itemId, onChanged }: Props) {
   const params = useParams()
   const router = useRouter()
-  const id = itemId ? String(itemId) : params?.id as string
+  const id = itemId ?? Number(params?.id)
 
-  const [item, setItem] = useState<PurchaseItem | null>(null)
+  const [record, setRecord] = useState<PurchaseRecord | null>(null)
+  const [canViewCosts, setCanViewCosts] = useState(false)
+  const [canEdit, setCanEdit] = useState(false)
+  const [canDelete, setCanDelete] = useState(false)
+  const [enteredByName, setEnteredByName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [catalog, setCatalog] = useState<CatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [selectedCatalogItem, setSelectedCatalogItem] = useState<CatalogItem | null>(null)
+
   const [form, setForm] = useState({
-    name: '', category: 'Vegetables', unit: 'kg',
-    quantity: '', unit_price: '',
-    supplier: '', purchase_method: 'Supplier Delivery', note: '',
+    name: '', specification: '', category: 'Vegetables', unit: 'kg',
+    quantity: '', unit_price: '', supplier: '', purchaser: '', receiver: '', remarks: '',
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -87,96 +93,88 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!id) return
-    supabase.from('purchase_items').select('*').eq('id', id).single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          setNotFound(true)
-        } else {
-          const it = data as PurchaseItem
-          setItem(it)
-          setForm({
-            name: it.name ?? '',
-            category: it.category ?? 'Vegetables',
-            unit: it.unit ?? 'kg',
-            quantity: String(it.quantity ?? ''),
-            unit_price: String(it.unit_price ?? ''),
-            supplier: it.supplier ?? '',
-            purchase_method: it.purchase_method ?? 'Supplier Delivery',
-            note: it.note ?? '',
-          })
-        }
-        setLoading(false)
+    if (!id || Number.isNaN(id)) { setNotFound(true); setLoading(false); return }
+    fetchRecordContextAction(id).then((res) => {
+      if (!res.ok) { setNotFound(true); setLoading(false); return }
+      const r = res.data.record
+      setRecord(r)
+      setCanViewCosts(res.data.canViewCosts)
+      setCanEdit(res.data.canEdit)
+      setCanDelete(res.data.canDelete)
+      setEnteredByName(res.data.enteredByName)
+      setForm({
+        name: r.name ?? '',
+        specification: r.specification ?? '',
+        category: r.category ?? 'Vegetables',
+        unit: r.unit ?? 'kg',
+        quantity: String(r.quantity ?? ''),
+        unit_price: r.unit_price != null ? String(r.unit_price) : '',
+        supplier: r.supplier ?? '',
+        purchaser: r.purchaser ?? '',
+        receiver: r.receiver ?? '',
+        remarks: r.note ?? '',
       })
+      setLoading(false)
+    })
   }, [id])
+
+  useEffect(() => {
+    fetchCatalogAction()
+      .then((res) => {
+        if (res.ok) setCatalog(res.data)
+        else setCatalogError(res.error)
+      })
+      .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
+      .finally(() => setCatalogLoading(false))
+  }, [])
+
+  // Sync selected catalog item whenever both record name and catalog are ready.
+  useEffect(() => {
+    if (!record || catalog.length === 0) return
+    const match = catalog.find((item) => item.name_zh === record.name) ?? null
+    setSelectedCatalogItem(match)
+  }, [record, catalog])
+
+  function done() {
+    if (onChanged) onChanged()
+    else router.push('/purchase')
+  }
+
+  async function handleSave() {
+    if (!record) return
+    setSaving(true)
+    setError(null)
+    const res = await updateRecordAction(record.id, {
+      name: form.name.trim(),
+      specification: form.specification.trim() || null,
+      category: form.category,
+      unit: form.unit,
+      quantity: parseFloat(form.quantity) || 0,
+      unit_price: canViewCosts && form.unit_price ? parseFloat(form.unit_price) : null,
+      supplier: canViewCosts ? form.supplier.trim() || null : null,
+      purchaser: form.purchaser.trim() || null,
+      receiver: form.receiver.trim() || null,
+      remarks: form.remarks.trim() || null,
+    })
+    setSaving(false)
+    if (!res.ok) { setError(res.error); return }
+    done()
+  }
+
+  async function handleDelete() {
+    if (!record) return
+    setDeleting(true)
+    setError(null)
+    const res = await deleteRecordAction(record.id)
+    setDeleting(false)
+    if (!res.ok) { setError(res.error); return }
+    done()
+  }
 
   const qty = parseFloat(form.quantity) || 0
   const up = parseFloat(form.unit_price) || 0
   const total = qty * up
-  const catColor = CATEGORY_COLOR[form.category] ?? '#9ca3af'
-  const isDone = item?.status === 'completed'
-
-  async function handleSave() {
-    if (!item) return
-    setSaving(true)
-    setError(null)
-    try {
-      const { error: saveError } = await supabase.from('purchase_items').update({
-        name: form.name.trim(),
-        category: form.category,
-        unit: form.unit,
-        quantity: qty,
-        unit_price: up,
-        total_price: total,
-        supplier: form.supplier.trim() || null,
-        purchase_method: form.purchase_method,
-        note: form.note.trim() || null,
-      }).eq('id', item.id)
-      if (saveError) {
-        setError(saveError.message || 'Failed to save. Please try again.')
-        setSaving(false)
-        return
-      }
-      router.push('/purchase')
-    } catch {
-      setError('Network error. Please check your connection.')
-      setSaving(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!item) return
-    setDeleting(true)
-    setError(null)
-    try {
-      const { error: deleteError } = await supabase.from('purchase_items').delete().eq('id', item.id)
-      if (deleteError) {
-        setError(deleteError.message || 'Failed to delete. Please try again.')
-        setDeleting(false)
-        return
-      }
-      router.push('/purchase')
-    } catch {
-      setError('Network error. Please check your connection.')
-      setDeleting(false)
-    }
-  }
-
-  async function toggleStatus() {
-    if (!item) return
-    setError(null)
-    const newStatus = isDone ? 'pending' : 'completed'
-    try {
-      const { error: toggleError } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
-      if (toggleError) {
-        setError(toggleError.message || 'Failed to update status.')
-        return
-      }
-      router.push('/purchase')
-    } catch {
-      setError('Network error. Please check your connection.')
-    }
-  }
+  const catColor = categoryColor(form.category)
 
   if (loading) {
     return (
@@ -189,122 +187,128 @@ export default function DetailClient({ itemId }: { itemId?: number }) {
   if (notFound) {
     return (
       <div style={{ position: 'fixed', inset: 0, background: '#f9fafb', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        <div className="text-gray-400 text-sm">Item not found</div>
-        <button onClick={() => router.push('/purchase')}
-          className="text-orange-500 text-sm font-medium">← Back to Purchase</button>
+        <div className="text-gray-400 text-sm">Record not found</div>
+        <button onClick={() => router.push('/purchase')} className="text-orange-500 text-sm font-medium">← Back to Purchase</button>
       </div>
     )
   }
 
+  const readOnly = !canEdit
+
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
-
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <BackButton href="/purchase" />
-          <span className="font-semibold text-base">Item Detail</span>
+          <span className="font-semibold text-base">{readOnly ? 'Record' : 'Edit Record'}</span>
         </div>
-        <button onClick={handleSave} disabled={saving || !form.name.trim()}
-          className="text-sm font-semibold px-4 py-1.5 rounded-full"
-          style={{ background: form.name.trim() ? '#f97316' : '#e5e7eb', color: form.name.trim() ? '#fff' : '#9ca3af' }}>
-          {saving ? 'Saving...' : 'Save'}
-        </button>
+        {!readOnly && (
+          <button onClick={handleSave} disabled={saving || !form.name.trim()}
+            className="text-sm font-semibold px-4 py-1.5 rounded-full"
+            style={{ background: form.name.trim() ? '#f97316' : '#e5e7eb', color: form.name.trim() ? '#fff' : '#9ca3af' }}>
+            {saving ? 'Saving...' : 'Save'}
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
         <div style={{ height: 4, background: catColor }} />
 
         {error && (
-          <div className="mx-4 mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{error}</span>
-          </div>
+          <div className="mx-4 mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
         )}
 
         <div className="bg-white px-4">
           <FieldRow label="Name">
-            <input className="w-full outline-none text-gray-900 font-medium" style={{ fontSize: 16 }}
-              value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              placeholder="Item name" />
+            {readOnly ? (
+              <span className="text-gray-900 font-medium" style={{ fontSize: 16 }}>{form.name || '—'}</span>
+            ) : (
+              <CatalogCombobox
+                items={catalog}
+                selectedItem={selectedCatalogItem}
+                loading={catalogLoading}
+                error={catalogError}
+                onSelect={(item) => {
+                  setSelectedCatalogItem(item)
+                  setForm((f) => ({ ...f, name: item.name_zh, category: item.category, unit: item.unit }))
+                }}
+                placeholder={form.name || 'Select item…'}
+              />
+            )}
           </FieldRow>
 
-          <InlinePicker label="Category" value={form.category} options={CATEGORIES}
-            onChange={v => setForm(f => ({ ...f, category: v }))} />
+          <FieldRow label="Specification">
+            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} readOnly={readOnly}
+              value={form.specification} onChange={(e) => setForm((f) => ({ ...f, specification: e.target.value }))} placeholder="Optional" />
+          </FieldRow>
 
-          <InlinePicker label="Unit" value={form.unit} options={UNITS}
-            onChange={v => setForm(f => ({ ...f, unit: v }))} />
+          <InlinePicker label="Category" value={form.category} options={[...PURCHASE_CATEGORIES]} disabled={readOnly}
+            onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+
+          <InlinePicker label="Unit" value={form.unit} options={UNITS} disabled={readOnly}
+            onChange={(v) => setForm((f) => ({ ...f, unit: v }))} />
 
           <FieldRow label="Qty">
-            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
-              type="number" inputMode="decimal" placeholder="0"
-              value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} type="number" inputMode="decimal" readOnly={readOnly}
+              value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} placeholder="0" />
           </FieldRow>
 
-          <FieldRow label="Unit Price (RM)">
-            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
-              type="number" inputMode="decimal" placeholder="0.00"
-              value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-          </FieldRow>
-
-          <FieldRow label="Total">
-            <span className="font-semibold text-gray-900" style={{ fontSize: 16 }}>
-              {total > 0 ? `RM ${total.toFixed(2)}` : '—'}
-            </span>
-          </FieldRow>
-
-          <InlinePicker label="Method" value={form.purchase_method} options={PURCHASE_METHODS}
-            onChange={v => setForm(f => ({ ...f, purchase_method: v }))} />
-
-          <FieldRow label="Supplier">
-            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
-              placeholder="e.g. KK Meat Supply"
-              value={form.supplier} onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))} />
-          </FieldRow>
-
-          <FieldRow label="Note">
-            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }}
-              placeholder="Optional"
-              value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
-          </FieldRow>
-        </div>
-
-        <div className="px-4 mt-4">
-          <button onClick={toggleStatus}
-            className="w-full py-3 rounded-2xl text-sm font-semibold border-2"
-            style={{
-              borderColor: isDone ? '#9ca3af' : '#22c55e',
-              color: isDone ? '#9ca3af' : '#22c55e',
-              background: isDone ? '#f9fafb' : '#f0fdf4',
-            }}>
-            {isDone ? '↩ Mark as Pending' : '✓ Mark as Done'}
-          </button>
-        </div>
-
-        <div className="px-4 mt-3 mb-8">
-          {!showDelete ? (
-            <button onClick={() => setShowDelete(true)}
-              className="w-full py-3 rounded-2xl text-sm font-medium text-red-400 border border-red-100 bg-red-50">
-              Delete Item
-            </button>
-          ) : (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
-              <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete "{item?.name}"?</div>
-              <div className="flex gap-2">
-                <button onClick={() => setShowDelete(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600">
-                  Cancel
-                </button>
-                <button onClick={handleDelete} disabled={deleting}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500">
-                  {deleting ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
+          {canViewCosts && (
+            <>
+              <FieldRow label="Unit Price (RM)">
+                <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} type="number" inputMode="decimal" readOnly={readOnly}
+                  value={form.unit_price} onChange={(e) => setForm((f) => ({ ...f, unit_price: e.target.value }))} placeholder="0.00" />
+              </FieldRow>
+              <FieldRow label="Total">
+                <span className="font-semibold text-gray-900" style={{ fontSize: 16 }}>{total > 0 ? `RM ${total.toFixed(2)}` : '—'}</span>
+              </FieldRow>
+              <FieldRow label="Supplier">
+                <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} readOnly={readOnly}
+                  value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} placeholder="e.g. KK Meat Supply" />
+              </FieldRow>
+            </>
           )}
+
+          <FieldRow label="Purchaser">
+            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} readOnly={readOnly}
+              value={form.purchaser} onChange={(e) => setForm((f) => ({ ...f, purchaser: e.target.value }))} placeholder="Who bought it" />
+          </FieldRow>
+
+          <FieldRow label="Receiver">
+            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} readOnly={readOnly}
+              value={form.receiver} onChange={(e) => setForm((f) => ({ ...f, receiver: e.target.value }))} placeholder="Optional" />
+          </FieldRow>
+
+          <FieldRow label="Remarks">
+            <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} readOnly={readOnly}
+              value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="Optional" />
+          </FieldRow>
+
+          {/* System fields — read-only, visible to all roles (no costs) */}
+          <FieldRow label="Entered By">
+            <span className="text-gray-700" style={{ fontSize: 16 }}>{enteredByName ?? '—'}</span>
+          </FieldRow>
+          <FieldRow label="Created Time">
+            <span className="text-gray-700" style={{ fontSize: 16 }}>{formatCreatedAt(record?.created_at ?? null)}</span>
+          </FieldRow>
         </div>
+
+        {canDelete && (
+          <div className="px-4 mt-4 mb-8">
+            {!showDelete ? (
+              <button onClick={() => setShowDelete(true)} className="w-full py-3 rounded-2xl text-sm font-medium text-red-400 border border-red-100 bg-red-50">Delete Record</button>
+            ) : (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <div className="text-sm text-red-600 font-medium mb-3 text-center">Delete &quot;{record?.name}&quot;?</div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowDelete(false)} className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600">Cancel</button>
+                  <button onClick={handleDelete} disabled={deleting} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500">{deleting ? 'Deleting...' : 'Delete'}</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -119,7 +119,9 @@ assert(hasPermission('kitchen', PERMISSION.VIEW_PURCHASE), 'Kitchen should have 
 assert(hasPermission('kitchen', PERMISSION.EDIT_PURCHASE), 'Kitchen should have EDIT_PURCHASE')
 assert(hasPermission('kitchen', PERMISSION.VIEW_INVENTORY), 'Kitchen should have VIEW_INVENTORY')
 assert(hasPermission('kitchen', PERMISSION.VIEW_ATTENDANCE_SELF), 'Kitchen should have VIEW_ATTENDANCE_SELF')
-assert(hasPermission('kitchen', PERMISSION.VIEW_SUPPLIERS), 'Kitchen should have VIEW_SUPPLIERS')
+// Kitchen no longer has VIEW_SUPPLIERS: the Suppliers page exposes purchase
+// cost totals, which must never reach staff devices (Purchase cost-hiding policy).
+assert(!hasPermission('kitchen', PERMISSION.VIEW_SUPPLIERS), 'Kitchen should NOT have VIEW_SUPPLIERS (cost-hiding)')
 assert(hasPermission('kitchen', PERMISSION.VIEW_ASSETS), 'Kitchen should have VIEW_ASSETS')
 
 section('12. Kitchen — Does NOT Have Restricted Permissions')

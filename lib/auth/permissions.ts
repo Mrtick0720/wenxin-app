@@ -34,7 +34,9 @@ const ROUTE_RULES: RouteRule[] = [
   { prefix: '/complaints', roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/inventory', roles: { owner: true, manager: true, kitchen: true } },
   { prefix: '/purchase', roles: { owner: true, manager: true, kitchen: true } },
-  { prefix: '/suppliers', roles: { owner: true, manager: true, kitchen: true } },
+  // Kitchen removed: the Suppliers page exposes purchase cost totals, which
+  // must never reach staff devices (see Purchase ledger cost-hiding policy).
+  { prefix: '/suppliers', roles: { owner: true, manager: true } },
   { prefix: '/attendance', roles: ALL_ROLES },
   { prefix: '/checklist', roles: ALL_ROLES },
   { prefix: '/assets', roles: ALL_ROLES },

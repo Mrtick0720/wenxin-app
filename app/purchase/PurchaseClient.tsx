@@ -1,182 +1,507 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react'
-import { createPortal } from 'react-dom'
-import { supabase } from '@/lib/supabase/client'
-import { todayLocalStr } from '@/lib/dateUtils'
+import type { StaffRole } from '@/lib/auth/types'
+import {
+  PURCHASE_CATEGORIES,
+  categoryColor,
+} from '@/lib/purchaseLedger/categories'
+import type { PurchaseSummary, PurchaseKpi, RatioPeriod } from '@/lib/purchaseLedger/types'
 import BackButton from '../components/BackButton'
 import { useNavigation } from '../components/NavigationStack'
+import {
+  fetchPurchaseContextAction,
+  fetchRecordsAction,
+  fetchSummaryAction,
+  fetchKpiAction,
+  fetchCatalogAction,
+  createRecordAction,
+  updateRecordAction,
+  deleteRecordAction,
+} from './actions'
+import { moveRecordToChecklistAction } from './checklist-actions'
+import CatalogCombobox from './CatalogCombobox'
+import QuickEditSheet from './QuickEditSheet'
+import ChecklistSection from './ChecklistSection'
+import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
+const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
 
-export type PurchaseItem = {
+// Loose record shape — cost keys are absent for staff (kitchen).
+export type LedgerRecord = {
   id: number
   date: string
   name: string
+  specification: string | null
   category: string
   unit: string
   quantity: number
-  unit_price: number
-  total_price: number
-  supplier: string | null
+  purchaser: string | null
+  receiver: string | null
   note: string | null
-  purchase_method: string | null
   status: string
+  created_by: string | null
+  created_at: string | null
+  unit_price?: number | null
+  total_price?: number | null
+  supplier?: string | null
 }
 
-const CATEGORIES = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'portion']
+type Perms = { canViewCosts: boolean; canDelete: boolean; canExport: boolean }
+type InlineEditField = 'quantity' | 'unit_price'
+type InlineEditTarget = { record: LedgerRecord; field: InlineEditField }
 
-const ITEM_CATEGORY: Record<string, string> = {
-  'Chicken Thigh': 'Meat', 'Chicken Breast': 'Meat', 'Whole Chicken': 'Meat',
-  'Pork Belly': 'Meat', 'Pork Ribs': 'Meat', 'Pork Shoulder': 'Meat',
-  'Beef': 'Meat', 'Lamb': 'Meat',
-  'Fish Fillet': 'Seafood', 'Shrimp': 'Seafood', 'Squid': 'Seafood', 'Crab': 'Seafood',
-  'Tofu': 'Vegetables', 'Garlic': 'Vegetables', 'Ginger': 'Vegetables',
-  'Green Onion': 'Vegetables', 'Cabbage': 'Vegetables', 'Bok Choy': 'Vegetables',
-  'Spinach': 'Vegetables', 'Potato': 'Vegetables', 'Tomato': 'Vegetables',
-  'Mushroom': 'Vegetables', 'Bean Sprouts': 'Vegetables', 'Corn': 'Vegetables',
-  'Carrot': 'Vegetables', 'Celery': 'Vegetables', 'Eggplant': 'Vegetables',
-  'Soy Sauce': 'Condiments', 'Oyster Sauce': 'Condiments', 'Cooking Oil': 'Condiments',
-  'Salt': 'Condiments', 'Sugar': 'Condiments', 'Vinegar': 'Condiments',
-  'Cornstarch': 'Condiments', 'Sesame Oil': 'Condiments', 'Chili': 'Condiments',
-  'Star Anise': 'Condiments',
-  'Rice': 'Staples', 'Noodles': 'Staples', 'Eggs': 'Staples',
-  'Packaging Box': 'Supplies', 'Disposable Gloves': 'Supplies', 'Cling Wrap': 'Supplies',
-}
-const COMMON_ITEMS = Object.keys(ITEM_CATEGORY).concat(['Bread'])
+const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTHS_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-const CATEGORY_COLOR: Record<string, string> = {
-  'Meat': '#ef4444', 'Seafood': '#3b82f6', 'Vegetables': '#22c55e',
-  'Condiments': '#f59e0b', 'Staples': '#8b5cf6', 'Supplies': '#64748b', 'Other': '#9ca3af',
-}
-const CATEGORY_BG: Record<string, string> = {
-  'Meat': '#fff1f1', 'Seafood': '#eff6ff', 'Vegetables': '#f0fdf4',
-  'Condiments': '#fffbeb', 'Staples': '#faf5ff', 'Supplies': '#f8fafc', 'Other': '#f9fafb',
-}
-const CATEGORY_ORDER = ['Meat', 'Seafood', 'Vegetables', 'Condiments', 'Staples', 'Supplies', 'Other']
-
-function getCatColor(cat: string) { return CATEGORY_COLOR[cat] ?? '#9ca3af' }
-function sortItems(items: PurchaseItem[]) {
-  return [...items].sort((a, b) => {
-    const ai = CATEGORY_ORDER.indexOf(a.category), bi = CATEGORY_ORDER.indexOf(b.category)
-    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
-  })
+function rm(n: number | null | undefined) {
+  return `RM ${(n ?? 0).toFixed(2)}`
 }
 
-// ── Simple date button with calendar popup ──
-const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
-const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const WEEKDAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-
-function formatDateLabel(dateStr: string) {
-  const d = new Date(dateStr + 'T00:00:00')
-  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+function ratioText(r: number | null) {
+  return r === null ? '—' : `${r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)}%`
 }
 
-function SimpleDatePicker({ selectedDate, onDateChange }: { selectedDate: string; onDateChange: (d: string) => void }) {
-  const today = todayLocalStr()
-  const [show, setShow] = useState(false)
-  const [visible, setVisible] = useState(false)
-  const [calYear, setCalYear] = useState(() => new Date(selectedDate + 'T00:00:00').getFullYear())
-  const [calMonth, setCalMonth] = useState(() => new Date(selectedDate + 'T00:00:00').getMonth())
-  const [mounted, setMounted] = useState(false)
-  useEffect(() => { setMounted(true) }, [])
+function heroStatus(ratio: number | null): 'good' | 'warning' | 'bad' | 'na' {
+  if (ratio === null) return 'na'
+  if (ratio <= 30) return 'good'
+  if (ratio <= 40) return 'warning'
+  return 'bad'
+}
 
-  function open() {
-    const d = new Date(selectedDate + 'T00:00:00')
-    setCalYear(d.getFullYear()); setCalMonth(d.getMonth())
-    setShow(true); requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)))
+function heroStatusLabel(st: 'good' | 'warning' | 'bad' | 'na'): string {
+  switch (st) {
+    case 'good':    return 'Good'
+    case 'warning': return 'Watch'
+    case 'bad':     return 'Too high'
+    default:        return 'No data'
   }
-  function close() { setVisible(false); setTimeout(() => setShow(false), 300) }
+}
 
-  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
-  const firstDay = new Date(calYear, calMonth, 1).getDay()
+const HERO_COLOR = {
+  good:    { text: '#15803d', bg: '#dcfce7' },
+  warning: { text: '#92400e', bg: '#fef3c7' },
+  bad:     { text: '#991b1b', bg: '#fee2e2' },
+  na:      { text: '#6b7280', bg: '#f3f4f6' },
+}
 
-  const modal = show && (
-    <div onClick={close} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.45)', opacity: visible ? 1 : 0, transition: 'opacity 0.3s', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 24, padding: '20px 16px 28px', width: '100%', maxWidth: 380, boxShadow: '0 24px 60px rgba(0,0,0,0.25)', transform: visible ? 'translateY(0)' : 'translateY(80px)', transition: 'transform 0.35s cubic-bezier(0.3,0,0.1,1), opacity 0.25s', opacity: visible ? 1 : 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(y => y - 1) } else setCalMonth(m => m - 1) }}
-            style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-          <span style={{ fontWeight: 600, fontSize: 17, color: '#111' }}>{MONTHS[calMonth]} {calYear}</span>
-          <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }}
-            style={{ width: 40, height: 40, borderRadius: '50%', background: '#f3f4f6', border: 'none', fontSize: 22, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+// ── History grouping ──
+function historyDayLabel(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`
+}
+
+type DayGroup   = { date: string; label: string; items: LedgerRecord[]; total: number }
+type MonthGroup = { monthKey: string; monthLabel: string; days: DayGroup[]; total: number }
+
+function groupHistory(records: LedgerRecord[], today: string): MonthGroup[] {
+  const months = new Map<string, MonthGroup>()
+  const dayMap  = new Map<string, DayGroup>()
+
+  for (const r of records) {
+    if (r.date === today) continue
+    const monthKey = r.date.slice(0, 7)
+    const d = new Date(r.date + 'T00:00:00')
+    const monthLabel = `${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`
+
+    if (!months.has(monthKey)) {
+      months.set(monthKey, { monthKey, monthLabel, days: [], total: 0 })
+    }
+    const month = months.get(monthKey)!
+
+    if (!dayMap.has(r.date)) {
+      const dg: DayGroup = { date: r.date, label: historyDayLabel(r.date), items: [], total: 0 }
+      dayMap.set(r.date, dg)
+      month.days.push(dg)
+    }
+    const day = dayMap.get(r.date)!
+    day.items.push(r)
+    day.total   += r.total_price ?? 0
+    month.total += r.total_price ?? 0
+  }
+
+  return [...months.values()].sort((a, b) => b.monthKey.localeCompare(a.monthKey))
+}
+
+// ── Inline single-field edit sheet ──
+function InlineFieldEditSheet({
+  target, onClose, onSaved,
+}: {
+  target: InlineEditTarget
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const { record, field } = target
+  const isQty = field === 'quantity'
+  const [value, setValue] = useState(
+    isQty
+      ? String(record.quantity)
+      : record.unit_price != null ? String(record.unit_price) : '',
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+
+  const qty   = isQty ? (parseFloat(value) || 0) : record.quantity
+  const up    = isQty ? (record.unit_price ?? 0) : (parseFloat(value) || 0)
+  const total = qty * up
+
+  async function handleSave() {
+    const num = parseFloat(value)
+    if (!value || isNaN(num) || num <= 0) {
+      setError(isQty ? 'Quantity must be greater than zero.' : 'Enter a valid price.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const res = await updateRecordAction(record.id, {
+      name:          record.name,
+      specification: record.specification ?? null,
+      category:      record.category,
+      unit:          record.unit,
+      quantity:      isQty ? num : record.quantity,
+      unit_price:    isQty ? (record.unit_price ?? null) : num,
+      supplier:      record.supplier ?? null,
+      purchaser:     record.purchaser ?? null,
+      receiver:      record.receiver ?? null,
+      remarks:       record.note ?? null,
+    })
+    setSaving(false)
+    if (!res.ok) { setError(res.error); return }
+    onSaved()
+    onClose()
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[450] flex flex-col justify-end"
+      style={{ background: 'rgba(0,0,0,0.4)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
+          <div>
+            <div className="font-semibold text-base">{isQty ? 'Edit Quantity' : 'Edit Unit Price'}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{record.name}</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 text-2xl leading-none">×</button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: 8 }}>
-          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} style={{ textAlign: 'center', fontSize: 13, color: '#9ca3af' }}>{d}</div>)}
+        <div className="px-4 pt-4 pb-3 space-y-3">
+          {error && (
+            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
+          )}
+          <input
+            autoFocus
+            className="w-full border border-gray-200 rounded-xl px-3 py-3 outline-none focus:border-orange-400 text-gray-900"
+            style={{ fontSize: 28, fontWeight: 600 }}
+            type="number"
+            inputMode="decimal"
+            placeholder={isQty ? '0' : '0.00'}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleSave() }}
+          />
+          {qty > 0 && up > 0 && (
+            <div className="flex items-center justify-between px-1 text-sm">
+              <span className="text-gray-400">
+                {qty.toFixed(qty % 1 === 0 ? 0 : 2)} {record.unit} × RM {up.toFixed(2)}
+              </span>
+              <span className="font-semibold text-gray-900">{rm(total)}</span>
+            </div>
+          )}
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)' }}>
-          {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} />)}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1
-            const dateStr = `${calYear}-${String(calMonth + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
-            const isSel = dateStr === selectedDate, isTod = dateStr === today
-            return (
-              <div key={day} style={{ display: 'flex', justifyContent: 'center', padding: '4px 0' }}>
-                <button onClick={() => { onDateChange(dateStr); close() }} style={{ width: 38, height: 38, borderRadius: '50%', border: isTod && !isSel ? '1.5px solid #60a5fa' : 'none', background: isSel ? '#60a5fa' : 'transparent', color: isSel ? '#fff' : isTod ? '#60a5fa' : '#374151', fontWeight: isSel || isTod ? 700 : 400, fontSize: 16, cursor: 'pointer' }}>{day}</button>
-              </div>
-            )
-          })}
-        </div>
-        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button onClick={() => { onDateChange(today); close() }} style={{ flex: 1, padding: 12, background: '#60a5fa', color: '#fff', border: 'none', borderRadius: 14, fontWeight: 600, fontSize: 14, cursor: 'pointer' }}>Today</button>
-          <button onClick={close} style={{ flex: 1, padding: 12, background: '#f3f4f6', color: '#6b7280', border: 'none', borderRadius: 14, fontWeight: 500, fontSize: 14, cursor: 'pointer' }}>Cancel</button>
+        <div
+          className="border-t border-gray-100 px-4 pt-3"
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        >
+          <div className="grid grid-cols-2 gap-3">
+            <button type="button" onClick={onClose}
+              className="py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">
+              Cancel
+            </button>
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
+              style={{ background: saving ? '#d1d5db' : '#f97316' }}>
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
+}
 
+// ── Record row with swipe-to-reveal actions ──
+function RecordRow({
+  item, isFirst, isLast, showCosts, canDelete,
+  onDetail, onEditRecord, onDeleteRecord, onEditField, onUncheck,
+}: {
+  item: LedgerRecord
+  isFirst: boolean
+  isLast: boolean
+  showCosts: boolean
+  canDelete: boolean
+  onDetail:      (r: LedgerRecord) => void
+  onEditRecord:  (r: LedgerRecord) => void
+  onDeleteRecord:(r: LedgerRecord) => void
+  onEditField:   (r: LedgerRecord, field: InlineEditField) => void
+  onUncheck:     (r: LedgerRecord) => void
+}) {
+  // Action area width: edit+trash=96, edit-only=52, kitchen=0
+  const ACTION_W = showCosts ? (canDelete ? 96 : 52) : 0
+
+  const [swiped, _setSwiped] = useState(false)
+  const swipedRef   = useRef(false)
+  const isSwipeGest = useRef(false)
+  const touchStartX = useRef(0)
+  const touchStartY = useRef(0)
+
+  function setSwiped(v: boolean) { swipedRef.current = v; _setSwiped(v) }
+
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0].clientX
+    touchStartY.current = e.touches[0].clientY
+    isSwipeGest.current = false
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    const dx = touchStartX.current - e.changedTouches[0].clientX
+    const dy = Math.abs(touchStartY.current - e.changedTouches[0].clientY)
+    if (Math.abs(dx) > 40 && dy < 35) {
+      isSwipeGest.current = true
+      setSwiped(dx > 0) // left = open, right = close
+      // Reset flag after click events fire (~300ms tap delay on iOS)
+      setTimeout(() => { isSwipeGest.current = false }, 350)
+    }
+  }
+
+  function handleDetailTap() {
+    if (isSwipeGest.current) return
+    if (swipedRef.current) { setSwiped(false); return }
+    onDetail(item)
+  }
+
+  function handleQtyTap(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (isSwipeGest.current) return
+    if (swipedRef.current) { setSwiped(false); return }
+    onEditField(item, 'quantity')
+  }
+
+  function handlePriceTap(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (isSwipeGest.current) return
+    if (swipedRef.current) { setSwiped(false); return }
+    onEditField(item, 'unit_price')
+  }
+
+  const translate = showCosts && swiped ? -ACTION_W : 0
+  const categoryClr = categoryColor(item.category)
+  const borderBottom = !isLast ? '1px solid #f3f4f6' : 'none'
+
+  // Strip border-radius matches or exceeds any card's border-radius to prevent corner color bleed
+  const stripRadius = { borderTopLeftRadius: isFirst ? 20 : 0, borderBottomLeftRadius: isLast ? 20 : 0 }
+
+  // Kitchen: simple row with checked checkbox, no swipe, no prices
+  if (!showCosts) {
+    return (
+      <div style={{ position: 'relative', borderBottom, background: '#fff' }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, ...stripRadius }} />
+        <div className="flex items-center gap-3 px-4 py-3">
+          {/* Checked checkbox — visual only for kitchen */}
+          <div className="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center"
+            style={{ borderColor: '#22c55e', background: '#22c55e' }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <button type="button" onClick={() => onDetail(item)} className="flex-1 text-left min-w-0">
+            <div className="font-medium text-sm text-gray-900">{item.name}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{item.quantity} {item.unit}</div>
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // Owner/Manager: single-line grid with swipe actions
   return (
-    <>
-      <button onClick={open} className="flex items-center gap-2 active:opacity-60 transition-opacity">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-        </svg>
-        <span className="text-sm font-medium text-gray-700">{formatDateLabel(selectedDate)}</span>
-      </button>
-      {mounted && createPortal(modal, document.body)}
-    </>
+    <div style={{ position: 'relative', overflow: 'hidden', borderBottom, background: '#fff' }}>
+      {/* Category color strip — rounded corners eliminate card border-radius clipping artifact */}
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, zIndex: 2, pointerEvents: 'none', ...stripRadius }} />
+      {/* Swipe action area — z-index 0 ensures it stays below the sliding content */}
+      <div
+        style={{
+          position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W,
+          display: 'flex', alignItems: 'stretch', background: '#ef4444', zIndex: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => { setSwiped(false); onEditRecord(item) }}
+          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            onClick={() => { setSwiped(false); onDeleteRecord(item) }}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #f87171' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Sliding content — sits above action area via z-index: 1 */}
+      <div
+        style={{ transform: `translateX(${translate}px)`, transition: 'transform 0.22s ease', background: '#fff', position: 'relative', zIndex: 1, width: '100%' }}
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
+      >
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: '40px 1.1fr 0.7fr 1.2fr 1fr',
+            alignItems: 'center',
+            minHeight: 56,
+            padding: '0 12px',
+            gap: 4,
+          }}
+        >
+          {/* Checkbox — always checked (green); same wrapper+size as ChecklistSection Checkbox */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button
+              type="button"
+              onClick={() => { if (swipedRef.current) { setSwiped(false); return } onUncheck(item) }}
+              style={{
+                WebkitAppearance: 'none',
+                appearance: 'none',
+                flexShrink: 0,
+                width: 24,
+                height: 24,
+                minWidth: 24,
+                minHeight: 24,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 0,
+                cursor: 'pointer',
+                background: '#22c55e',
+                border: 'none',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Col 1: Item name — taps to detail */}
+          <button
+            type="button"
+            onClick={handleDetailTap}
+            className="text-left active:opacity-70"
+            style={{ minWidth: 0 }}
+          >
+            <span className="font-semibold text-gray-900 block truncate" style={{ fontSize: 16 }}>
+              {item.name}
+            </span>
+          </button>
+
+          {/* Col 2: Quantity + unit — taps to edit qty */}
+          <button
+            type="button"
+            onClick={handleQtyTap}
+            className="text-left active:opacity-70 tabular-nums"
+            style={{ minWidth: 0 }}
+          >
+            <span className="font-medium text-gray-600 block truncate" style={{ fontSize: 13 }}>
+              {item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)} {item.unit}
+            </span>
+          </button>
+
+          {/* Col 3: Unit price — taps to edit price */}
+          <button
+            type="button"
+            onClick={handlePriceTap}
+            className="text-left active:opacity-70 tabular-nums"
+            style={{ minWidth: 0 }}
+          >
+            <span className="font-medium text-gray-600 block truncate" style={{ fontSize: 13 }}>
+              {(item.unit_price ?? 0) > 0
+                ? `RM${item.unit_price! % 1 === 0 ? item.unit_price!.toFixed(0) : item.unit_price!.toFixed(2)}/${item.unit}`
+                : <span className="text-gray-300">—</span>}
+            </span>
+          </button>
+
+          {/* Col 4: Total — taps to detail */}
+          <button
+            type="button"
+            onClick={handleDetailTap}
+            className="text-right active:opacity-70 tabular-nums"
+            style={{ minWidth: 0 }}
+          >
+            {(item.total_price ?? 0) > 0
+              ? <span className="font-semibold text-gray-900" style={{ fontSize: 14 }}>{rm(item.total_price)}</span>
+              : <span className="text-gray-300" style={{ fontSize: 14 }}>—</span>
+            }
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
-// ── Donut chart ──
-function DonutChart({ items }: { items: PurchaseItem[] }) {
-  const total = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
-  if (total === 0) return <div className="text-center text-gray-400 text-sm py-8">No data</div>
+
+// ── Category breakdown donut ──
+function DonutChart({ data }: { data: { category: string; total: number }[] }) {
+  const total = data.reduce((s, d) => s + d.total, 0)
+  if (total === 0) return <div className="text-center text-gray-400 text-sm py-6">No data</div>
   const r = 58, cx = 80, cy = 80, strokeW = 22, circ = 2 * Math.PI * r
-  const catData = CATEGORY_ORDER.map(cat => ({
-    cat, color: CATEGORY_COLOR[cat] ?? '#9ca3af',
-    amt: items.filter(i => i.category === cat).reduce((s, i) => s + (i.total_price ?? 0), 0),
-  })).filter(d => d.amt > 0)
-  let cumLen = 0
-  const segments = catData.map(d => {
-    const segLen = (d.amt / total) * circ
-    const seg = { ...d, dashoffset: -cumLen, segLen }
-    cumLen += segLen; return seg
+  let cum = 0
+  const segs = data.map((d) => {
+    const len = (d.total / total) * circ
+    const seg = { ...d, len, offset: -cum, color: categoryColor(d.category) }
+    cum += len
+    return seg
   })
   return (
     <div className="flex flex-col items-center">
       <svg width={160} height={160} viewBox="0 0 160 160">
         <g transform={`rotate(-90, ${cx}, ${cy})`}>
-          {segments.map((seg, i) => (
-            <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={strokeW}
-              strokeDasharray={`${seg.segLen} ${circ}`} strokeDashoffset={seg.dashoffset} />
+          {segs.map((s, i) => (
+            <circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={s.color} strokeWidth={strokeW}
+              strokeDasharray={`${s.len} ${circ}`} strokeDashoffset={s.offset} />
           ))}
         </g>
         <text x={cx} y={cy - 8} textAnchor="middle" fontSize="11" fill="#9ca3af">Total</text>
         <text x={cx} y={cy + 10} textAnchor="middle" fontSize="15" fontWeight="700" fill="#111">{`RM ${total.toFixed(0)}`}</text>
       </svg>
       <div className="w-full space-y-2 mt-2 px-2">
-        {catData.map(d => (
-          <div key={d.cat} className="flex items-center justify-between text-sm">
+        {data.map((d) => (
+          <div key={d.category} className="flex items-center justify-between text-sm">
             <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
-              <span className="text-gray-700">{d.cat}</span>
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: categoryColor(d.category) }} />
+              <span className="text-gray-700">{d.category}</span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-gray-400 text-xs">{Math.round(d.amt / total * 100)}%</span>
-              <span className="font-semibold text-gray-900">RM {d.amt.toFixed(2)}</span>
+              <span className="text-gray-400 text-xs">{Math.round((d.total / total) * 100)}%</span>
+              <span className="font-semibold text-gray-900">{rm(d.total)}</span>
             </div>
           </div>
         ))}
@@ -185,52 +510,23 @@ function DonutChart({ items }: { items: PurchaseItem[] }) {
   )
 }
 
-// ── Supplier list ──
-function SupplierList({ items }: { items: PurchaseItem[] }) {
-  const map: Record<string, { items: PurchaseItem[]; total: number }> = {}
-  for (const item of items) {
-    const key = item.supplier?.trim() || '(No Supplier)'
-    if (!map[key]) map[key] = { items: [], total: 0 }
-    map[key].items.push(item); map[key].total += item.total_price ?? 0
-  }
-  const suppliers = Object.entries(map).sort((a, b) => b[1].total - a[1].total)
-  if (suppliers.length === 0) return null
-  return (
-    <div className="space-y-3">
-      {suppliers.map(([name, data]) => (
-        <div key={name} className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-semibold text-gray-900 text-sm">🏪 {name}</span>
-            <span className="font-bold text-gray-900 text-sm">RM {data.total.toFixed(2)}</span>
-          </div>
-          <div className="space-y-1">
-            {data.items.map(i => (
-              <div key={i.id} className="flex justify-between text-xs text-gray-500">
-                <span>{i.name} · {i.quantity} {i.unit}</span>
-                <span>RM {(i.total_price ?? 0).toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// ── Inline picker & name input ──
-function InlinePicker({ value, options, onChange, label }: { value: string; options: string[]; onChange: (v: string) => void; label: string }) {
+// ── Inline dropdown ──
+function Picker({ value, options, onChange, label }: { value: string; options: string[]; onChange: (v: string) => void; label: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative">
       <label className="text-xs text-gray-400 mb-1 block">{label}</label>
-      <button type="button" onClick={() => setOpen(o => !o)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-left flex items-center justify-between bg-white" style={{ fontSize: 16 }}>
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-left flex items-center justify-between bg-white" style={{ fontSize: 16 }}>
         <span className="text-gray-800">{value}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}><polyline points="6 9 12 15 18 9"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}><polyline points="6 9 12 15 18 9" /></svg>
       </button>
       {open && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-hidden">
-          {options.map(opt => (
-            <button key={opt} type="button" onClick={() => { onChange(opt); setOpen(false) }} className="w-full text-left px-3 py-2.5 hover:bg-orange-50"
+        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-30 overflow-y-auto" style={{ maxHeight: 220 }}>
+          {options.map((opt) => (
+            <button key={opt} type="button" onClick={() => { onChange(opt); setOpen(false) }}
+              className="w-full text-left px-3 py-2.5 hover:bg-orange-50"
               style={{ fontSize: 16, color: opt === value ? '#f97316' : '#374151', fontWeight: opt === value ? 600 : 400 }}>{opt}</button>
           ))}
         </div>
@@ -239,329 +535,660 @@ function InlinePicker({ value, options, onChange, label }: { value: string; opti
   )
 }
 
-function NameInput({ value, onChange, onCategoryChange }: { value: string; onChange: (v: string) => void; onCategoryChange: (c: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const filtered = value.length > 0 ? COMMON_ITEMS.filter(i => i.toLowerCase().includes(value.toLowerCase())) : COMMON_ITEMS
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="relative">
-      <label className="text-xs text-gray-400 mb-1 block">Item Name *</label>
-      <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400" style={{ fontSize: 16 }} placeholder="Type or search..." value={value} autoFocus
-        onChange={e => { onChange(e.target.value); setOpen(true); const auto = ITEM_CATEGORY[e.target.value]; if (auto) onCategoryChange(auto) }}
-        onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)} />
-      {open && filtered.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-gray-100 rounded-xl shadow-lg z-20 overflow-y-auto" style={{ maxHeight: 160 }}>
-          {filtered.map(item => (
-            <button key={item} type="button" onMouseDown={e => e.preventDefault()}
-              onClick={() => { onChange(item); setOpen(false); const auto = ITEM_CATEGORY[item]; if (auto) onCategoryChange(auto) }}
-              className="w-full text-left px-3 py-2.5 hover:bg-orange-50 flex items-center justify-between"
-              style={{ fontSize: 16, color: item === value ? '#f97316' : '#374151', fontWeight: item === value ? 600 : 400 }}>
-              <span>{item}</span>
-              {ITEM_CATEGORY[item] && <span className="text-xs text-gray-400 ml-2">{ITEM_CATEGORY[item]}</span>}
-            </button>
-          ))}
-        </div>
-      )}
+    <div>
+      <label className="text-xs text-gray-400 mb-1 block">{label}</label>
+      {children}
     </div>
   )
 }
 
-function CheckIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
+const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400'
+
+// Props supplied by the server component (SSR). Absent when rendered via nav stack.
+type Props = {
+  role?: StaffRole
+  today?: string
+  initialRecords?: LedgerRecord[]
+  initialSummary?: PurchaseSummary | null
+  initialKpi?: PurchaseKpi
+  perms?: Perms
+}
+
+const emptyForm = {
+  name: '', specification: '', category: 'Vegetables', unit: 'kg',
+  quantity: '', unit_price: '', supplier: '', receiver: '', remarks: '',
+}
+
+type Ctx = { role: StaffRole; today: string; perms: Perms }
+
+export default function PurchaseClient(props: Props) {
+  const hasInitial = !!(props.role && props.today && props.perms)
+  const { push, pop } = useNavigation()
+  const [ctx, setCtx] = useState<Ctx | null>(
+    hasInitial ? { role: props.role!, today: props.today!, perms: props.perms! } : null,
   )
-}
-
-function usePullToRefresh(scrollRef: React.RefObject<HTMLDivElement | null>, onRefresh: () => Promise<void>) {
-  const startY = useRef(0), pulling = useRef(false)
-  const [pullDist, setPullDist] = useState(0)
+  const [records, setRecords]   = useState<LedgerRecord[]>(props.initialRecords ?? [])
+  const [summary, setSummary]   = useState<PurchaseSummary | null>(props.initialSummary ?? null)
+  const [kpi, setKpi]           = useState<PurchaseKpi | null>(props.initialKpi ?? null)
+  const [booting, setBooting]   = useState(!hasInitial)
   const [refreshing, setRefreshing] = useState(false)
-  const THRESHOLD = 60
-  useEffect(() => {
-    const el = scrollRef.current; if (!el) return
-    const onStart = (e: TouchEvent) => { if (el.scrollTop <= 0) { startY.current = e.touches[0].clientY; pulling.current = true } }
-    const onMove = (e: TouchEvent) => { if (!pulling.current || refreshing) return; const dist = e.touches[0].clientY - startY.current; if (dist > 0) { e.preventDefault(); setPullDist(Math.min(dist * 0.45, THRESHOLD + 20)) } }
-    const onEnd = async () => { if (!pulling.current) return; pulling.current = false; if (pullDist >= THRESHOLD && !refreshing) { setRefreshing(true); setPullDist(THRESHOLD); await onRefresh(); setRefreshing(false) } setPullDist(0) }
-    el.addEventListener('touchstart', onStart, { passive: true }); el.addEventListener('touchmove', onMove, { passive: false }); el.addEventListener('touchend', onEnd, { passive: true })
-    return () => { el.removeEventListener('touchstart', onStart); el.removeEventListener('touchmove', onMove); el.removeEventListener('touchend', onEnd) }
-  }, [pullDist, refreshing, onRefresh, scrollRef])
-  return { pullDist, refreshing, THRESHOLD }
-}
-
-type Filter = 'all' | 'pending' | 'done'
-
-export default function PurchaseClient({ initialItems, initialDate }: { initialItems: PurchaseItem[]; initialDate: string }) {
-  const { push } = useNavigation()
-  const [items, setItems] = useState(initialItems)
-  const [selectedDate, setSelectedDate] = useState(initialDate)
-  const [fetching, setFetching] = useState(initialItems.length === 0)
-  const [toggling, setToggling] = useState<number | null>(null)
-  const [filter, setFilter] = useState<Filter>('all')
-  const cache = useRef<Record<string, PurchaseItem[]>>({ [initialDate]: initialItems })
+  const [checklistRefreshKey, setChecklistRefreshKey] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const [showAdd, setShowAdd] = useState(false)
-  const [form, setForm] = useState({ name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' })
-  const [saving, setSaving] = useState(false)
-
-  // Panel
-  const panelRef = useRef<HTMLDivElement>(null)
-  const panelAnimRef = useRef<Animation | null>(null)
-  const panelIsOpen = useRef(false)
-  const [panelOpen, setPanelOpen] = useState(false)
-
-  const setPanelRefCb = useCallback((el: HTMLDivElement | null) => {
-    panelRef.current = el; if (el) el.style.transform = `translateX(${window.innerWidth}px)`
-  }, [])
-
-  function getPanelX() {
-    const el = panelRef.current; if (!el) return window.innerWidth
-    const t = el.style.transform; if (t && t !== 'none') { const m = t.match(/translateX\(([-\d.]+)px\)/); if (m) return parseFloat(m[1]) }
-    const mat = window.getComputedStyle(el).transform; return (!mat || mat === 'none') ? 0 : new DOMMatrix(mat).m41
-  }
-  function animatePanel(toX: number, onDone?: () => void) {
-    const el = panelRef.current; if (!el) return
-    if (panelAnimRef.current) { panelAnimRef.current.cancel(); panelAnimRef.current = null; el.style.transform = `translateX(${getPanelX()}px)` }
-    const fromX = getPanelX(), dist = Math.abs(toX - fromX)
-    if (dist < 1) { el.style.transform = `translateX(${toX}px)`; onDone?.(); return }
-    const anim = el.animate([{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }], { duration: Math.max(200, Math.min(320, dist * 0.7)), easing: 'cubic-bezier(0.3,0,0.1,1)', fill: 'none' })
-    panelAnimRef.current = anim
-    anim.onfinish = () => { if (panelAnimRef.current !== anim) return; panelAnimRef.current = null; el.style.transform = `translateX(${toX}px)`; onDone?.() }
-  }
-  function openPanel() { if (panelIsOpen.current) return; panelIsOpen.current = true; setPanelOpen(true); animatePanel(0) }
-  function closePanel() { panelIsOpen.current = false; setPanelOpen(false); animatePanel(window.innerWidth) }
+  const [bootError, setBootError]     = useState<string | null>(null)
+  const [bootAttempt, setBootAttempt] = useState(0)
 
   useEffect(() => {
-    let sx = 0, sy = 0, axis: 'h' | 'v' | null = null, tracking = false, mode: 'open' | 'close' | null = null
-    function onStart(e: TouchEvent) {
-      const t = e.touches[0]; sx = t.clientX; sy = t.clientY; axis = null; tracking = false; mode = null
-      if (panelIsOpen.current) { tracking = true; mode = 'close'; return }
-      if (panelAnimRef.current) return
-      tracking = true; mode = 'open'
-    }
-    function onMove(e: TouchEvent) {
-      if (!tracking) return
-      const dx = e.touches[0].clientX - sx, dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-      if (axis !== 'h') return
-      const el = panelRef.current
-      if (mode === 'open' && dx < 0) { e.preventDefault(); if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)` }
-      else if (mode === 'close') { e.preventDefault(); if (dx > 0 && el) el.style.transform = `translateX(${Math.max(0, dx)}px)` }
-    }
-    function onEnd(e: TouchEvent) {
-      if (!tracking) return; tracking = false; if (axis !== 'h') return
-      const dx = e.changedTouches[0].clientX - sx, thresh = window.innerWidth * 0.22
-      if (mode === 'open' && dx < -thresh) openPanel()
-      else if (mode === 'open' && dx < 0) animatePanel(window.innerWidth)
-      else if (mode === 'close' && dx > thresh) closePanel()
-      else if (mode === 'close') animatePanel(0)
-    }
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: false })
-    document.addEventListener('touchend', onEnd, { passive: true })
-    return () => { document.removeEventListener('touchstart', onStart); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onEnd) }
-  }, []) // eslint-disable-line
+    if (ctx) return
+    let active = true
+    setBooting(true)
+    setBootError(null)
+    fetchPurchaseContextAction().then((res) => {
+      if (!active) return
+      if (res.ok) {
+        setCtx({ role: res.data.role, today: res.data.today, perms: res.data.perms })
+        setRecords(res.data.records as LedgerRecord[])
+        setSummary(res.data.summary)
+        setKpi(res.data.kpi)
+      } else {
+        setBootError(res.error)
+      }
+      setBooting(false)
+    })
+    return () => { active = false }
+  }, [ctx, bootAttempt])
 
-  const fetchDate = useCallback(async (date: string): Promise<PurchaseItem[]> => {
-    const { data } = await supabase.from('purchase_items').select('*').eq('date', date).order('id', { ascending: true })
-    const result = (data || []) as PurchaseItem[]; cache.current[date] = result; return result
+  const [showFilters, setShowFilters]     = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
+  const [filters, setFilters] = useState({ category: '', from: '', to: '', supplier: '', purchaser: '' })
+
+  const [catalog, setCatalog]               = useState<CatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogError, setCatalogError]     = useState<string | null>(null)
+  useEffect(() => {
+    fetchCatalogAction()
+      .then((res) => {
+        if (res.ok) setCatalog(res.data)
+        else setCatalogError(res.error)
+      })
+      .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
+      .finally(() => setCatalogLoading(false))
   }, [])
 
-  // Self-fetch when rendered via navigation stack (initialItems will be empty)
+  const [showAdd, setShowAdd]                 = useState(false)
+  const [form, setForm]                       = useState(emptyForm)
+  const [selectedAddItem, setSelectedAddItem] = useState<CatalogItem | null>(null)
+  const [saving, setSaving]                   = useState(false)
+  const [addError, setAddError]               = useState<string | null>(null)
+  const [successToast, setSuccessToast]       = useState<string | null>(null)
+  const [editingRecord, setEditingRecord]     = useState<LedgerRecord | null>(null)
+  const [deletingRecord, setDeletingRecord]   = useState<LedgerRecord | null>(null)
+  const [deleteInProgress, setDeleteInProgress] = useState(false)
+  const [inlineEdit, setInlineEdit]           = useState<InlineEditTarget | null>(null)
+
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
+  const [expandedDays,   setExpandedDays]   = useState<Set<string>>(new Set())
+
+  const refresh = useCallback(async (f = filters) => {
+    setRefreshing(true)
+    const canViewCosts = ctx?.perms.canViewCosts ?? false
+    const activeFilters = canViewCosts
+      ? { category: f.category || undefined, from: f.from || undefined, to: f.to || undefined, supplier: f.supplier || undefined, purchaser: f.purchaser || undefined }
+      : {}
+    const [recRes, sumRes, kpiRes] = await Promise.all([
+      fetchRecordsAction(activeFilters),
+      fetchSummaryAction(),
+      fetchKpiAction(),
+    ])
+    if (recRes.ok) setRecords(recRes.data as LedgerRecord[])
+    if (sumRes.ok) setSummary(sumRes.data)
+    if (kpiRes.ok) setKpi(kpiRes.data)
+    setRefreshing(false)
+  }, [filters, ctx])
+
+  const startY = useRef(0), pulling = useRef(false)
+  const [pullDist, setPullDist] = useState(0)
+  const THRESHOLD = 60
   useEffect(() => {
-    if (initialItems.length === 0) {
-      fetchDate(initialDate).then(data => { setItems(data); setFetching(false) })
+    const el = scrollRef.current
+    if (!el) return
+    const onStart = (e: TouchEvent) => { if (el.scrollTop <= 0) { startY.current = e.touches[0].clientY; pulling.current = true } }
+    const onMove  = (e: TouchEvent) => {
+      if (!pulling.current || refreshing) return
+      const dist = e.touches[0].clientY - startY.current
+      if (dist > 0) { e.preventDefault(); setPullDist(Math.min(dist * 0.45, THRESHOLD + 20)) }
     }
-  }, []) // eslint-disable-line
+    const onEnd = async () => {
+      if (!pulling.current) return
+      pulling.current = false
+      if (pullDist >= THRESHOLD && !refreshing) { setPullDist(THRESHOLD); await refresh() }
+      setPullDist(0)
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove',  onMove,  { passive: false })
+    el.addEventListener('touchend',   onEnd,   { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove',  onMove)
+      el.removeEventListener('touchend',   onEnd)
+    }
+  }, [pullDist, refreshing, refresh])
 
-  const doRefresh = useCallback(async () => { setItems(await fetchDate(selectedDate)) }, [fetchDate, selectedDate])
-  const { pullDist, refreshing, THRESHOLD } = usePullToRefresh(scrollRef, doRefresh)
+  const showCosts = ctx?.perms.canViewCosts ?? false
 
-  async function handleDateChange(date: string) {
-    setSelectedDate(date)
-    if (cache.current[date] !== undefined) setItems(cache.current[date])
-    else { setFetching(true); setItems(await fetchDate(date)); setFetching(false) }
-  }
-
-  async function toggleComplete(item: PurchaseItem) {
-    const newStatus = item.status === 'completed' ? 'pending' : 'completed'
-    const updated = items.map(i => i.id === item.id ? { ...i, status: newStatus } : i)
-    setItems(updated); cache.current[selectedDate] = updated; setToggling(item.id)
-    const { error } = await supabase.from('purchase_items').update({ status: newStatus }).eq('id', item.id)
-    if (error) { const rev = items.map(i => i.id === item.id ? { ...i, status: item.status } : i); setItems(rev); cache.current[selectedDate] = rev }
-    setToggling(null)
-  }
+  function openAdd() { setForm(emptyForm); setSelectedAddItem(null); setAddError(null); setShowAdd(true) }
 
   async function handleAdd() {
-    if (!form.name.trim()) return; setSaving(true)
-    const qty = parseFloat(form.quantity) || 0, up = parseFloat(form.unit_price) || 0
-    const row = { date: selectedDate, name: form.name.trim(), category: form.category, unit: form.unit, quantity: qty, unit_price: up, total_price: qty * up, status: 'pending' }
-    const { data, error } = await supabase.from('purchase_items').insert(row).select().single()
-    if (data) { const upd = [...items, data as PurchaseItem]; setItems(upd); cache.current[selectedDate] = upd }
-    else { const temp = { ...row, id: Date.now(), supplier: null, note: null, purchase_method: null } as PurchaseItem; const upd = [...items, temp]; setItems(upd); cache.current[selectedDate] = upd; if (error) console.error(error) }
-    setForm({ name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '' }); setSaving(false); setShowAdd(false)
+    if (!form.name.trim()) { setAddError('Item name is required.'); return }
+    if (!form.quantity || parseFloat(form.quantity) <= 0) { setAddError('Quantity must be greater than zero.'); return }
+    setSaving(true)
+    setAddError(null)
+    const res = await createRecordAction({
+      name:          form.name.trim(),
+      specification: form.specification.trim() || null,
+      category:      form.category,
+      unit:          form.unit,
+      quantity:      parseFloat(form.quantity),
+      unit_price:    showCosts && form.unit_price ? parseFloat(form.unit_price) : null,
+      supplier:      showCosts ? form.supplier.trim() || null : null,
+      receiver:      form.receiver.trim() || null,
+      remarks:       form.remarks.trim() || null,
+    })
+    setSaving(false)
+    if (!res.ok) { setAddError(res.error); return }
+    setForm(emptyForm)
+    setSelectedAddItem(null)
+    setShowAdd(false)
+    setSuccessToast('Purchase added')
+    setTimeout(() => setSuccessToast(null), 2500)
+    refresh()
   }
 
-  const pendingItems = sortItems(items.filter(i => i.status !== 'completed'))
-  const doneItems = sortItems(items.filter(i => i.status === 'completed'))
-  const displayItems = filter === 'pending' ? pendingItems : filter === 'done' ? doneItems : [...pendingItems, ...doneItems]
-  const totalAmt = items.reduce((s, i) => s + (i.total_price ?? 0), 0)
+  async function handleDelete() {
+    if (!deletingRecord) return
+    setDeleteInProgress(true)
+    const res = await deleteRecordAction(deletingRecord.id)
+    setDeleteInProgress(false)
+    setDeletingRecord(null)
+    if (res.ok) {
+      setSuccessToast('Deleted')
+      setTimeout(() => setSuccessToast(null), 2500)
+      refresh()
+    }
+  }
 
-  function toggleFilter(f: Filter) { setFilter(prev => prev === f ? 'all' : f) }
+  function openDetail(rec: LedgerRecord) {
+    push(
+      `/purchase/${rec.id}`,
+      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />}>
+        <DetailClient itemId={rec.id} onChanged={() => { pop(); refresh() }} />
+      </Suspense>,
+    )
+  }
+
+  function openKpiDetails() {
+    if (!kpi || !ctx) return
+    push(
+      '/purchase/cost-ratio',
+      <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />}>
+        <CostRatioDetailsClient kpi={kpi} today={ctx.today} />
+      </Suspense>,
+    )
+  }
+
+  function toggleMonth(key: string) {
+    setExpandedMonths(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
+  }
+  function toggleDay(key: string) {
+    setExpandedDays(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n })
+  }
+
+  function showToast(msg: string) {
+    setSuccessToast(msg)
+    setTimeout(() => setSuccessToast(null), 2500)
+  }
+
+  if (booting || !ctx) {
+    return (
+      <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb' }}>
+        <div className="bg-white px-4 py-3 flex items-center gap-3 border-b" style={{ flexShrink: 0 }}>
+          <BackButton href="/" />
+          <span className="font-semibold text-base">Purchase</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-3 px-8 text-center">
+          {booting ? (
+            <span className="text-gray-400 text-sm">Loading...</span>
+          ) : (
+            <>
+              <span className="text-gray-500 text-sm">Couldn&apos;t load purchases.</span>
+              {bootError && <span className="text-gray-400 text-xs">{bootError}</span>}
+              <button onClick={() => setBootAttempt((n) => n + 1)}
+                className="px-5 py-2 rounded-full text-sm font-semibold text-white bg-orange-500">Retry</button>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  const { today, perms } = ctx
+  const todayRecords  = records.filter(r => r.date === today)
+  const historyGroups = groupHistory(records, today)
+  const todayTotal    = todayRecords.reduce((s, r) => s + (r.total_price ?? 0), 0)
+
+  const exportHref = `/api/purchase/export?${new URLSearchParams(
+    Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+  ).toString()}`
+
+  // Hero card: prefer month → week → today
+  let heroLabel   = 'Today'
+  let heroPeriod: RatioPeriod | null = kpi?.today ?? null
+  if (kpi) {
+    if (kpi.month) {
+      const d = new Date(today + 'T00:00:00')
+      heroLabel  = `${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`
+      heroPeriod = kpi.month
+    } else if (kpi.week) {
+      heroLabel  = 'This Week'
+      heroPeriod = kpi.week
+    }
+  }
+  const heroSt = heroStatus(heroPeriod?.ratio ?? null)
+  const heroC  = HERO_COLOR[heroSt]
+
+  async function handleUncheck(rec: LedgerRecord) {
+    const res = await moveRecordToChecklistAction(rec.id)
+    if (res.ok) {
+      showToast(`${rec.name} moved back to Checklist`)
+      setChecklistRefreshKey(k => k + 1)
+      refresh()
+    } else {
+      showToast('Could not move back — please try again')
+    }
+  }
+
+  // Shared row props
+  const rowProps = {
+    showCosts,
+    canDelete: perms.canDelete,
+    onDetail: openDetail,
+    onEditRecord: setEditingRecord,
+    onDeleteRecord: setDeletingRecord,
+    onEditField: (r: LedgerRecord, field: InlineEditField) => setInlineEdit({ record: r, field }),
+    onUncheck: handleUncheck,
+  }
 
   return (
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
-
       {/* Header */}
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
         <div className="flex items-center gap-3">
           <BackButton href="/" />
           <span className="font-semibold text-base">Purchase</span>
         </div>
-        <button onClick={() => setShowAdd(true)} className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-      </div>
-
-      {/* Stats card (dine-in style) */}
-      <div className="px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
-        <div className="flex justify-center mb-3">
-          <SimpleDatePicker selectedDate={selectedDate} onDateChange={handleDateChange} />
-        </div>
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="text-3xl font-bold text-gray-900 mb-3">RM {totalAmt.toFixed(2)}</div>
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => toggleFilter('pending')} className="text-center rounded-xl py-2 transition-all"
-              style={{ background: filter === 'pending' ? '#fff7ed' : '#f9fafb' }}>
-              <div className="text-xl font-bold text-orange-500">{pendingItems.length}</div>
-              <div className="text-xs mt-0.5" style={{ color: filter === 'pending' ? '#f97316' : '#9ca3af' }}>Pending</div>
-            </button>
-            <button onClick={() => toggleFilter('done')} className="text-center rounded-xl py-2 transition-all"
-              style={{ background: filter === 'done' ? '#f0fdf4' : '#f9fafb' }}>
-              <div className="text-xl font-bold text-green-500">{doneItems.length}</div>
-              <div className="text-xs mt-0.5" style={{ color: filter === 'done' ? '#22c55e' : '#9ca3af' }}>Done</div>
-            </button>
-          </div>
-        </div>
-        {filter !== 'all' && (
-          <div className="text-xs text-center text-gray-400 mt-2">
-            Showing {filter} · <button onClick={() => setFilter('all')} className="text-orange-500">Show all</button>
-          </div>
+        {showCosts && (
+          <button onClick={() => setShowFilters((s) => !s)} aria-label="Filters"
+            className="w-8 h-8 rounded-full flex items-center justify-center"
+            style={{ background: showFilters ? '#fff7ed' : '#f3f4f6' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke={showFilters ? '#f97316' : '#6b7280'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+          </button>
         )}
       </div>
 
-      {/* List */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ background: '#fff', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
+      {/* Scroll area */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}>
+        {/* Pull-to-refresh */}
         <div style={{ height: refreshing ? THRESHOLD : pullDist, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: refreshing || pullDist === 0 ? 'height 0.3s ease' : 'none', overflow: 'hidden' }}>
           {(pullDist > 5 || refreshing) && (
             <div style={{ width: 22, height: 22, borderRadius: '50%', border: '2.5px solid #f97316', borderTopColor: 'transparent', animation: refreshing ? 'ptr-spin 0.7s linear infinite' : 'none', transform: !refreshing ? `rotate(${(pullDist / THRESHOLD) * 300}deg)` : undefined }} />
           )}
         </div>
-        <style>{`@keyframes ptr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+        <style>{`@keyframes ptr-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}`}</style>
 
-        {fetching && <div className="text-center text-gray-400 py-8 text-sm">Loading...</div>}
-        {!fetching && displayItems.length === 0 && (
-          <div className="text-center text-gray-400 py-16">
-            <div className="text-4xl mb-3">🛒</div>
-            <div className="text-sm">{filter === 'all' ? 'No items — tap + to add' : `No ${filter} items`}</div>
+        {/* 1. Monthly hero KPI — whole card colored, taps to details */}
+        {kpi && (
+          <div className="px-4 pt-3">
+            <button
+              type="button"
+              onClick={openKpiDetails}
+              className="w-full rounded-2xl p-4 shadow-sm text-left active:opacity-90"
+              style={{ background: heroC.bg }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold" style={{ color: heroC.text }}>Purchase Cost Ratio</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px]" style={{ color: heroC.text, opacity: 0.7 }}>Target ≤ {kpi.target}%</span>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={heroC.text} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                </div>
+              </div>
+              <div className="text-xs mb-1.5" style={{ color: heroC.text, opacity: 0.75 }}>{heroLabel}</div>
+              <div className="font-bold leading-none mb-2" style={{ fontSize: 44, color: heroC.text }}>
+                {ratioText(heroPeriod?.ratio ?? null)}
+              </div>
+              <div className="text-sm font-semibold" style={{ color: heroC.text }}>{heroStatusLabel(heroSt)}</div>
+              {kpi.showAmounts && heroPeriod && heroPeriod.purchase !== null && (
+                <div className="text-xs mt-0.5" style={{ color: heroC.text, opacity: 0.75 }}>
+                  {rm(heroPeriod.purchase)} / {rm(heroPeriod.revenue)}
+                </div>
+              )}
+            </button>
           </div>
         )}
-        {!fetching && displayItems.map((item, idx) => (
-          <ItemRow key={item.id} item={item} isLast={idx === displayItems.length - 1}
-            toggling={toggling === item.id} onToggle={() => toggleComplete(item)}
-            onDetail={() => push(`/purchase/${item.id}`, <Suspense fallback={<div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />}><DetailClient itemId={item.id} /></Suspense>)} />
-        ))}
-      </div>
 
-      {/* Stats Panel */}
-      <div ref={setPanelRefCb} className="fixed inset-0 bg-gray-50 flex flex-col" style={{ zIndex: 20 }}>
-        <div className="bg-white px-4 py-3 flex items-center gap-3 border-b" style={{ flexShrink: 0 }}>
-          <button onClick={closePanel} className="text-gray-500">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
-          <span className="font-semibold text-base">Purchase Summary</span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-          <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
-            <div className="text-xs text-gray-400 mb-1">{formatDateLabel(selectedDate)}</div>
-            <div className="text-3xl font-bold text-gray-900">RM {totalAmt.toFixed(2)}</div>
-            <div className="text-xs text-gray-400 mt-1">{items.length} items · {doneItems.length} done</div>
-          </div>
-          <div className="bg-white rounded-2xl p-4 shadow-sm">
-            <div className="text-sm font-semibold text-gray-700 mb-3">Category Breakdown</div>
-            {panelOpen && <DonutChart items={items} />}
-          </div>
-          <div>
-            <div className="text-sm font-semibold text-gray-700 mb-3">Suppliers</div>
-            {panelOpen && <SupplierList items={items} />}
-          </div>
-        </div>
-      </div>
-
-      {/* Add Panel */}
-      {showAdd && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setShowAdd(false)}>
-          <div className="bg-white rounded-t-3xl flex flex-col" style={{ maxHeight: '88vh' }} onClick={e => e.stopPropagation()}>
-            <div className="px-4 pt-5 pb-3 flex items-center justify-between flex-shrink-0 border-b border-gray-100">
-              <span className="font-semibold text-base">Add Item</span>
-              <button onClick={() => setShowAdd(false)} className="text-gray-400 text-xl leading-none">×</button>
+        {/* Filters (owner/manager) */}
+        {showCosts && showFilters && (
+          <div className="px-4 pt-3">
+            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => setFilters((f) => ({ ...f, category: '' }))}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium"
+                  style={{ background: !filters.category ? '#f97316' : '#f3f4f6', color: !filters.category ? '#fff' : '#6b7280' }}>All</button>
+                {PURCHASE_CATEGORIES.map((c) => (
+                  <button key={c} onClick={() => setFilters((f) => ({ ...f, category: f.category === c ? '' : c }))}
+                    className="px-3 py-1.5 rounded-full text-xs font-medium"
+                    style={{ background: filters.category === c ? categoryColor(c) : '#f3f4f6', color: filters.category === c ? '#fff' : '#6b7280' }}>{c}</button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="From"><input type="date" className={inputCls} style={{ fontSize: 14 }} value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))} /></Field>
+                <Field label="To"><input type="date" className={inputCls} style={{ fontSize: 14 }} value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))} /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Supplier"><input className={inputCls} style={{ fontSize: 14 }} placeholder="Any" value={filters.supplier} onChange={(e) => setFilters((f) => ({ ...f, supplier: e.target.value }))} /></Field>
+                <Field label="Purchaser"><input className={inputCls} style={{ fontSize: 14 }} placeholder="Any" value={filters.purchaser} onChange={(e) => setFilters((f) => ({ ...f, purchaser: e.target.value }))} /></Field>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => { const c = { category: '', from: '', to: '', supplier: '', purchaser: '' }; setFilters(c); refresh(c) }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600">Clear</button>
+                <button onClick={() => refresh()} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-orange-500">Apply</button>
+              </div>
             </div>
-            <div className="px-4 py-4 overflow-y-auto flex-1 space-y-3">
-              <NameInput value={form.name} onChange={v => setForm(f => ({ ...f, name: v }))} onCategoryChange={c => setForm(f => ({ ...f, category: c }))} />
-              <div className="grid grid-cols-2 gap-3">
-                <InlinePicker label="Category" value={form.category} options={CATEGORIES} onChange={v => setForm(f => ({ ...f, category: v }))} />
-                <InlinePicker label="Unit" value={form.unit} options={UNITS} onChange={v => setForm(f => ({ ...f, unit: v }))} />
+          </div>
+        )}
+
+        {/* 2. Today's Purchase Checklist */}
+        <ChecklistSection
+          showCosts={showCosts}
+          catalog={catalog}
+          catalogLoading={catalogLoading}
+          onRecordCreated={refresh}
+          refreshKey={checklistRefreshKey}
+        />
+
+        {/* 3. Purchase Records — today only */}
+        <div className="px-4 pt-4">
+          <div className="px-1 mb-2">
+            <span className="text-xs font-semibold text-gray-500">Purchase Records</span>
+          </div>
+
+          {todayRecords.length === 0 ? (
+            <div className="text-center text-gray-400 py-10">
+              <div className="text-3xl mb-2">🛒</div>
+              <div className="text-sm">No records today — tap + to add.</div>
+            </div>
+          ) : (
+            <>
+              <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                {todayRecords.map((item, idx) => (
+                  <RecordRow key={item.id} item={item} isFirst={idx === 0} isLast={idx === todayRecords.length - 1} {...rowProps} />
+                ))}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Qty</label>
-                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400" style={{ fontSize: 16 }} placeholder="0" type="number" inputMode="decimal" value={form.quantity} onChange={e => setForm(f => ({ ...f, quantity: e.target.value }))} />
+              {showCosts && todayTotal > 0 && (
+                <div className="flex justify-end px-1 mt-1.5">
+                  <span className="text-xs font-semibold text-gray-400">{rm(todayTotal)}</span>
                 </div>
-                <div>
-                  <label className="text-xs text-gray-400 mb-1 block">Unit Price (RM)</label>
-                  <input className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400" style={{ fontSize: 16 }} placeholder="0.00" type="number" inputMode="decimal" value={form.unit_price} onChange={e => setForm(f => ({ ...f, unit_price: e.target.value }))} />
-                </div>
-              </div>
-              {form.quantity && form.unit_price && (
-                <div className="text-xs text-gray-500 text-right">Est. Total: RM {(parseFloat(form.quantity) * parseFloat(form.unit_price) || 0).toFixed(2)}</div>
               )}
-              <button onClick={handleAdd} disabled={saving || !form.name.trim()} className="w-full py-3 rounded-2xl text-sm font-semibold text-white" style={{ background: form.name.trim() ? '#f97316' : '#d1d5db' }}>
-                {saving ? 'Saving...' : 'Add Item'}
+            </>
+          )}
+        </div>
+
+        {/* 3. Purchase History — month → day → records tree */}
+        {historyGroups.length > 0 && (
+          <div className="px-4 pt-4">
+            <div className="text-xs font-semibold text-gray-500 px-1 mb-2">Purchase History</div>
+            <div className="space-y-2">
+              {historyGroups.map((month) => (
+                <div key={month.monthKey}>
+                  <button
+                    type="button"
+                    onClick={() => toggleMonth(month.monthKey)}
+                    className="w-full flex items-center justify-between bg-white rounded-2xl px-4 py-3 shadow-sm active:opacity-80"
+                  >
+                    <div className="flex items-center gap-2">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                        stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                        style={{ transform: expandedMonths.has(month.monthKey) ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                      <span className="text-sm font-semibold text-gray-700">{month.monthLabel}</span>
+                    </div>
+                    {showCosts && month.total > 0 && (
+                      <span className="text-xs font-semibold text-gray-400">{rm(month.total)}</span>
+                    )}
+                  </button>
+
+                  {expandedMonths.has(month.monthKey) && (
+                    <div className="mt-1.5 pl-4 space-y-1.5">
+                      {month.days.map((day) => (
+                        <div key={day.date}>
+                          <button
+                            type="button"
+                            onClick={() => toggleDay(day.date)}
+                            className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-2.5 shadow-sm active:opacity-80"
+                          >
+                            <div className="flex items-center gap-2">
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                stroke="#9ca3af" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                                style={{ transform: expandedDays.has(day.date) ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span className="text-sm text-gray-600">{day.label}</span>
+                              <span className="text-xs text-gray-400">({day.items.length})</span>
+                            </div>
+                            {showCosts && day.total > 0 && (
+                              <span className="text-xs font-semibold text-gray-400">{rm(day.total)}</span>
+                            )}
+                          </button>
+
+                          {expandedDays.has(day.date) && (
+                            <div className="mt-1 bg-white rounded-xl shadow-sm overflow-hidden">
+                              {day.items.map((item, idx) => (
+                                <RecordRow key={item.id} item={item} isFirst={idx === 0} isLast={idx === day.items.length - 1} {...rowProps} />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4. Category breakdown (owner/manager) */}
+        {showCosts && summary && summary.categoryBreakdown.length > 0 && (
+          <div className="px-4 pt-3">
+            <button onClick={() => setShowBreakdown((s) => !s)}
+              className="w-full flex items-center justify-between bg-white rounded-2xl px-4 py-3 shadow-sm">
+              <span className="text-sm font-semibold text-gray-700">Category Breakdown</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: showBreakdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {showBreakdown && (
+              <div className="bg-white rounded-2xl p-4 shadow-sm mt-2">
+                <DonutChart data={summary.categoryBreakdown} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 5. Export (owner only) */}
+        {perms.canExport && (
+          <div className="px-4 pt-3">
+            <a href={exportHref}
+              className="flex items-center justify-center gap-2 bg-white rounded-2xl py-3 shadow-sm text-sm font-semibold text-gray-700 active:opacity-60">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Export CSV
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* Success toast */}
+      {successToast && (
+        <div
+          className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', background: '#111827' }}
+        >
+          {successToast}
+        </div>
+      )}
+
+      {/* Add sheet */}
+      {showAdd && (
+        <div
+          className="fixed inset-0 z-[400] flex flex-col justify-end"
+          style={{ background: 'rgba(0,0,0,0.4)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)' }}
+          onClick={() => setShowAdd(false)}
+        >
+          <div
+            className="bg-white rounded-t-3xl flex flex-col"
+            style={{ maxHeight: 'calc(92vh - env(safe-area-inset-bottom, 0px) - 56px)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 pt-5 pb-3 flex items-center justify-between flex-shrink-0 border-b border-gray-100">
+              <span className="font-semibold text-base">Add Purchase</span>
+              <button onClick={() => setShowAdd(false)} className="text-gray-400 text-2xl leading-none">×</button>
+            </div>
+            <div className="px-4 pt-4 pb-4 overflow-y-auto flex-1 min-h-0 space-y-3">
+              {addError && <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{addError}</div>}
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'minmax(0, 65fr) minmax(0, 35fr)' }}>
+                <Field label="Item Name *">
+                  <CatalogCombobox
+                    items={catalog}
+                    selectedItem={selectedAddItem}
+                    loading={catalogLoading}
+                    error={catalogError}
+                    onSelect={(item) => {
+                      setSelectedAddItem(item)
+                      setForm((f) => ({ ...f, name: item.name_zh, category: item.category, unit: item.unit }))
+                    }}
+                  />
+                </Field>
+                <Field label="Specification">
+                  <input className={inputCls} style={{ fontSize: 16 }} placeholder="Optional" value={form.specification}
+                    onChange={(e) => setForm((f) => ({ ...f, specification: e.target.value }))} />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Picker label="Category" value={form.category} options={[...PURCHASE_CATEGORIES]} onChange={(v) => setForm((f) => ({ ...f, category: v }))} />
+                <Picker label="Unit"     value={form.unit}     options={UNITS}                    onChange={(v) => setForm((f) => ({ ...f, unit: v }))} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Quantity *">
+                  <input className={inputCls} style={{ fontSize: 16 }} type="number" inputMode="decimal" placeholder="0"
+                    value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} />
+                </Field>
+                {showCosts ? (
+                  <Field label="Unit Price (RM)">
+                    <input className={inputCls} style={{ fontSize: 16 }} type="number" inputMode="decimal" placeholder="0.00"
+                      value={form.unit_price} onChange={(e) => setForm((f) => ({ ...f, unit_price: e.target.value }))} />
+                  </Field>
+                ) : <div />}
+              </div>
+              {showCosts && (
+                <Field label="Supplier">
+                  <input className={inputCls} style={{ fontSize: 16 }} placeholder="e.g. KK Meat Supply"
+                    value={form.supplier} onChange={(e) => setForm((f) => ({ ...f, supplier: e.target.value }))} />
+                </Field>
+              )}
+              {showCosts && form.quantity && form.unit_price && (
+                <div className="text-xs text-gray-500 text-right">
+                  Est. Total: {rm(parseFloat(form.quantity) * parseFloat(form.unit_price) || 0)}
+                </div>
+              )}
+              <Field label="Receiver">
+                <input className={inputCls} style={{ fontSize: 16 }} placeholder="Optional"
+                  value={form.receiver} onChange={(e) => setForm((f) => ({ ...f, receiver: e.target.value }))} />
+              </Field>
+              <Field label="Remarks">
+                <input className={inputCls} style={{ fontSize: 16 }} placeholder="Optional"
+                  value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} />
+              </Field>
+            </div>
+            <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3"
+              style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}>
+              <div className="grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setShowAdd(false)}
+                  className="py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">Cancel</button>
+                <button type="button" onClick={handleAdd} disabled={saving || !form.name.trim()}
+                  className="py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
+                  style={{ background: form.name.trim() ? '#f97316' : '#d1d5db' }}>
+                  {saving ? 'Saving...' : 'Add Purchase'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm */}
+      {deletingRecord && (
+        <div
+          className="fixed inset-0 z-[500] flex items-end justify-center"
+          style={{ background: 'rgba(0,0,0,0.45)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)' }}
+          onClick={() => { if (!deleteInProgress) setDeletingRecord(null) }}
+        >
+          <div className="bg-white rounded-3xl mx-4 w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 pt-5 pb-4 text-center">
+              <div className="text-base font-semibold text-gray-900 mb-1">Delete this purchase record?</div>
+              <div className="text-sm text-gray-500 truncate">{deletingRecord.name}</div>
+            </div>
+            <div className="grid grid-cols-2 border-t border-gray-100">
+              <button type="button" onClick={() => setDeletingRecord(null)} disabled={deleteInProgress}
+                className="py-3.5 text-sm font-medium text-gray-600 border-r border-gray-100 active:bg-gray-50">Cancel</button>
+              <button type="button" onClick={handleDelete} disabled={deleteInProgress}
+                className="py-3.5 text-sm font-semibold text-red-500 active:bg-red-50">
+                {deleteInProgress ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
         </div>
       )}
-    </div>
-  )
-}
 
-function ItemRow({ item, isLast, toggling, onToggle, onDetail }: { item: PurchaseItem; isLast: boolean; toggling: boolean; onToggle: () => void; onDetail: () => void }) {
-  const done = item.status === 'completed'
-  const catColor = getCatColor(item.category)
-  return (
-    <div className={`flex items-center px-4 py-2.5 ${!isLast ? 'border-b border-gray-100' : ''}`}
-      style={{ borderLeft: `3px solid ${done ? '#e5e7eb' : catColor}`, minHeight: 52 }}>
-      <button onClick={onToggle} disabled={toggling} className="flex-shrink-0 w-6 h-6 rounded-md border-2 flex items-center justify-center mr-3"
-        style={{ borderColor: done ? '#9ca3af' : catColor, background: done ? '#9ca3af' : 'transparent', color: '#fff', opacity: toggling ? 0.5 : 1 }}>
-        {done && <CheckIcon />}
-      </button>
-      <button onClick={onDetail} className="flex-1 min-w-0 text-left">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium text-sm truncate" style={{ color: done ? '#9ca3af' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>{item.name}</span>
-          <span className="text-sm font-semibold flex-shrink-0" style={{ color: done ? '#9ca3af' : '#111827' }}>
-            {(item.total_price ?? 0) > 0 ? `RM ${(item.total_price ?? 0).toFixed(2)}` : '—'}
-          </span>
-        </div>
-        <div className="text-xs text-gray-400 mt-0.5">
-          {(item.unit_price ?? 0) > 0 ? `RM${item.unit_price}/${item.unit}` : '—'} · {(item.quantity ?? 0) > 0 ? `${item.quantity} ${item.unit}` : '—'}
-        </div>
-      </button>
+      {/* Inline field edit sheet */}
+      {inlineEdit && (
+        <InlineFieldEditSheet
+          target={inlineEdit}
+          onClose={() => setInlineEdit(null)}
+          onSaved={() => { showToast('Saved'); refresh() }}
+        />
+      )}
+
+      {/* Full quick edit sheet (from swipe action) */}
+      {editingRecord && (
+        <QuickEditSheet
+          record={editingRecord}
+          showCosts={showCosts}
+          onClose={() => setEditingRecord(null)}
+          onSaved={() => { showToast('Saved'); refresh() }}
+        />
+      )}
     </div>
   )
 }

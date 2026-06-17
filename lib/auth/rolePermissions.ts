@@ -36,6 +36,8 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     PERMISSION.VIEW_PURCHASE,
     PERMISSION.EDIT_PURCHASE,
     PERMISSION.APPROVE_PURCHASE,
+    PERMISSION.VIEW_PURCHASE_COSTS,
+    // Manager does NOT have DELETE_PURCHASE or EXPORT_PURCHASE
 
     // Inventory
     PERMISSION.VIEW_INVENTORY,
@@ -119,9 +121,10 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     // No VIEW_BENTO_CUSTOMERS, EDIT_BENTO_CUSTOMERS
     // No VIEW_BENTO_PAYMENTS, EDIT_BENTO_PAYMENTS
 
-    // Purchase
+    // Purchase — record today's purchases (no costs, no supplier, no delete/export)
     PERMISSION.VIEW_PURCHASE,
     PERMISSION.EDIT_PURCHASE,
+    // Kitchen does NOT have VIEW_PURCHASE_COSTS — prices/supplier never reach staff devices
 
     // Inventory
     PERMISSION.VIEW_INVENTORY,
@@ -139,8 +142,7 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     PERMISSION.VIEW_CHECKLIST_SELF,
     PERMISSION.EDIT_CHECKLIST_SELF,
 
-    // Suppliers — view only
-    PERMISSION.VIEW_SUPPLIERS,
+    // Suppliers — removed: page exposes purchase cost totals (cost-hiding policy)
 
     // Assets — view only
     PERMISSION.VIEW_ASSETS,

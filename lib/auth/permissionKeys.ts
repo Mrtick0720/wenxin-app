@@ -25,6 +25,9 @@ export const PERMISSION = {
   VIEW_PURCHASE:            'purchase:view',
   EDIT_PURCHASE:            'purchase:edit',
   APPROVE_PURCHASE:         'purchase:approve',
+  VIEW_PURCHASE_COSTS:      'purchase:costs:view',   // unit/total price + supplier
+  DELETE_PURCHASE:          'purchase:delete',
+  EXPORT_PURCHASE:          'purchase:export',
 
   // ── Module: Inventory ──
   VIEW_INVENTORY:           'inventory:view',
