@@ -7,6 +7,7 @@ import {
   canExportPurchase,
 } from '@/lib/purchaseLedger/permissions'
 import { businessToday } from '@/lib/purchaseLedger/time'
+import { fetchChecklistAction } from './checklist-actions'
 import PurchaseClient from './PurchaseClient'
 
 export const dynamic = 'force-dynamic'
@@ -14,10 +15,13 @@ export const dynamic = 'force-dynamic'
 export default async function PurchasePage() {
   const staff = await requireRole('owner', 'manager', 'kitchen')
 
-  const [records, summary, kpi] = await Promise.all([
+  // Fetch all data in parallel — checklist included so ChecklistSection
+  // hydrates immediately from SSR without a separate client-side fetch on mount.
+  const [records, summary, kpi, checklistRes] = await Promise.all([
     listRecords(staff.role, {}),
     getSummary(staff.role),
     computeKpi(staff.role),
+    fetchChecklistAction(),
   ])
 
   return (
@@ -27,6 +31,7 @@ export default async function PurchasePage() {
       initialRecords={records}
       initialSummary={summary}
       initialKpi={kpi}
+      initialChecklist={checklistRes.ok ? checklistRes.data : undefined}
       perms={{
         canViewCosts: canViewPurchaseCosts(staff.role),
         canDelete: canDeletePurchase(staff.role),

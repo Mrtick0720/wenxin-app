@@ -6,7 +6,7 @@ import {
   PURCHASE_CATEGORIES,
   categoryColor,
 } from '@/lib/purchaseLedger/categories'
-import type { PurchaseSummary, PurchaseKpi, RatioPeriod } from '@/lib/purchaseLedger/types'
+import type { PurchaseSummary, PurchaseKpi, RatioPeriod, PurchaseRecord } from '@/lib/purchaseLedger/types'
 import BackButton from '../components/BackButton'
 import { useNavigation } from '../components/NavigationStack'
 import {
@@ -20,6 +20,7 @@ import {
   deleteRecordAction,
 } from './actions'
 import { moveRecordToChecklistAction } from './checklist-actions'
+import type { ChecklistEntry } from './checklist-actions'
 import CatalogCombobox from './CatalogCombobox'
 import QuickEditSheet from './QuickEditSheet'
 import ChecklistSection from './ChecklistSection'
@@ -553,6 +554,7 @@ type Props = {
   initialRecords?: LedgerRecord[]
   initialSummary?: PurchaseSummary | null
   initialKpi?: PurchaseKpi
+  initialChecklist?: ChecklistEntry[]
   perms?: Perms
 }
 
@@ -798,13 +800,34 @@ export default function PurchaseClient(props: Props) {
   const heroSt = heroStatus(heroPeriod?.ratio ?? null)
   const heroC  = HERO_COLOR[heroSt]
 
+  // Fire-and-forget background KPI+summary refresh — never blocks the UI
+  function refreshKpiAsync() {
+    fetchKpiAction().then(r => { if (r.ok) setKpi(r.data) })
+    fetchSummaryAction().then(r => { if (r.ok) setSummary(r.data) })
+  }
+
+  // Called by ChecklistSection when a pending item is marked as purchased.
+  // The server action already created the purchase record and returned it —
+  // prepend it directly to avoid a blocking re-fetch of the records list.
+  function handleItemCompleted(record: PurchaseRecord) {
+    setRecords(prev => [record as LedgerRecord, ...prev])
+    refreshKpiAsync()
+  }
+
   async function handleUncheck(rec: LedgerRecord) {
+    // Optimistic: remove from records immediately so the row disappears at once
+    setRecords(prev => prev.filter(r => r.id !== rec.id))
+
     const res = await moveRecordToChecklistAction(rec.id)
     if (res.ok) {
       showToast(`${rec.name} moved back to Checklist`)
+      // Refresh checklist to show the restored pending item
       setChecklistRefreshKey(k => k + 1)
-      refresh()
+      // KPI+summary update in background — non-blocking
+      refreshKpiAsync()
     } else {
+      // Rollback: put the record back
+      setRecords(prev => [rec, ...prev])
       showToast('Could not move back — please try again')
     }
   }
@@ -919,6 +942,8 @@ export default function PurchaseClient(props: Props) {
           catalog={catalog}
           catalogLoading={catalogLoading}
           onRecordCreated={refresh}
+          onItemCompleted={handleItemCompleted}
+          initialItems={props.initialChecklist}
           refreshKey={checklistRefreshKey}
         />
 

@@ -3,7 +3,7 @@
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as svc from '@/lib/purchaseLedger/service'
-import type { ActionResult } from '@/lib/purchaseLedger/types'
+import type { ActionResult, PurchaseRecord } from '@/lib/purchaseLedger/types'
 
 export type ChecklistEntry = {
   id: number
@@ -278,7 +278,7 @@ export async function moveRecordToChecklistAction(
 export async function completeChecklistItemAction(
   id: number,
   completion: { unit_price: number; supplier: string | null },
-): Promise<ActionResult<{ purchaseRecordId: number }>> {
+): Promise<ActionResult<{ purchaseRecordId: number; record: PurchaseRecord }>> {
   try {
     const staff = await requireRole('owner', 'manager')
     const supabase = await createServerSupabaseClient()
@@ -317,7 +317,7 @@ export async function completeChecklistItemAction(
 
     if (updateErr) throw updateErr
 
-    return { ok: true, data: { purchaseRecordId: record.id } }
+    return { ok: true, data: { purchaseRecordId: record.id, record } }
   } catch (error) {
     return fail(error)
   }

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
 import CatalogCombobox from './CatalogCombobox'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
@@ -491,16 +492,20 @@ export default function ChecklistSection({
   catalog,
   catalogLoading,
   onRecordCreated,
+  onItemCompleted,
+  initialItems,
   refreshKey = 0,
 }: {
   showCosts: boolean
   catalog: CatalogItem[]
   catalogLoading: boolean
   onRecordCreated: () => void
+  onItemCompleted?: (record: PurchaseRecord) => void
+  initialItems?: ChecklistEntry[]
   refreshKey?: number
 }) {
-  const [items, setItems] = useState<ChecklistEntry[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
+  const [loading, setLoading] = useState(!initialItems)
 
   // Add sheet
   const [showAdd, setShowAdd] = useState(false)
@@ -527,12 +532,17 @@ export default function ChecklistSection({
     setTimeout(() => setToast(null), 2500)
   }
 
+  // Skip the very first fetch if server-provided initialItems were passed in.
+  // Subsequent refreshKey increments (from mutations) always re-fetch.
+  const skipFirstFetch = useRef(!!initialItems)
   useEffect(() => {
+    if (skipFirstFetch.current) { skipFirstFetch.current = false; return }
     setLoading(true)
     fetchChecklistAction().then(res => {
       if (res.ok) setItems(res.data)
       setLoading(false)
     })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
 
   // ── Add ────────────────────────────────────────────────────────────────────
@@ -593,25 +603,33 @@ export default function ChecklistSection({
   }
 
   // ── Complete ───────────────────────────────────────────────────────────────
-  async function handleComplete(unitPrice: number, supplier: string) {
+    const handleComplete = useCallback(async (unitPrice: number, supplier: string) => {
     if (!completingItem) return
     setCompletionSaving(true); setCompletionError(null)
-    const res = await completeChecklistItemAction(completingItem.id, {
+
+    // Optimistic: immediately remove from checklist before server responds
+    const optimisticItem = completingItem
+    setItems(prev => prev.filter(i => i.id !== optimisticItem.id))
+    setCompletingItem(null)
+
+    const res = await completeChecklistItemAction(optimisticItem.id, {
       unit_price: unitPrice,
       supplier: supplier.trim() || null,
     })
     setCompletionSaving(false)
-    if (!res.ok) { setCompletionError(res.error); return }
-    const name = completingItem.name
-    setItems(prev => prev.map(i =>
-      i.id === completingItem.id
-        ? { ...i, status: 'done' as const, purchase_record_id: res.data.purchaseRecordId, completed_at: new Date().toISOString() }
-        : i,
-    ))
-    setCompletingItem(null)
-    onRecordCreated()
-    showToast(`${name} → Purchase Record created`)
-  }
+
+    if (!res.ok) {
+      // Rollback: put item back
+      setItems(prev => [optimisticItem, ...prev])
+      setCompletionError(res.error)
+      setCompletingItem(optimisticItem)
+      return
+    }
+
+    // Notify parent to prepend the new purchase record — no refresh() needed
+    onItemCompleted?.(res.data.record)
+    showToast(`${optimisticItem.name} → Purchase Record created`)
+  }, [completingItem, onItemCompleted])
 
   // ── Uncomplete (revert done → pending, delete linked purchase record) ─────────
   async function handleUncomplete(item: ChecklistEntry) {
