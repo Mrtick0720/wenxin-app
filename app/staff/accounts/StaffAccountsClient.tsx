@@ -222,73 +222,77 @@ export default function StaffAccountsClient({
           const isActive = status === 'active'
           const isArchived = status === 'archived'
 
+          const roleDirty = (localRoles[account.id] ?? account.role) !== account.role
+
           return (
-            <article key={account.id} className="rounded-xl border border-gray-100 bg-white px-4 py-3">
+            <article key={account.id} className="rounded-xl border border-gray-100 bg-white px-4 py-2.5">
 
-              {/* Name row */}
-              <div className="flex items-center gap-2">
-                <h2 className="flex-1 truncate text-base font-semibold text-gray-900">
-                  {account.display_name}
-                </h2>
-                {isActive && (
-                  <span
-                    className={`h-2 w-2 flex-shrink-0 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
-                    aria-label={account.session_active ? 'Online' : 'Offline'}
-                  />
-                )}
-                <StatusBadge status={status} />
-                {!isOwner && (
-                  <button
-                    type="button"
-                    onClick={() => setDetailTarget(account)}
-                    className="h-7 rounded-lg bg-gray-100 px-2.5 text-xs font-medium text-gray-600 active:bg-gray-200"
+              {/* Row 1: Name | role selector | save | status */}
+              {isOwner || isArchived ? (
+                <div className="flex items-center gap-2">
+                  <h2 className="flex-1 truncate text-sm font-semibold text-gray-900">{account.display_name}</h2>
+                  <span className="text-xs text-gray-400 capitalize">{account.role.replace('_', ' ')}</span>
+                  <StatusBadge status={status} />
+                </div>
+              ) : (
+                <form
+                  action={roleAction}
+                  className="flex items-center gap-1.5"
+                  onSubmit={event => {
+                    const select = (event.currentTarget as HTMLFormElement).elements.namedItem('role') as HTMLSelectElement
+                    const newRole = select?.value as StaffRole
+                    setRoleTargetId(account.id)
+                    if (newRole) setLocalRoles(prev => ({ ...prev, [account.id]: newRole }))
+                  }}
+                >
+                  <input type="hidden" name="targetId" value={account.id} />
+                  <h2 className="shrink-0 text-sm font-semibold text-gray-900">{account.display_name}</h2>
+                  {isActive && (
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                      aria-label={account.session_active ? 'Online' : 'Offline'}
+                    />
+                  )}
+                  <select
+                    name="role"
+                    value={localRoles[account.id] ?? account.role}
+                    onChange={event => setLocalRoles(prev => ({ ...prev, [account.id]: event.target.value as StaffRole }))}
+                    className="h-7 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-1.5 text-xs text-gray-700"
                   >
-                    Edit
-                  </button>
-                )}
-              </div>
-
-              {/* Role row */}
-              <div className="mt-2">
-                {isOwner || isArchived ? (
-                  <span className="text-sm text-gray-500 capitalize">
-                    {account.role.replace('_', ' ')}
-                  </span>
-                ) : (
-                  <form
-                    action={roleAction}
-                    className="flex gap-1.5"
-                    onSubmit={event => {
-                      const select = (event.currentTarget as HTMLFormElement).elements.namedItem('role') as HTMLSelectElement
-                      const newRole = select?.value as StaffRole
-                      setRoleTargetId(account.id)
-                      if (newRole) setLocalRoles(prev => ({ ...prev, [account.id]: newRole }))
-                    }}
-                  >
-                    <input type="hidden" name="targetId" value={account.id} />
-                    <select
-                      name="role"
-                      value={localRoles[account.id] ?? account.role}
-                      onChange={event => setLocalRoles(prev => ({ ...prev, [account.id]: event.target.value as StaffRole }))}
-                      className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                    >
-                      {ALL_ROLES.map(r => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
-                      ))}
-                    </select>
+                    {ALL_ROLES.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  {roleDirty && (
                     <button
                       type="submit"
                       disabled={rolePending && roleTargetId === account.id}
-                      className="h-8 rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 disabled:opacity-50 active:bg-gray-200"
+                      className="h-7 shrink-0 rounded-md bg-orange-500 px-2.5 text-xs font-semibold text-white disabled:opacity-50 active:bg-orange-600"
                     >
                       {rolePending && roleTargetId === account.id ? '…' : 'Save'}
                     </button>
-                  </form>
-                )}
-                {roleTargetId === account.id && roleState.error && (
-                  <p className="mt-1 text-xs text-red-500">{roleState.error}</p>
-                )}
+                  )}
+                  <StatusBadge status={status} />
+                </form>
+              )}
+
+              {/* Row 2: Last login | Edit */}
+              <div className="mt-1.5 flex items-center justify-between">
+                <span className="text-xs text-gray-400">
+                  {account.last_login_at ? formatDate(account.last_login_at) : 'Never logged in'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setDetailTarget(account)}
+                  className="text-xs font-medium text-gray-400 active:text-gray-600"
+                >
+                  Edit ›
+                </button>
               </div>
+
+              {roleTargetId === account.id && roleState.error && (
+                <p className="mt-1 text-xs text-red-500">{roleState.error}</p>
+              )}
 
             </article>
           )
