@@ -4,7 +4,6 @@ import { NavigationProvider } from "./components/NavigationStack";
 import SessionHeartbeat from "./components/SessionHeartbeat";
 import StaffProvider from "./components/StaffProvider";
 import GlobalBottomNav from "./components/GlobalBottomNav";
-import BuildMarker from "./components/BuildMarker";
 import { getCurrentStaff } from "@/lib/auth/currentStaff";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -73,7 +72,6 @@ export default async function RootLayout({
       <body className="min-h-full" style={{ colorScheme: 'light', background: '#ffffff' }}>
         {/* Unregister any stale service workers — prevents iOS PWA cache from serving outdated JS */}
         <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})})}` }} />
-        <BuildMarker />
         <StaffProvider staff={staff}>
           <SessionHeartbeat />
           <NavigationProvider>
