@@ -1103,7 +1103,7 @@ export default function PurchaseClient(props: Props) {
       )}
 
       {/* ── Scrollable content ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
         {/* ── Hero KPI ── */}
         {kpi && ctx && (() => {
           const st = heroStatus(kpi.today.ratio)
