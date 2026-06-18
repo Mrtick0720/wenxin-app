@@ -71,21 +71,26 @@ export async function createStaffAction(
     }
   }
 
-  const profile = {
+  const { error: profileError } = await admin.from('staff_profiles').insert({
     id: created.user.id,
     staff_id: staffId,
     display_name: displayName,
     role,
     active: true,
+    archived: false,
     must_change_password: true,
     password_change_required_at: new Date().toISOString(),
     created_by: owner.id,
-  }
-  const { error: profileError } = await admin.from('staff_profiles').insert(profile)
+  })
 
   if (profileError) {
+    console.error('[createStaffAction] profile insert failed:', profileError)
     await admin.auth.admin.deleteUser(created.user.id)
-    return { ...emptyState, error: 'Unable to finish creating this account.' }
+    const msg = profileError.message ?? ''
+    if (msg.includes('duplicate') || msg.includes('unique')) {
+      return { ...emptyState, error: 'Staff ID already exists.' }
+    }
+    return { ...emptyState, error: `Unable to finish creating this account. (${msg})` }
   }
 
   await writeAccountAudit({
@@ -135,7 +140,7 @@ export async function reactivateStaffAction(formData: FormData) {
 
   const admin = createAdminSupabaseClient()
   const { data: before } = await admin.from('staff_profiles').select('*').eq('id', targetId).single()
-  await admin.from('staff_profiles').update({ active: true }).eq('id', targetId)
+  await admin.from('staff_profiles').update({ active: true, archived: false, archive_date: null, archive_reason: null, archived_by: null }).eq('id', targetId)
   await writeAccountAudit({
     actorId: owner.id,
     actorStaffId: owner.staffId,
@@ -143,7 +148,75 @@ export async function reactivateStaffAction(formData: FormData) {
     targetId,
     summary: `Reactivated ${before?.staff_id ?? 'staff account'}`,
     before,
-    after: before ? { ...before, active: true } : { active: true },
+    after: before ? { ...before, active: true, archived: false } : { active: true, archived: false },
+  })
+  revalidatePath('/staff/accounts')
+}
+
+export async function archiveStaffAction(
+  _previousState: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
+  const owner = await requireRole('owner')
+  const targetId = String(formData.get('targetId') ?? '')
+  const reason = String(formData.get('reason') ?? '').trim()
+  if (!targetId || targetId === owner.id) return { ...emptyState, error: 'Cannot archive this account.' }
+  if (!reason) return { ...emptyState, error: 'Select an archive reason.' }
+
+  const admin = createAdminSupabaseClient()
+  const { data: before } = await admin.from('staff_profiles').select('*').eq('id', targetId).single()
+
+  await admin.from('staff_profiles').update({
+    active: false,
+    archived: true,
+    archive_date: new Date().toISOString(),
+    archive_reason: reason,
+    archived_by: owner.id,
+  }).eq('id', targetId)
+
+  const supabase = await createServerSupabaseClient()
+  await supabase.rpc('invalidate_staff_sessions', {
+    target_user: targetId,
+    reason: 'archived',
+  })
+
+  await writeAccountAudit({
+    actorId: owner.id,
+    actorStaffId: owner.staffId,
+    action: 'account_archived',
+    targetId,
+    summary: `Archived ${before?.staff_id ?? 'staff account'} — ${reason}`,
+    before,
+    after: { active: false, archived: true, archive_reason: reason },
+  })
+  revalidatePath('/staff/accounts')
+  return { error: '', success: `${before?.display_name ?? 'Account'} was archived.` }
+}
+
+export async function restoreStaffAction(formData: FormData) {
+  const owner = await requireRole('owner')
+  const targetId = String(formData.get('targetId') ?? '')
+  if (!targetId) return
+
+  const admin = createAdminSupabaseClient()
+  const { data: before } = await admin.from('staff_profiles').select('*').eq('id', targetId).single()
+
+  await admin.from('staff_profiles').update({
+    active: true,
+    archived: false,
+    archive_date: null,
+    archive_reason: null,
+    archived_by: null,
+  }).eq('id', targetId)
+
+  await writeAccountAudit({
+    actorId: owner.id,
+    actorStaffId: owner.staffId,
+    action: 'account_restored',
+    targetId,
+    summary: `Restored ${before?.staff_id ?? 'staff account'} from archive`,
+    before,
+    after: { active: true, archived: false },
   })
   revalidatePath('/staff/accounts')
 }
@@ -204,21 +277,20 @@ export async function resetStaffPasswordAction(
   return { error: '', success: 'Temporary password was reset.' }
 }
 
-export async function changeStaffRoleAction(formData: FormData) {
+export async function changeStaffRoleAction(
+  _previousState: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
   const owner = await requireRole('owner')
   const targetId = String(formData.get('targetId') ?? '')
   const role = String(formData.get('role') ?? '')
-  if (!targetId || targetId === owner.id || !isStaffRole(role)) return
+  if (!targetId || targetId === owner.id) return { ...emptyState, error: 'Cannot change this account.' }
+  if (!isStaffRole(role)) return { ...emptyState, error: `Invalid role: ${role}` }
 
   const admin = createAdminSupabaseClient()
   const { data: before } = await admin.from('staff_profiles').select('*').eq('id', targetId).single()
-  await admin.from('staff_profiles').update({ role }).eq('id', targetId)
-
-  const supabase = await createServerSupabaseClient()
-  await supabase.rpc('invalidate_staff_sessions', {
-    target_user: targetId,
-    reason: 'forced',
-  })
+  const { error: updateError } = await admin.from('staff_profiles').update({ role }).eq('id', targetId)
+  if (updateError) return { ...emptyState, error: `Failed to update role: ${updateError.message}` }
 
   await writeAccountAudit({
     actorId: owner.id,
@@ -230,4 +302,5 @@ export async function changeStaffRoleAction(formData: FormData) {
     after: { role },
   })
   revalidatePath('/staff/accounts')
+  return { error: '', success: `Role updated to ${role.replace('_', ' ')}.` }
 }

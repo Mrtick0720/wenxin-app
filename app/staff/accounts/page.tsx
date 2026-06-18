@@ -2,25 +2,16 @@ import BackButton from '@/app/components/BackButton'
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import StaffAccountsClient, { type StaffAccountRow } from './StaffAccountsClient'
-import type { StaffRole } from '@/lib/auth/types'
-
-type ProfileRow = {
-  id: string
-  staff_id: string
-  display_name: string
-  role: StaffRole
-  active: boolean
-  last_login_at: string | null
-}
 
 export default async function StaffAccountsPage() {
   const owner = await requireRole('owner')
   const supabase = await createServerSupabaseClient()
   const now = new Date().toISOString()
+
   const [{ data: profiles }, { data: sessions }] = await Promise.all([
     supabase
       .from('staff_profiles')
-      .select('id,staff_id,display_name,role,active,last_login_at')
+      .select('id,staff_id,display_name,role,active,archived,archive_date,archive_reason,last_login_at')
       .order('display_name'),
     supabase
       .from('staff_sessions')
@@ -29,9 +20,17 @@ export default async function StaffAccountsPage() {
       .gt('expires_at', now),
   ])
 
-  const activeUserIds = new Set((sessions || []).map(session => session.staff_user_id))
-  const accounts: StaffAccountRow[] = ((profiles || []) as ProfileRow[]).map(profile => ({
-    ...profile,
+  const activeUserIds = new Set((sessions || []).map(s => s.staff_user_id))
+  const accounts: StaffAccountRow[] = (profiles ?? []).map(profile => ({
+    id: profile.id,
+    staff_id: profile.staff_id,
+    display_name: profile.display_name,
+    role: profile.role,
+    active: profile.active,
+    last_login_at: profile.last_login_at,
+    archived: profile.archived ?? false,
+    archive_date: profile.archive_date ?? null,
+    archive_reason: profile.archive_reason ?? null,
     session_active: activeUserIds.has(profile.id),
   }))
 
@@ -44,7 +43,10 @@ export default async function StaffAccountsPage() {
           <p className="text-xs text-gray-400">{accounts.length} accounts</p>
         </div>
       </header>
-      <div className="mx-auto max-w-3xl px-4 py-4 pb-12">
+      <div
+        className="mx-auto max-w-3xl px-4 py-4"
+        style={{ paddingBottom: 'calc(112px + env(safe-area-inset-bottom, 0px))' }}
+      >
         <StaffAccountsClient accounts={accounts} ownerId={owner.id} />
       </div>
     </main>
