@@ -15,9 +15,10 @@ import type { StaffRole } from '@/lib/auth/types'
 // Pure route metadata (path/label/section/key) lives in ./stackRoutes, which
 // imports no page modules at all.
 
-const PurchaseClient   = lazy(() => import('@/app/purchase/PurchaseClient'))
-const BentoClient      = lazy(() => import('@/app/bento/BentoClient'))
-const StaffPage        = lazy(() => import('@/app/staff/page'))
+const PurchaseClient      = lazy(() => import('@/app/purchase/PurchaseClient'))
+const BentoClient         = lazy(() => import('@/app/bento/BentoClient'))
+const StaffPage           = lazy(() => import('@/app/staff/page'))
+const StaffAccountsStack  = lazy(() => import('@/app/staff/accounts/StaffAccountsStack'))
 const FinancePage      = lazy(() => import('@/app/finance/page'))
 const InventoryPage    = lazy(() => import('@/app/inventory/page'))
 const ReportsPage      = lazy(() => import('@/app/reports/page'))
@@ -51,7 +52,8 @@ type RouteFactory = () => React.ReactNode
 const pages: Record<string, RouteFactory> = {
   '/purchase':     () => <S><PurchaseClient /></S>,
   '/bento':        () => <S><BentoStack /></S>,
-  '/staff':        () => <S><StaffPage /></S>,
+  '/staff':          () => <S><StaffPage /></S>,
+  '/staff/accounts': () => <S><StaffAccountsStack /></S>,
   '/finance':      () => <S><FinancePage /></S>,
   '/inventory':    () => <S><InventoryPage /></S>,
   '/reports':      () => <S><ReportsPage /></S>,
@@ -85,6 +87,7 @@ export function preloadRoutes() {
   p(PurchaseClient)
   p(BentoClient)
   p(StaffPage)
+  p(StaffAccountsStack)
   p(FinancePage)
   p(InventoryPage)
   p(ReportsPage)
