@@ -97,6 +97,11 @@ function StatusBadge({ status }: { status: StaffAccountStatus }) {
   )
 }
 
+const SHEET_STYLE: React.CSSProperties = {
+  bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))',
+  maxHeight: 'calc(85vh - 64px)',
+}
+
 export default function StaffAccountsClient({
   accounts,
   ownerId,
@@ -109,16 +114,17 @@ export default function StaffAccountsClient({
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showCreate, setShowCreate] = useState(false)
+  const [detailTarget, setDetailTarget] = useState<StaffAccountRow | null>(null)
   const [resetTarget, setResetTarget] = useState<StaffAccountRow | null>(null)
   const [archiveTarget, setArchiveTarget] = useState<StaffAccountRow | null>(null)
 
   const [createState, createAction, createPending] = useActionState(createStaffAction, initialState)
   const [resetState, resetAction, resetPending] = useActionState(resetStaffPasswordAction, initialState)
   const [archiveState, archiveAction, archivePending] = useActionState(archiveStaffAction, initialState)
-  // Role change: single useActionState at top level — avoids sub-component hook issues on Safari
+  // Single useActionState at top level — avoids sub-component hook issues on Safari
   const [roleState, roleAction, rolePending] = useActionState(changeStaffRoleAction, initialState)
   const [roleTargetId, setRoleTargetId] = useState<string | null>(null)
-  // Optimistic local role values — updated immediately on success so dropdown reflects new role
+  // Optimistic local role values — updated immediately so dropdown reflects new role before server refresh
   const [localRoles, setLocalRoles] = useState<Record<string, StaffRole>>(() =>
     Object.fromEntries(accounts.map(a => [a.id, a.role]))
   )
@@ -127,6 +133,15 @@ export default function StaffAccountsClient({
   useEffect(() => {
     if (roleState.success) router.refresh()
   }, [roleState.success, router])
+
+  // Sync detailTarget with refreshed account data
+  useEffect(() => {
+    if (detailTarget) {
+      const updated = accounts.find(a => a.id === detailTarget.id)
+      if (updated) setDetailTarget(updated)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts])
 
   const sorted = useMemo(() => sortAccounts(accounts, ownerId), [accounts, ownerId])
 
@@ -147,6 +162,15 @@ export default function StaffAccountsClient({
     { key: 'suspended', label: 'Suspended' },
     { key: 'archived', label: 'Archived' },
   ]
+
+  // Detail sheet action keys
+  const detailActionKeys = detailTarget
+    ? getStaffAccountActionKeys({
+        isOwner: detailTarget.id === ownerId,
+        status: getStatus(detailTarget),
+        sessionActive: detailTarget.session_active,
+      })
+    : []
 
   return (
     <>
@@ -184,199 +208,98 @@ export default function StaffAccountsClient({
         <button
           type="button"
           onClick={() => setShowCreate(true)}
-          className="h-11 rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white"
+          className="h-11 rounded-lg bg-orange-500 px-4 text-sm font-semibold text-white active:bg-orange-600"
         >
           Create
         </button>
       </div>
 
-      {/* Account list */}
+      {/* ── Account list ── */}
       <div className="mt-4 space-y-2">
         {filtered.map(account => {
           const isOwner = account.id === ownerId
           const status = getStatus(account)
           const isActive = status === 'active'
           const isArchived = status === 'archived'
-          const actionKeys = getStaffAccountActionKeys({
-            isOwner,
-            status,
-            sessionActive: account.session_active,
-          })
 
           return (
-            <article key={account.id} className="rounded-xl border border-gray-100 bg-white p-4">
+            <article key={account.id} className="rounded-xl border border-gray-100 bg-white px-4 py-3">
 
-              {/* Name + status badge */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h2 className="truncate text-base font-semibold text-gray-900">{account.display_name}</h2>
-                    {isActive && (
-                      <span
-                        className={`h-2 w-2 flex-shrink-0 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
-                        aria-label={account.session_active ? 'Online' : 'Offline'}
-                      />
-                    )}
-                  </div>
-                  <p className="mt-0.5 text-sm text-gray-400">{account.staff_id}</p>
-                </div>
+              {/* Name row */}
+              <div className="flex items-center gap-2">
+                <h2 className="flex-1 truncate text-base font-semibold text-gray-900">
+                  {account.display_name}
+                </h2>
+                {isActive && (
+                  <span
+                    className={`h-2 w-2 flex-shrink-0 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                    aria-label={account.session_active ? 'Online' : 'Offline'}
+                  />
+                )}
                 <StatusBadge status={status} />
+                {!isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => setDetailTarget(account)}
+                    className="h-7 rounded-lg bg-gray-100 px-2.5 text-xs font-medium text-gray-600 active:bg-gray-200"
+                  >
+                    Edit
+                  </button>
+                )}
               </div>
 
-              {/* Role + last login */}
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div>
-                  <div className="text-xs text-gray-400">Role</div>
-                  {isOwner || isArchived ? (
-                    <div className="mt-1 text-sm font-medium text-gray-700 capitalize">
-                      {account.role.replace('_', ' ')}
-                    </div>
-                  ) : (
-                    <div>
-                      <form
-                        action={roleAction}
-                        className="mt-1 flex gap-1.5"
-                        onSubmit={event => {
-                          const select = (event.currentTarget as HTMLFormElement).elements.namedItem('role') as HTMLSelectElement
-                          const newRole = select?.value as StaffRole
-                          setRoleTargetId(account.id)
-                          if (newRole) {
-                            setLocalRoles(prev => ({ ...prev, [account.id]: newRole }))
-                          }
-                        }}
-                      >
-                        <input type="hidden" name="targetId" value={account.id} />
-                        <select
-                          name="role"
-                          value={localRoles[account.id] ?? account.role}
-                          onChange={event => setLocalRoles(prev => ({ ...prev, [account.id]: event.target.value as StaffRole }))}
-                          className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-sm"
-                        >
-                          {ALL_ROLES.map(r => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="submit"
-                          disabled={rolePending && roleTargetId === account.id}
-                          className="h-8 rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 disabled:opacity-50"
-                        >
-                          {rolePending && roleTargetId === account.id ? '…' : 'Save'}
-                        </button>
-                      </form>
-                      {roleTargetId === account.id && roleState.error && (
-                        <p className="mt-1 text-xs text-red-500">{roleState.error}</p>
-                      )}
-                      {roleTargetId === account.id && roleState.success && (
-                        <p className="mt-1 text-xs text-green-600">{roleState.success}</p>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div className="text-xs text-gray-400">Last login</div>
-                  <div className="mt-1 text-sm font-medium text-gray-700">{formatDate(account.last_login_at)}</div>
-                </div>
+              {/* Role row */}
+              <div className="mt-2">
+                {isOwner || isArchived ? (
+                  <span className="text-sm text-gray-500 capitalize">
+                    {account.role.replace('_', ' ')}
+                  </span>
+                ) : (
+                  <form
+                    action={roleAction}
+                    className="flex gap-1.5"
+                    onSubmit={event => {
+                      const select = (event.currentTarget as HTMLFormElement).elements.namedItem('role') as HTMLSelectElement
+                      const newRole = select?.value as StaffRole
+                      setRoleTargetId(account.id)
+                      if (newRole) setLocalRoles(prev => ({ ...prev, [account.id]: newRole }))
+                    }}
+                  >
+                    <input type="hidden" name="targetId" value={account.id} />
+                    <select
+                      name="role"
+                      value={localRoles[account.id] ?? account.role}
+                      onChange={event => setLocalRoles(prev => ({ ...prev, [account.id]: event.target.value as StaffRole }))}
+                      className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-sm"
+                    >
+                      {ALL_ROLES.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={rolePending && roleTargetId === account.id}
+                      className="h-8 rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 disabled:opacity-50 active:bg-gray-200"
+                    >
+                      {rolePending && roleTargetId === account.id ? '…' : 'Save'}
+                    </button>
+                  </form>
+                )}
+                {roleTargetId === account.id && roleState.error && (
+                  <p className="mt-1 text-xs text-red-500">{roleState.error}</p>
+                )}
               </div>
-
-              {/* Archive info */}
-              {isArchived && account.archive_date && (
-                <div className="mt-3 rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-500 space-y-0.5">
-                  <div><span className="text-gray-400">Archived: </span>{formatDate(account.archive_date)}</div>
-                  {account.archive_reason && (
-                    <div><span className="text-gray-400">Reason: </span>{account.archive_reason}</div>
-                  )}
-                </div>
-              )}
-
-              {actionKeys.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
-                  {actionKeys.includes('reset-password') && (
-                    <button
-                      type="button"
-                      onClick={() => setResetTarget(account)}
-                      className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 active:bg-gray-200"
-                    >
-                      Reset password
-                    </button>
-                  )}
-                  {actionKeys.includes('force-logout') && (
-                    <form
-                      action={forceLogoutStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Force ${account.display_name} to sign out?`)) event.preventDefault()
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={account.id} />
-                      <button type="submit" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 active:bg-amber-100">
-                        Force logout
-                      </button>
-                    </form>
-                  )}
-                  {actionKeys.includes('suspend') && (
-                    <form
-                      action={suspendStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Suspend ${account.display_name}?`)) event.preventDefault()
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={account.id} />
-                      <button type="submit" className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 active:bg-red-100">
-                        Suspend
-                      </button>
-                    </form>
-                  )}
-                  {actionKeys.includes('reactivate') && (
-                    <form
-                      action={reactivateStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Reactivate ${account.display_name}?`)) event.preventDefault()
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={account.id} />
-                      <button type="submit" className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-600 active:bg-green-100">
-                        Reactivate
-                      </button>
-                    </form>
-                  )}
-                  {actionKeys.includes('archive') && (
-                    <button
-                      type="button"
-                      onClick={() => setArchiveTarget(account)}
-                      className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white active:bg-gray-700"
-                    >
-                      Archive
-                    </button>
-                  )}
-                  {actionKeys.includes('restore') && (
-                    <form
-                      action={restoreStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Restore ${account.display_name} to active?`)) event.preventDefault()
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={account.id} />
-                      <button type="submit" className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-600 active:bg-green-100">
-                        Restore
-                      </button>
-                    </form>
-                  )}
-                </div>
-              )}
 
             </article>
           )
         })}
       </div>
 
-      {/* Create bottom sheet */}
+      {/* ── Create sheet ── */}
       {showCreate && (
         <>
           <div className="fixed inset-0 z-[200] bg-black/40" onClick={() => setShowCreate(false)} />
-          <div
-            className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col"
-            style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(85vh - 64px)' }}
-          >
+          <div className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <h2 className="text-base font-semibold text-gray-900">Create staff account</h2>
               <button type="button" onClick={() => setShowCreate(false)} className="h-8 w-8 flex items-center justify-center text-gray-400 text-xl" aria-label="Close">×</button>
@@ -403,14 +326,144 @@ export default function StaffAccountsClient({
         </>
       )}
 
-      {/* Reset password bottom sheet */}
+      {/* ── Staff detail sheet ── */}
+      {detailTarget && (
+        <>
+          <div className="fixed inset-0 z-[200] bg-black/40" onClick={() => setDetailTarget(null)} />
+          <div className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
+
+            {/* Sheet header */}
+            <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">{detailTarget.display_name}</h2>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <span className="text-sm text-gray-400">{detailTarget.staff_id}</span>
+                  <StatusBadge status={getStatus(detailTarget)} />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailTarget(null)}
+                className="h-8 w-8 flex items-center justify-center text-gray-400 text-xl"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto min-h-0">
+
+              {/* Info section */}
+              <div className="px-5 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Last login</span>
+                  <span className="font-medium text-gray-700">{formatDate(detailTarget.last_login_at)}</span>
+                </div>
+                {getStatus(detailTarget) === 'archived' && detailTarget.archive_date && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-gray-400">Archived</span>
+                      <span className="font-medium text-gray-700">{formatDate(detailTarget.archive_date)}</span>
+                    </div>
+                    {detailTarget.archive_reason && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Reason</span>
+                        <span className="font-medium text-gray-700">{detailTarget.archive_reason}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Actions section */}
+              {detailActionKeys.length > 0 && (
+                <div className="px-5 py-4 space-y-2">
+                  {detailActionKeys.includes('reset-password') && (
+                    <button
+                      type="button"
+                      onClick={() => setResetTarget(detailTarget)}
+                      className="w-full rounded-xl bg-gray-100 px-4 py-3 text-left text-sm font-medium text-gray-700 active:bg-gray-200"
+                    >
+                      Reset password
+                    </button>
+                  )}
+                  {detailActionKeys.includes('force-logout') && (
+                    <form
+                      action={forceLogoutStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Force ${detailTarget.display_name} to sign out?`)) event.preventDefault()
+                        else setDetailTarget(null)
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={detailTarget.id} />
+                      <button type="submit" className="w-full rounded-xl bg-amber-50 px-4 py-3 text-left text-sm font-medium text-amber-700 active:bg-amber-100">
+                        Force logout
+                      </button>
+                    </form>
+                  )}
+                  {detailActionKeys.includes('reactivate') && (
+                    <form
+                      action={reactivateStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Reactivate ${detailTarget.display_name}?`)) event.preventDefault()
+                        else setDetailTarget(null)
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={detailTarget.id} />
+                      <button type="submit" className="w-full rounded-xl bg-green-50 px-4 py-3 text-left text-sm font-medium text-green-600 active:bg-green-100">
+                        Reactivate
+                      </button>
+                    </form>
+                  )}
+                  {detailActionKeys.includes('suspend') && (
+                    <form
+                      action={suspendStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Suspend ${detailTarget.display_name}?`)) event.preventDefault()
+                        else setDetailTarget(null)
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={detailTarget.id} />
+                      <button type="submit" className="w-full rounded-xl bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-600 active:bg-red-100">
+                        Suspend
+                      </button>
+                    </form>
+                  )}
+                  {detailActionKeys.includes('restore') && (
+                    <form
+                      action={restoreStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Restore ${detailTarget.display_name} to active?`)) event.preventDefault()
+                        else setDetailTarget(null)
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={detailTarget.id} />
+                      <button type="submit" className="w-full rounded-xl bg-green-50 px-4 py-3 text-left text-sm font-medium text-green-600 active:bg-green-100">
+                        Restore
+                      </button>
+                    </form>
+                  )}
+                  {detailActionKeys.includes('archive') && (
+                    <button
+                      type="button"
+                      onClick={() => setArchiveTarget(detailTarget)}
+                      className="w-full rounded-xl bg-gray-800 px-4 py-3 text-left text-sm font-medium text-white active:bg-gray-700"
+                    >
+                      Archive
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Reset password sub-sheet (z-[202] layers above detail sheet) ── */}
       {resetTarget && (
         <>
-          <div className="fixed inset-0 z-[200] bg-black/40" onClick={() => setResetTarget(null)} />
-          <div
-            className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col"
-            style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(85vh - 64px)' }}
-          >
+          <div className="fixed inset-0 z-[202] bg-black/40" onClick={() => setResetTarget(null)} />
+          <div className="fixed left-0 right-0 z-[203] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Reset password</h2>
@@ -437,14 +490,11 @@ export default function StaffAccountsClient({
         </>
       )}
 
-      {/* Archive bottom sheet */}
+      {/* ── Archive sub-sheet (z-[202] layers above detail sheet) ── */}
       {archiveTarget && (
         <>
-          <div className="fixed inset-0 z-[200] bg-black/40" onClick={() => setArchiveTarget(null)} />
-          <div
-            className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col"
-            style={{ bottom: 'calc(64px + env(safe-area-inset-bottom, 0px))', maxHeight: 'calc(85vh - 64px)' }}
-          >
+          <div className="fixed inset-0 z-[202] bg-black/40" onClick={() => setArchiveTarget(null)} />
+          <div className="fixed left-0 right-0 z-[203] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h2 className="text-base font-semibold text-gray-900">Archive Employee?</h2>
