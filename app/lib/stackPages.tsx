@@ -19,6 +19,8 @@ const PurchaseClient      = lazy(() => import('@/app/purchase/PurchaseClient'))
 const BentoClient         = lazy(() => import('@/app/bento/BentoClient'))
 const StaffPage           = lazy(() => import('@/app/staff/page'))
 const StaffAccountsStack  = lazy(() => import('@/app/staff/accounts/StaffAccountsStack'))
+const TasksPage           = lazy(() => import('@/app/tasks/page'))
+const ProfileStack        = lazy(() => import('@/app/profile/ProfileStack'))
 const FinancePage      = lazy(() => import('@/app/finance/page'))
 const InventoryPage    = lazy(() => import('@/app/inventory/page'))
 const ReportsPage      = lazy(() => import('@/app/reports/page'))
@@ -26,7 +28,6 @@ const DineInPage       = lazy(() => import('@/app/dine-in/page'))
 const ReservationsPage = lazy(() => import('@/app/reservations/page'))
 const ComplaintsPage   = lazy(() => import('@/app/complaints/page'))
 const IncidentsPage    = lazy(() => import('@/app/incidents/page'))
-const TasksPage        = lazy(() => import('@/app/tasks/page'))
 const AllModulesPage   = lazy(() => import('@/app/all/page'))
 const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
 const AssetsPage       = lazy(() => import('@/app/assets/page'))
@@ -54,6 +55,8 @@ const pages: Record<string, RouteFactory> = {
   '/bento':        () => <S><BentoStack /></S>,
   '/staff':          () => <S><StaffPage /></S>,
   '/staff/accounts': () => <S><StaffAccountsStack /></S>,
+  '/tasks':          () => <S><TasksPage /></S>,
+  '/profile':        () => <S><ProfileStack /></S>,
   '/finance':      () => <S><FinancePage /></S>,
   '/inventory':    () => <S><InventoryPage /></S>,
   '/reports':      () => <S><ReportsPage /></S>,
@@ -61,7 +64,6 @@ const pages: Record<string, RouteFactory> = {
   '/reservations': () => <S><ReservationsPage /></S>,
   '/complaints':   () => <S><ComplaintsPage /></S>,
   '/incidents':    () => <S><IncidentsPage /></S>,
-  '/tasks':        () => <S><TasksPage /></S>,
   '/all':          () => <S><AllModulesPage /></S>,
   '/suppliers':    () => <S><SuppliersPage /></S>,
   '/assets':       () => <S><AssetsPage /></S>,
@@ -88,6 +90,8 @@ export function preloadRoutes() {
   p(BentoClient)
   p(StaffPage)
   p(StaffAccountsStack)
+  p(TasksPage)
+  p(ProfileStack)
   p(FinancePage)
   p(InventoryPage)
   p(ReportsPage)
@@ -95,7 +99,6 @@ export function preloadRoutes() {
   p(ReservationsPage)
   p(ComplaintsPage)
   p(IncidentsPage)
-  p(TasksPage)
   p(AllModulesPage)
   p(SuppliersPage)
   p(AssetsPage)

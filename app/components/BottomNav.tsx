@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { useNavigation } from './NavigationStack'
 import { getPageElement } from '@/app/lib/stackPages'
 
@@ -51,32 +51,36 @@ const tabs = [
 ]
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
-  const { push, reset, currentPath } = useNavigation()
-  const pathname = usePathname()
+  const { push, replace, popToRoot, canPop, currentPath } = useNavigation()
+  const router = useRouter()
 
-  // On a standalone URL route (e.g. /profile, or a directly-loaded page), the
-  // in-app stack model doesn't apply — let the anchor navigate by URL so every
-  // tab, including Home, actually moves. On the dashboard ('/') we drive the
-  // client navigation stack instead, and fall back to URL navigation for tabs
-  // with no client-renderable page (mirrors NavLink).
   const handleTap = (e: React.MouseEvent, href: string) => {
-    if (pathname !== '/') return
+    e.preventDefault()
+
     if (href === '/') {
-      e.preventDefault()
-      reset()
+      popToRoot()
       return
     }
+
+    // Don't re-navigate to the tab already open
+    if (currentPath === href || currentPath.startsWith(`${href}/`)) return
+
     const el = getPageElement(href)
     if (el) {
-      e.preventDefault()
-      push(href, el)
+      // Replace existing layer so tabs swap cleanly (no stacking of tab pages)
+      if (canPop) {
+        replace(href, el)
+      } else {
+        push(href, el)
+      }
+      return
     }
+
+    // Non-stack page — use client-side router.push to avoid loading.tsx splash
+    router.push(href)
   }
 
-  // Active tab: use the real URL when on a standalone route, otherwise the top
-  // of the navigation stack. Detail pages (e.g. /purchase/123) keep their parent
-  // tab highlighted.
-  const activePath = pathname !== '/' ? pathname : currentPath
+  const activePath = currentPath
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-[300]">

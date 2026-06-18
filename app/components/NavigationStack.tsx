@@ -16,6 +16,8 @@ type StackEntry = { id: string; path: string; element: React.ReactNode }
 type NavCtx = {
   push: (path: string, element: React.ReactNode) => void
   pop: () => void
+  replace: (path: string, element: React.ReactNode) => void
+  popToRoot: () => void
   reset: () => void
   canPop: boolean
   currentPath: string
@@ -192,7 +194,39 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     setStack(prev => [...prev, { id, path, element }])
   }, [])
 
-  // Instantly clear all stack layers (for tab-bar navigation)
+  // Replace the top layer with a new page — new slides in from right, old slides out right behind it
+  const replace = useCallback((path: string, element: React.ReactNode) => {
+    const newId = String(Date.now())
+    setStack(prev => {
+      if (prev.length === 0) return [{ id: newId, path, element }]
+      const topId = prev[prev.length - 1].id
+      // Trigger leave animation after current render commit
+      setTimeout(() => {
+        setLeavingIds(s => new Set([...s, topId]))
+        setTimeout(() => {
+          setStack(s => s.filter(e => e.id !== topId))
+          setLeavingIds(s => { const n = new Set(s); n.delete(topId); return n })
+        }, DURATION + 60)
+      }, 0)
+      return [...prev, { id: newId, path, element }]
+    })
+  }, [])
+
+  // Animate the top layer out then clear the whole stack (Home tap)
+  const popToRoot = useCallback(() => {
+    setStack(prev => {
+      if (prev.length === 0) return prev
+      const topId = prev[prev.length - 1].id
+      setLeavingIds(s => new Set([...s, topId]))
+      setTimeout(() => {
+        setStack([])
+        setLeavingIds(new Set())
+      }, DURATION + 60)
+      return prev
+    })
+  }, [])
+
+  // Instantly clear all stack layers (emergency reset, not used for normal nav)
   const reset = useCallback(() => {
     setStack([])
     setLeavingIds(new Set())
@@ -201,7 +235,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const currentPath = stack.length > 0 ? stack[stack.length - 1].path : '/'
 
   return (
-    <Context.Provider value={{ push, pop, reset, canPop: stack.length > 0, currentPath }}>
+    <Context.Provider value={{ push, pop, replace, popToRoot, reset, canPop: stack.length > 0, currentPath }}>
       {children}
       {stack.map((entry, i) => (
         <StackLayer
