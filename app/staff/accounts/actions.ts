@@ -304,3 +304,26 @@ export async function changeStaffRoleAction(
   revalidatePath('/staff/accounts')
   return { error: '', success: `Role updated to ${role.replace('_', ' ')}.` }
 }
+
+export async function updateStaffInfoAction(
+  _previousState: AccountActionState,
+  formData: FormData
+): Promise<AccountActionState> {
+  const owner = await requireRole('owner')
+  const targetId = String(formData.get('targetId') ?? '').trim()
+  if (!targetId || targetId === owner.id) return { ...emptyState, error: 'Cannot edit this account.' }
+
+  const phone   = String(formData.get('phone')   ?? '').trim() || null
+  const address = String(formData.get('address') ?? '').trim() || null
+  const notes   = String(formData.get('notes')   ?? '').trim() || null
+
+  const admin = createAdminSupabaseClient()
+  const { error: updateError } = await admin
+    .from('staff_profiles')
+    .update({ phone, address, notes })
+    .eq('id', targetId)
+  if (updateError) return { ...emptyState, error: `Failed to save: ${updateError.message}` }
+
+  revalidatePath('/staff/accounts')
+  return { error: '', success: 'Saved.' }
+}

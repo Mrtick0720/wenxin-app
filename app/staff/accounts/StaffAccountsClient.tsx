@@ -1,23 +1,17 @@
 'use client'
 
-import { useActionState, useEffect, useMemo, useState } from 'react'
+import { lazy, useActionState, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { StaffRole } from '@/lib/auth/types'
+import type { StaffAccountStatus } from '@/lib/staffAccountActions'
 import {
-  getStaffAccountActionKeys,
-  type StaffAccountStatus,
-} from '@/lib/staffAccountActions'
-import {
-  archiveStaffAction,
   changeStaffRoleAction,
   createStaffAction,
-  forceLogoutStaffAction,
-  reactivateStaffAction,
-  resetStaffPasswordAction,
-  restoreStaffAction,
-  suspendStaffAction,
   type AccountActionState,
 } from './actions'
+import { useNavigation } from '@/app/components/NavigationStack'
+
+const StaffDetailPage = lazy(() => import('./StaffDetailPage'))
 
 export type StaffAccountRow = {
   id: string
@@ -30,11 +24,13 @@ export type StaffAccountRow = {
   archive_reason: string | null
   last_login_at: string | null
   session_active: boolean
+  created_at: string | null
+  phone: string | null
+  address: string | null
+  notes: string | null
 }
 
 type StatusFilter = 'all' | 'active' | 'suspended' | 'archived'
-
-const ARCHIVE_REASONS = ['Resigned', 'Terminated', 'No Longer Employed', 'Other']
 
 const initialState: AccountActionState = { error: '', success: '' }
 
@@ -110,17 +106,13 @@ export default function StaffAccountsClient({
   ownerId: string
 }) {
   const router = useRouter()
+  const { push } = useNavigation()
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [showCreate, setShowCreate] = useState(false)
-  const [detailTarget, setDetailTarget] = useState<StaffAccountRow | null>(null)
-  const [resetTarget, setResetTarget] = useState<StaffAccountRow | null>(null)
-  const [archiveTarget, setArchiveTarget] = useState<StaffAccountRow | null>(null)
 
   const [createState, createAction, createPending] = useActionState(createStaffAction, initialState)
-  const [resetState, resetAction, resetPending] = useActionState(resetStaffPasswordAction, initialState)
-  const [archiveState, archiveAction, archivePending] = useActionState(archiveStaffAction, initialState)
   // Single useActionState at top level — avoids sub-component hook issues on Safari
   const [roleState, roleAction, rolePending] = useActionState(changeStaffRoleAction, initialState)
   const [roleTargetId, setRoleTargetId] = useState<string | null>(null)
@@ -133,15 +125,6 @@ export default function StaffAccountsClient({
   useEffect(() => {
     if (roleState.success) router.refresh()
   }, [roleState.success, router])
-
-  // Sync detailTarget with refreshed account data
-  useEffect(() => {
-    if (detailTarget) {
-      const updated = accounts.find(a => a.id === detailTarget.id)
-      if (updated) setDetailTarget(updated)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts])
 
   const sorted = useMemo(() => sortAccounts(accounts, ownerId), [accounts, ownerId])
 
@@ -164,14 +147,6 @@ export default function StaffAccountsClient({
   ]
 
   // Detail sheet action keys
-  const detailActionKeys = detailTarget
-    ? getStaffAccountActionKeys({
-        isOwner: detailTarget.id === ownerId,
-        status: getStatus(detailTarget),
-        sessionActive: detailTarget.session_active,
-      })
-    : []
-
   return (
     <>
       {/* Status filter tabs */}
@@ -283,7 +258,7 @@ export default function StaffAccountsClient({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setDetailTarget(account)}
+                  onClick={() => push('/staff/accounts/detail', <StaffDetailPage account={account} ownerId={ownerId} />)}
                   className="text-xs font-medium text-gray-400 active:text-gray-600"
                 >
                   Edit ›
@@ -330,211 +305,6 @@ export default function StaffAccountsClient({
         </>
       )}
 
-      {/* ── Staff detail sheet ── */}
-      {detailTarget && (
-        <>
-          <div className="fixed inset-0 z-[200] bg-black/40" onClick={() => setDetailTarget(null)} />
-          <div className="fixed left-0 right-0 z-[201] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
-
-            {/* Sheet header */}
-            <div className="flex items-start justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">{detailTarget.display_name}</h2>
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="text-sm text-gray-400">{detailTarget.staff_id}</span>
-                  <StatusBadge status={getStatus(detailTarget)} />
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDetailTarget(null)}
-                className="h-8 w-8 flex items-center justify-center text-gray-400 text-xl"
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto min-h-0">
-
-              {/* Info section */}
-              <div className="px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-400">Last login</span>
-                  <span className="font-medium text-gray-700">{formatDate(detailTarget.last_login_at)}</span>
-                </div>
-                {getStatus(detailTarget) === 'archived' && detailTarget.archive_date && (
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Archived</span>
-                      <span className="font-medium text-gray-700">{formatDate(detailTarget.archive_date)}</span>
-                    </div>
-                    {detailTarget.archive_reason && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-400">Reason</span>
-                        <span className="font-medium text-gray-700">{detailTarget.archive_reason}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Actions section */}
-              {detailActionKeys.length > 0 && (
-                <div className="px-5 py-4 space-y-2">
-                  {detailActionKeys.includes('reset-password') && (
-                    <button
-                      type="button"
-                      onClick={() => setResetTarget(detailTarget)}
-                      className="w-full rounded-xl bg-gray-100 px-4 py-3 text-left text-sm font-medium text-gray-700 active:bg-gray-200"
-                    >
-                      Reset password
-                    </button>
-                  )}
-                  {detailActionKeys.includes('force-logout') && (
-                    <form
-                      action={forceLogoutStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Force ${detailTarget.display_name} to sign out?`)) event.preventDefault()
-                        else setDetailTarget(null)
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={detailTarget.id} />
-                      <button type="submit" className="w-full rounded-xl bg-amber-50 px-4 py-3 text-left text-sm font-medium text-amber-700 active:bg-amber-100">
-                        Force logout
-                      </button>
-                    </form>
-                  )}
-                  {detailActionKeys.includes('reactivate') && (
-                    <form
-                      action={reactivateStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Reactivate ${detailTarget.display_name}?`)) event.preventDefault()
-                        else setDetailTarget(null)
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={detailTarget.id} />
-                      <button type="submit" className="w-full rounded-xl bg-green-50 px-4 py-3 text-left text-sm font-medium text-green-600 active:bg-green-100">
-                        Reactivate
-                      </button>
-                    </form>
-                  )}
-                  {detailActionKeys.includes('suspend') && (
-                    <form
-                      action={suspendStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Suspend ${detailTarget.display_name}?`)) event.preventDefault()
-                        else setDetailTarget(null)
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={detailTarget.id} />
-                      <button type="submit" className="w-full rounded-xl bg-red-50 px-4 py-3 text-left text-sm font-medium text-red-600 active:bg-red-100">
-                        Suspend
-                      </button>
-                    </form>
-                  )}
-                  {detailActionKeys.includes('restore') && (
-                    <form
-                      action={restoreStaffAction}
-                      onSubmit={event => {
-                        if (!window.confirm(`Restore ${detailTarget.display_name} to active?`)) event.preventDefault()
-                        else setDetailTarget(null)
-                      }}
-                    >
-                      <input type="hidden" name="targetId" value={detailTarget.id} />
-                      <button type="submit" className="w-full rounded-xl bg-green-50 px-4 py-3 text-left text-sm font-medium text-green-600 active:bg-green-100">
-                        Restore
-                      </button>
-                    </form>
-                  )}
-                  {detailActionKeys.includes('archive') && (
-                    <button
-                      type="button"
-                      onClick={() => setArchiveTarget(detailTarget)}
-                      className="w-full rounded-xl bg-gray-800 px-4 py-3 text-left text-sm font-medium text-white active:bg-gray-700"
-                    >
-                      Archive
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* ── Reset password sub-sheet (z-[202] layers above detail sheet) ── */}
-      {resetTarget && (
-        <>
-          <div className="fixed inset-0 z-[202] bg-black/40" onClick={() => setResetTarget(null)} />
-          <div className="fixed left-0 right-0 z-[203] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Reset password</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{resetTarget.display_name}</p>
-              </div>
-              <button type="button" onClick={() => setResetTarget(null)} className="h-8 w-8 flex items-center justify-center text-gray-400 text-xl" aria-label="Close">×</button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3 min-h-0">
-              {resetState.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{resetState.error}</p>}
-              {resetState.success && <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-600">{resetState.success}</p>}
-              <input name="password" form="reset-form" type="password" minLength={8} required placeholder="New temporary password" className="h-11 w-full rounded-lg border border-gray-200 px-3 text-base outline-none focus:border-orange-500" />
-              <input name="confirmation" form="reset-form" type="password" minLength={8} required placeholder="Confirm temporary password" className="h-11 w-full rounded-lg border border-gray-200 px-3 text-base outline-none focus:border-orange-500" />
-            </div>
-            <form id="reset-form" action={resetAction} className="flex-shrink-0">
-              <input type="hidden" name="targetId" value={resetTarget.id} />
-              <div className="px-5 py-3 border-t border-gray-100 flex gap-3">
-                <button type="button" onClick={() => setResetTarget(null)} className="flex-1 h-11 rounded-xl bg-gray-100 text-sm font-medium text-gray-700">Cancel</button>
-                <button type="submit" disabled={resetPending} className="flex-1 h-11 rounded-xl bg-gray-900 text-sm font-semibold text-white disabled:opacity-60">
-                  {resetPending ? 'Resetting...' : 'Reset'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
-
-      {/* ── Archive sub-sheet (z-[202] layers above detail sheet) ── */}
-      {archiveTarget && (
-        <>
-          <div className="fixed inset-0 z-[202] bg-black/40" onClick={() => setArchiveTarget(null)} />
-          <div className="fixed left-0 right-0 z-[203] rounded-t-2xl bg-white flex flex-col" style={SHEET_STYLE}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-              <div>
-                <h2 className="text-base font-semibold text-gray-900">Archive Employee?</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{archiveTarget.display_name}</p>
-              </div>
-              <button type="button" onClick={() => setArchiveTarget(null)} className="h-8 w-8 flex items-center justify-center text-gray-400 text-xl" aria-label="Close">×</button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
-              <div className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600 space-y-1.5">
-                <p className="font-medium text-gray-700">This employee will:</p>
-                <p>• lose login access</p>
-                <p>• be removed from active schedules</p>
-                <p>• be hidden from active staff lists</p>
-                <p>• remain available in historical records</p>
-              </div>
-              {archiveState.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{archiveState.error}</p>}
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1.5 block">Reason</label>
-                <select name="reason" form="archive-form" required defaultValue="" className="h-11 w-full rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 focus:border-orange-500 outline-none">
-                  <option value="" disabled>Select a reason</option>
-                  {ARCHIVE_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-            </div>
-            <form id="archive-form" action={archiveAction} className="flex-shrink-0">
-              <input type="hidden" name="targetId" value={archiveTarget.id} />
-              <div className="px-5 py-3 border-t border-gray-100 flex gap-3">
-                <button type="button" onClick={() => setArchiveTarget(null)} className="flex-1 h-11 rounded-xl bg-gray-100 text-sm font-medium text-gray-700">Cancel</button>
-                <button type="submit" disabled={archivePending} className="flex-1 h-11 rounded-xl bg-gray-800 text-sm font-semibold text-white disabled:opacity-60">
-                  {archivePending ? 'Archiving...' : 'Archive'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </>
-      )}
     </>
   )
 }
