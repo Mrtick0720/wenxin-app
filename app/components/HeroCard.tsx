@@ -52,6 +52,27 @@ function describeNode(n: EventTarget | null): string {
   return `${el.tagName.toLowerCase()}${id}${cls}${label ? `[${label}]` : ''}`
 }
 
+// Hit-test the topmost element at a viewport point and read the properties that
+// would make it intercept touches. Used to prove WHAT element is on top of the card.
+function topHitInfo(x: number, y: number) {
+  const el = document.elementFromPoint(x, y) as HTMLElement | null
+  if (!el) return { el: null, summary: 'null', full: { hit: 'null' } as Record<string, unknown> }
+  const cs = getComputedStyle(el)
+  const full: Record<string, unknown> = {
+    hit: describeNode(el),
+    zIndex: cs.zIndex,
+    position: cs.position,
+    pointerEvents: cs.pointerEvents,
+    transform: cs.transform === 'none' ? 'none' : cs.transform,
+    opacity: cs.opacity,
+    visibility: cs.visibility,
+    inert: el.hasAttribute('inert'),
+    ariaHidden: el.getAttribute('aria-hidden'),
+  }
+  const summary = `${describeNode(el)} z:${cs.zIndex} pos:${cs.position} pe:${cs.pointerEvents}`
+  return { el, summary, full }
+}
+
 export default function HeroCard({
   revenueTotal,
   revenueYesterday,
@@ -122,6 +143,8 @@ export default function HeroCard({
   // mode cannot trigger a re-render mid-drag that would overwrite the inline
   // track transform. Gesture logic below is untouched.
   const dbgTargetRef = useRef<HTMLSpanElement>(null)
+  const dbgHitRef = useRef<HTMLSpanElement>(null)
+  const dbgContainerRef = useRef<HTMLSpanElement>(null)
   const dbgStateRef = useRef<HTMLSpanElement>(null)
   const dbgIndexRef = useRef<HTMLSpanElement>(null)
   const dbgClickRef = useRef<HTMLSpanElement>(null)
@@ -131,13 +154,57 @@ export default function HeroCard({
   const dbgLog = (...args: unknown[]) => {
     if (HERO_TOUCH_DEBUG) console.log('[hero-touch]', ...args)
   }
-  const dbgPanel = (patch: { target?: string; state?: string; index?: string; click?: string }) => {
+  const dbgPanel = (patch: {
+    target?: string; hit?: string; container?: string; state?: string; index?: string; click?: string
+  }) => {
     if (!HERO_TOUCH_DEBUG) return
     if (patch.target !== undefined && dbgTargetRef.current) dbgTargetRef.current.textContent = patch.target
+    if (patch.hit !== undefined && dbgHitRef.current) dbgHitRef.current.textContent = patch.hit
+    if (patch.container !== undefined && dbgContainerRef.current) dbgContainerRef.current.textContent = patch.container
     if (patch.state !== undefined && dbgStateRef.current) dbgStateRef.current.textContent = patch.state
     if (patch.index !== undefined && dbgIndexRef.current) dbgIndexRef.current.textContent = patch.index
     if (patch.click !== undefined && dbgClickRef.current) dbgClickRef.current.textContent = patch.click
   }
+
+  // ── Document-level capture hit-test (DEBUG only) ────────────────────────────
+  // Attaches at the document in CAPTURE phase, so it observes the REAL top target
+  // of every touch/pointer — even if an overlay intercepts before the event would
+  // reach the card's own listeners. If "container ts fired" stays "—" after a
+  // touch on the card, something above the card is swallowing the gesture, and
+  // "real hit" / "elementFromPoint" name the culprit. Read-only; no behaviour change.
+  useEffect(() => {
+    if (!HERO_TOUCH_DEBUG) return
+
+    const onDocTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0]
+      if (!t) return
+      const info = topHitInfo(t.clientX, t.clientY)
+      const path = (e.composedPath?.() ?? []).map(describeNode).slice(0, 8).join(' > ')
+      dbgLog('DOC touchstart (capture)', {
+        target: describeNode(e.target),
+        elementFromPoint: info.full,
+        point: { x: Math.round(t.clientX), y: Math.round(t.clientY) },
+        composedPath: path,
+      })
+      dbgPanel({ target: describeNode(e.target), hit: info.summary, container: '— (waiting)' })
+    }
+
+    const onDocPointerDown = (e: PointerEvent) => {
+      const info = topHitInfo(e.clientX, e.clientY)
+      dbgLog('DOC pointerdown (capture)', {
+        target: describeNode(e.target),
+        elementFromPoint: info.full,
+        point: { x: Math.round(e.clientX), y: Math.round(e.clientY) },
+      })
+    }
+
+    document.addEventListener('touchstart', onDocTouchStart, { capture: true, passive: true })
+    document.addEventListener('pointerdown', onDocPointerDown, { capture: true, passive: true })
+    return () => {
+      document.removeEventListener('touchstart', onDocTouchStart, { capture: true } as EventListenerOptions)
+      document.removeEventListener('pointerdown', onDocPointerDown, { capture: true } as EventListenerOptions)
+    }
+  }, [])
 
   const goTo = (next: number) => {
     if (animatingRef.current || next === slideRef.current || next < 0 || next >= SLIDE_COUNT) return
@@ -190,12 +257,12 @@ export default function HeroCard({
         dbgAxisLoggedRef.current = false
         dbgPdLoggedRef.current = false
         const path = (e.composedPath?.() ?? []).map(describeNode).slice(0, 6).join(' > ')
-        dbgLog('touchstart', {
+        dbgLog('CONTAINER touchstart fired', {
           target: describeNode(e.target),
           startedOnControl: startedOnControlRef.current,
           composedPath: path,
         })
-        dbgPanel({ target: `start: ${describeNode(e.target)}`, state: 'tracking (axis: ?)' })
+        dbgPanel({ container: 'fired ✓', state: 'tracking (axis: ?)' })
       }
     }
 
@@ -507,6 +574,8 @@ export default function HeroCard({
       >
         <div style={{ color: '#fb923c', fontWeight: 700, marginBottom: 2 }}>HERO TOUCH DEBUG</div>
         <div>target: <span ref={dbgTargetRef}>—</span></div>
+        <div>real hit: <span ref={dbgHitRef}>—</span></div>
+        <div>container ts: <span ref={dbgContainerRef}>—</span></div>
         <div>state: <span ref={dbgStateRef}>idle</span></div>
         <div>index: <span ref={dbgIndexRef}>{slide}</span></div>
         <div>eye click: <span ref={dbgClickRef}>—</span></div>
