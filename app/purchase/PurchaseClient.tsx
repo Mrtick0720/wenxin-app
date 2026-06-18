@@ -534,46 +534,52 @@ export default function PurchaseClient(props: Props) {
     // On explicit retry (bootAttempt > 0), ignore any stale cache and force a fresh load
     const cache = bootAttempt === 0 ? initCache : null
 
-    if (!cache) {
-      // No cached data — show skeleton and fetch context + checklist in parallel
-      setInitialLoading(true)
-      setBootError(null)
-      Promise.all([fetchPurchaseContextAction(), fetchChecklistAction()]).then(([ctxRes, checkRes]) => {
-        if (!active) return
-        if (!ctxRes.ok) { setBootError(ctxRes.error); setInitialLoading(false); return }
-        const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-        setCtx(newCtx)
-        setRecords(ctxRes.data.records as LedgerRecord[])
-        setSummary(ctxRes.data.summary)
-        setKpi(ctxRes.data.kpi)
-        const checklist = checkRes.ok ? checkRes.data : undefined
-        setChecklistSeed(checklist)
-        purchaseCache = { ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, checklist, cachedAt: Date.now() }
-        setInitialLoading(false)
-      })
-    } else {
-      // Have cached data — show it immediately, refresh in background if stale
-      const isFresh = Date.now() - cache.cachedAt < CACHE_TTL_MS
-      if (!isFresh) {
-        setRefreshing(true)
-        fetchPurchaseContextAction().then((ctxRes) => {
-          if (!active) return
-          if (ctxRes.ok) {
-            const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-            setCtx(newCtx)
-            setRecords(ctxRes.data.records as LedgerRecord[])
-            setSummary(ctxRes.data.summary)
-            setKpi(ctxRes.data.kpi)
-            purchaseCache = { ...purchaseCache!, ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, cachedAt: Date.now() }
-            setChecklistRefreshKey(k => k + 1)
-          }
-          setRefreshing(false)
-        })
-      }
-      // Fresh cache: nothing to do — cached state already applied at useState init
-    }
+    // Delay fetches on first open (no cache) so they don't compete with the
+    // 280ms slide-in animation on the main thread. Retries skip the delay.
+    const delay = !cache && bootAttempt === 0 ? 340 : 0
 
-    return () => { active = false }
+    const timer = setTimeout(() => {
+      if (!cache) {
+        // No cached data — show skeleton and fetch context + checklist in parallel
+        setInitialLoading(true)
+        setBootError(null)
+        Promise.all([fetchPurchaseContextAction(), fetchChecklistAction()]).then(([ctxRes, checkRes]) => {
+          if (!active) return
+          if (!ctxRes.ok) { setBootError(ctxRes.error); setInitialLoading(false); return }
+          const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
+          setCtx(newCtx)
+          setRecords(ctxRes.data.records as LedgerRecord[])
+          setSummary(ctxRes.data.summary)
+          setKpi(ctxRes.data.kpi)
+          const checklist = checkRes.ok ? checkRes.data : undefined
+          setChecklistSeed(checklist)
+          purchaseCache = { ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, checklist, cachedAt: Date.now() }
+          setInitialLoading(false)
+        })
+      } else {
+        // Have cached data — show it immediately, refresh in background if stale
+        const isFresh = Date.now() - cache.cachedAt < CACHE_TTL_MS
+        if (!isFresh) {
+          setRefreshing(true)
+          fetchPurchaseContextAction().then((ctxRes) => {
+            if (!active) return
+            if (ctxRes.ok) {
+              const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
+              setCtx(newCtx)
+              setRecords(ctxRes.data.records as LedgerRecord[])
+              setSummary(ctxRes.data.summary)
+              setKpi(ctxRes.data.kpi)
+              purchaseCache = { ...purchaseCache!, ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, cachedAt: Date.now() }
+              setChecklistRefreshKey(k => k + 1)
+            }
+            setRefreshing(false)
+          })
+        }
+        // Fresh cache: nothing to do — cached state already applied at useState init
+      }
+    }, delay)
+
+    return () => { active = false; clearTimeout(timer) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootAttempt])
 
@@ -585,13 +591,17 @@ export default function PurchaseClient(props: Props) {
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogError, setCatalogError]     = useState<string | null>(null)
   useEffect(() => {
-    fetchCatalogAction()
-      .then((res) => {
-        if (res.ok) setCatalog(res.data)
-        else setCatalogError(res.error)
-      })
-      .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
-      .finally(() => setCatalogLoading(false))
+    // Defer catalog fetch so it doesn't compete with the slide-in animation
+    const timer = setTimeout(() => {
+      fetchCatalogAction()
+        .then((res) => {
+          if (res.ok) setCatalog(res.data)
+          else setCatalogError(res.error)
+        })
+        .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
+        .finally(() => setCatalogLoading(false))
+    }, 340)
+    return () => clearTimeout(timer)
   }, [])
 
   const [showAdd, setShowAdd]                 = useState(false)
@@ -1093,7 +1103,7 @@ export default function PurchaseClient(props: Props) {
       )}
 
       {/* ── Scrollable content ── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overscroll-contain" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
         {/* ── Hero KPI ── */}
         {kpi && ctx && (() => {
           const st = heroStatus(kpi.today.ratio)
