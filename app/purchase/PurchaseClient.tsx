@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, lazy } from 'react'
+import { createPortal } from 'react-dom'
 import type { StaffRole } from '@/lib/auth/types'
 import {
   PURCHASE_CATEGORIES,
@@ -97,27 +98,64 @@ function ratioText(r: number | null) {
   return r === null ? '—' : `${r % 1 === 0 ? r.toFixed(0) : r.toFixed(1)}%`
 }
 
-function heroStatus(ratio: number | null): 'good' | 'warning' | 'bad' | 'na' {
+// ── Hero traffic-light bands ──
+// Color category for the Purchase Cost Ratio hero card. These are the COLOR
+// thresholds — a management urgency signal — and are deliberately distinct from
+// the configurable `kpi.target` (which still drives the "Target ≤ X%" label):
+//   < 25%  → Healthy (green)
+//   25–30% → Warning (amber)
+//   ≥ 30%  → Danger  (red)
+type RatioBand = 'healthy' | 'warning' | 'danger' | 'na'
+
+function ratioBand(ratio: number | null): RatioBand {
   if (ratio === null) return 'na'
-  if (ratio <= 30) return 'good'
-  if (ratio <= 40) return 'warning'
-  return 'bad'
+  if (ratio < 25) return 'healthy'
+  if (ratio < 30) return 'warning'
+  return 'danger'
 }
 
-function heroStatusLabel(st: 'good' | 'warning' | 'bad' | 'na'): string {
-  switch (st) {
-    case 'good':    return 'Good'
-    case 'warning': return 'Watch'
-    case 'bad':     return 'Too high'
+function ratioBandLabel(b: RatioBand): string {
+  switch (b) {
+    case 'healthy': return 'Healthy'
+    case 'warning': return 'Warning'
+    case 'danger':  return 'Danger'
     default:        return 'No data'
   }
 }
 
-const HERO_COLOR = {
-  good:    { text: '#15803d', bg: '#dcfce7' },
-  warning: { text: '#92400e', bg: '#fef3c7' },
-  bad:     { text: '#991b1b', bg: '#fee2e2' },
-  na:      { text: '#6b7280', bg: '#f3f4f6' },
+// Per-band theme for the hero card. Gradients are noticeably more saturated than
+// the Home revenue card (orange-400→600) so this reads as a warning indicator
+// from a distance. Amber uses dark text for contrast; the rest use white.
+const RATIO_BANDS: RatioBand[] = ['healthy', 'warning', 'danger', 'na']
+const BAND_THEME: Record<RatioBand, {
+  gradient: string; fg: string; fgMuted: string; fgFaint: string; badgeBg: string; badgeFg: string
+}> = {
+  healthy: {
+    gradient: 'linear-gradient(150deg, #22c55e 0%, #16a34a 45%, #15803d 100%)',
+    fg: '#ffffff', fgMuted: 'rgba(255,255,255,0.88)', fgFaint: 'rgba(255,255,255,0.70)',
+    badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#ffffff',
+  },
+  warning: {
+    gradient: 'linear-gradient(150deg, #fbbf24 0%, #f59e0b 45%, #d97706 100%)',
+    fg: '#422006', fgMuted: 'rgba(66,32,6,0.82)', fgFaint: 'rgba(66,32,6,0.58)',
+    badgeBg: 'rgba(66,32,6,0.16)', badgeFg: '#422006',
+  },
+  danger: {
+    gradient: 'linear-gradient(150deg, #f87171 0%, #ef4444 45%, #dc2626 100%)',
+    fg: '#ffffff', fgMuted: 'rgba(255,255,255,0.88)', fgFaint: 'rgba(255,255,255,0.70)',
+    badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#ffffff',
+  },
+  na: {
+    gradient: 'linear-gradient(150deg, #9ca3af 0%, #6b7280 45%, #4b5563 100%)',
+    fg: '#ffffff', fgMuted: 'rgba(255,255,255,0.88)', fgFaint: 'rgba(255,255,255,0.70)',
+    badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#ffffff',
+  },
+}
+
+// Money formatting for the hero secondary row — integer + thousands separator,
+// matching the Home hero card's style (display only; no calculation change).
+function rmHero(n: number | null | undefined): string {
+  return n === null || n === undefined ? '—' : `RM ${Math.floor(n).toLocaleString('en-US')}`
 }
 
 // ── History grouping ──
@@ -491,6 +529,8 @@ type PurchaseCache = {
 let purchaseCache: PurchaseCache | null = null
 const CACHE_TTL_MS = 4 * 60 * 1000
 
+const Z_MAX = 2147483647
+
 export default function PurchaseClient(props: Props) {
   const hasInitial = !!(props.role && props.today && props.perms)
   const { push, pop } = useNavigation()
@@ -668,6 +708,7 @@ export default function PurchaseClient(props: Props) {
   // ── Pull-to-refresh touch handlers ──
   const startY = useRef(0)
   const pulling = useRef(false)
+  const pullDistRef = useRef(0)
   const [pullDist, setPullDist] = useState(0)
   const THRESHOLD = 60
 
@@ -678,18 +719,29 @@ export default function PurchaseClient(props: Props) {
       if (el!.scrollTop > 0) return
       startY.current = e.touches[0].clientY
       pulling.current = true
+      pullDistRef.current = 0
     }
     function onTouchMove(e: TouchEvent) {
       if (!pulling.current) return
       const dy = e.touches[0].clientY - startY.current
-      if (dy > 0) setPullDist(Math.min(dy * 0.5, THRESHOLD * 1.2))
-      else setPullDist(0)
+      // Minimum drag threshold — ignore micro-movements from taps
+      // so we never trigger a React re-render during a tap sequence.
+      // Re-rendering during tap cancels the synthesized click on iOS Safari.
+      if (dy <= 5) return
+      const dist = Math.min(dy * 0.5, THRESHOLD * 1.2)
+      // Only call setState when the visual distance changes meaningfully,
+      // avoiding cascading re-renders on every pixel of scroll.
+      if (Math.abs(dist - pullDistRef.current) >= 2) {
+        pullDistRef.current = dist
+        setPullDist(dist)
+      }
     }
     function onTouchEnd() {
-      if (pullDist >= THRESHOLD) {
+      if (pullDistRef.current >= THRESHOLD) {
         refresh()
       }
       pulling.current = false
+      pullDistRef.current = 0
       setPullDist(0)
     }
     el.addEventListener('touchstart', onTouchStart, { passive: true })
@@ -700,7 +752,10 @@ export default function PurchaseClient(props: Props) {
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
     }
-  }, [pullDist, refresh])
+    // refresh is intentionally excluded — it changes on every filters/ctx change
+    // and re-creating listeners mid-gesture breaks pull-to-refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const showCosts = ctx?.perms.canViewCosts ?? false
 
@@ -1024,9 +1079,6 @@ export default function PurchaseClient(props: Props) {
     else acc.push({ category: r.category, total: r.total_price ?? 0 })
     return acc
   }, [])
-  // Compact top-3 preview shown in the hero card's right column.
-  const heroCategoryTotal = categoryTotals.reduce((s, c) => s + c.total, 0)
-  const heroCategoryPreview = [...categoryTotals].sort((a, b) => b.total - a.total).slice(0, 3)
 
   // ── Loading state ──
   if (initialLoading) {
@@ -1106,65 +1158,85 @@ export default function PurchaseClient(props: Props) {
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
         {/* ── Hero KPI ── */}
         {kpi && ctx && (() => {
-          const st = heroStatus(kpi.today.ratio)
-          const clr = HERO_COLOR[st]
+          const band = ratioBand(kpi.today.ratio)
+          const theme = BAND_THEME[band]
           const d = new Date(ctx.today + 'T00:00:00')
           const monthLabel = `${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}`
           return (
             <div className="mx-4 mt-4">
-              <button type="button" onClick={openKpiDetails} className="w-full text-left active:opacity-80">
-                <div className="rounded-2xl px-5 pt-5 pb-5" style={{ background: clr.bg }}>
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Left column: ratio */}
-                    <div className="flex-1 min-w-0">
-                      {/* Row 1: title */}
-                      <span className="text-sm font-bold" style={{ color: clr.text }}>
-                        Purchase Cost Ratio
-                      </span>
-                      {/* Row 2: month */}
-                      <div className="text-sm mt-0.5 mb-3" style={{ color: clr.text, opacity: 0.75 }}>
-                        {monthLabel}
-                      </div>
-                      {/* Row 3: large percentage */}
-                      <div style={{ fontSize: 52, fontWeight: 700, lineHeight: 1, color: clr.text }}>
-                        {ratioText(kpi.today.ratio)}
-                      </div>
-                      {/* Row 4: status */}
-                      <div className="text-base font-bold mt-3" style={{ color: clr.text }}>
-                        {heroStatusLabel(st)}
-                      </div>
-                      {/* Row 5: amount / revenue */}
-                      <div className="text-sm mt-0.5" style={{ color: clr.text, opacity: 0.85 }}>
-                        {rm(kpi.today.purchase)} / {rm(kpi.today.revenue)}
-                      </div>
-                    </div>
+              <button type="button" onClick={openKpiDetails} className="w-full text-left active:opacity-90">
+                {/* Hero shell — mirrors the Home Revenue card: same rounded-2xl,
+                    paddings and type scale. Only the colour system + metrics differ. */}
+                <div className="relative rounded-2xl overflow-hidden">
+                  {/* Stacked gradient layers: only the active band is opaque, so a
+                      ratio crossing a category boundary cross-fades smoothly (a
+                      single background can't tween between two gradients). */}
+                  {RATIO_BANDS.map((b) => (
+                    <div
+                      key={b}
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: BAND_THEME[b].gradient,
+                        opacity: b === band ? 1 : 0,
+                        transition: 'opacity 0.5s ease',
+                      }}
+                    />
+                  ))}
 
-                    {/* Right column: target + compact category breakdown */}
-                    <div className="flex flex-col items-end flex-shrink-0" style={{ minWidth: 128, maxWidth: 168 }}>
-                      <span className="flex items-center gap-0.5 text-xs font-medium" style={{ color: clr.text, opacity: 0.75 }}>
-                        Target ≤ {kpi.target}%
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                      </span>
-                      {showCosts && heroCategoryPreview.length > 0 && heroCategoryTotal > 0 && (
-                        <div className="w-full mt-4 space-y-1.5">
-                          <div className="text-xs font-semibold" style={{ color: clr.text, opacity: 0.7 }}>
-                            Top Categories
-                          </div>
-                          {heroCategoryPreview.map((c) => (
-                            <div key={c.category} className="flex items-center justify-between gap-2 text-xs">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: categoryColor(c.category) }} />
-                                <span className="truncate" style={{ color: clr.text, opacity: 0.9 }}>{c.category}</span>
-                              </div>
-                              <span className="font-semibold tabular-nums flex-shrink-0" style={{ color: clr.text }}>
-                                {Math.round((c.total / heroCategoryTotal) * 100)}%
-                              </span>
-                            </div>
-                          ))}
+                  {/* Content — same vertical rhythm as HeroCard slide 1 */}
+                  <div className="relative px-0 pt-3 pb-2">
+                    <div
+                      className="flex flex-col px-5"
+                      style={{ color: theme.fg, transition: 'color 0.4s ease' }}
+                    >
+                      {/* Title row */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-sm font-medium" style={{ color: theme.fgMuted }}>
+                          Purchase Cost Ratio
                         </div>
-                      )}
+                        <span className="flex items-center gap-0.5 text-xs font-medium" style={{ color: theme.fgFaint }}>
+                          Target ≤ {kpi.target}%
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                        </span>
+                      </div>
+
+                      {/* Main value — the percentage is the visual focus */}
+                      <div className="flex items-center justify-between" style={{ minHeight: 40 }}>
+                        <div className="text-3xl font-bold tracking-tight leading-none">
+                          {ratioText(kpi.today.ratio)}
+                        </div>
+                        <div className="text-xs font-medium" style={{ color: theme.fgFaint }}>
+                          {monthLabel}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 min-h-0" />
+
+                      {/* Secondary info: monthly purchase cost + revenue, status badge */}
+                      <div className="flex items-end justify-between">
+                        <div className="flex gap-6">
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide" style={{ color: theme.fgFaint }}>Purchase</div>
+                            <div className="text-base font-bold leading-tight whitespace-nowrap">{rmHero(kpi.today.purchase)}</div>
+                          </div>
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide" style={{ color: theme.fgFaint }}>Revenue</div>
+                            <div className="text-base font-bold leading-tight whitespace-nowrap">{rmHero(kpi.today.revenue)}</div>
+                          </div>
+                        </div>
+                        <span
+                          className="text-xs font-medium rounded-full px-3 py-1 whitespace-nowrap"
+                          style={{ background: theme.badgeBg, color: theme.badgeFg, transition: 'background 0.4s ease, color 0.4s ease' }}
+                        >
+                          {ratioBandLabel(band)}
+                        </span>
+                      </div>
                     </div>
                   </div>
+
+                  {/* Bottom region — reserves the same height as the Home card's
+                      page-dot row so the two cards stand exactly equal. */}
+                  <div className="relative" style={{ height: 15 }} aria-hidden />
                 </div>
               </button>
             </div>
@@ -1242,82 +1314,86 @@ export default function PurchaseClient(props: Props) {
           </div>
         </div>
 
-        {/* ── Purchase Records (today) ── */}
-        <div className="mx-4 mt-5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-bold text-gray-900">Purchase Records</h2>
-          </div>
-          {todayRecords.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-8 text-center text-sm text-gray-400">
-              No records for today
+        {/* ── Purchase Records (today) — owner/manager only ── */}
+        {showCosts && (
+          <div className="mx-4 mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-gray-900">Purchase Records</h2>
             </div>
-          ) : (
-            <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-              {todayRecords.map((r, i) => (
-                <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === todayRecords.length - 1} {...rowProps} />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* ── Purchase History ── */}
-        <div className="mx-4 mt-5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-bold text-gray-900">Purchase History</h2>
-            {historyGroups.length > 0 && ctx?.perms.canExport && (
-              <a
-                href="/api/purchase/export"
-                download
-                className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 active:opacity-70"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Export CSV
-              </a>
+            {todayRecords.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 px-4 py-8 text-center text-sm text-gray-400">
+                No records for today
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
+                {todayRecords.map((r, i) => (
+                  <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === todayRecords.length - 1} {...rowProps} />
+                ))}
+              </div>
             )}
           </div>
-          {historyGroups.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-gray-100 px-4 py-6 text-center text-sm text-gray-400">
-              No purchase history — records from previous days will appear here.
+        )}
+
+        {/* ── Purchase History — owner/manager only ── */}
+        {showCosts && (
+          <div className="mx-4 mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-bold text-gray-900">Purchase History</h2>
+              {historyGroups.length > 0 && ctx?.perms.canExport && (
+                <a
+                  href="/api/purchase/export"
+                  download
+                  className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 active:opacity-70"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Export CSV
+                </a>
+              )}
             </div>
-          ) : (
-            <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-              {historyGroups.map((month) => (
-                <div key={month.monthKey}>
-                  {/* Month header */}
-                  <button type="button" onClick={() => toggleMonth(month.monthKey)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 active:opacity-70">
-                    <span className="text-sm font-semibold text-gray-700">{month.monthLabel}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-400 tabular-nums">{rm(month.total)}</span>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                        style={{ transform: expandedMonths.has(month.monthKey) ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </div>
-                  </button>
-                  {expandedMonths.has(month.monthKey) && month.days.map((day) => (
-                    <div key={day.date}>
-                      {/* Day header */}
-                      <button type="button" onClick={() => toggleDay(day.date)}
-                        className="w-full flex items-center justify-between px-4 py-2 active:opacity-70"
-                        style={{ borderTop: '1px solid #f3f4f6' }}>
-                        <span className="text-xs font-medium text-gray-500">{day.label}</span>
-                        <span className="text-xs text-gray-400 tabular-nums">{rm(day.total)}</span>
-                      </button>
-                      {expandedDays.has(day.date) && day.items.map((r, i) => (
-                        <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === day.items.length - 1} {...rowProps} />
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
+            {historyGroups.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-gray-100 px-4 py-6 text-center text-sm text-gray-400">
+                No purchase history — records from previous days will appear here.
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
+                {historyGroups.map((month) => (
+                  <div key={month.monthKey}>
+                    {/* Month header */}
+                    <button type="button" onClick={() => toggleMonth(month.monthKey)}
+                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 active:opacity-70">
+                      <span className="text-sm font-semibold text-gray-700">{month.monthLabel}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 tabular-nums">{rm(month.total)}</span>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                          style={{ transform: expandedMonths.has(month.monthKey) ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </div>
+                    </button>
+                    {expandedMonths.has(month.monthKey) && month.days.map((day) => (
+                      <div key={day.date}>
+                        {/* Day header */}
+                        <button type="button" onClick={() => toggleDay(day.date)}
+                          className="w-full flex items-center justify-between px-4 py-2 active:opacity-70"
+                          style={{ borderTop: '1px solid #f3f4f6' }}>
+                          <span className="text-xs font-medium text-gray-500">{day.label}</span>
+                          <span className="text-xs text-gray-400 tabular-nums">{rm(day.total)}</span>
+                        </button>
+                        {expandedDays.has(day.date) && day.items.map((r, i) => (
+                          <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === day.items.length - 1} {...rowProps} />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        )}
         {/* ── Category Breakdown ── */}
         {showCosts && categoryTotals.length > 0 && (
           <div ref={breakdownRef} className="mx-4 mt-5 mb-6">
@@ -1355,16 +1431,16 @@ export default function PurchaseClient(props: Props) {
         <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }} />
       </div>
 
-      {/* ── Add sheet ── */}
-      {showAdd && (
+      {/* ── Add sheet — portaled to body so it clears bottom nav ── */}
+      {showAdd && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[450] flex flex-col justify-end"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+          className="fixed flex flex-col justify-end"
+          style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
           onClick={() => setShowAdd(false)}
         >
           <div
             className="bg-white rounded-t-3xl max-h-[85vh] overflow-y-auto"
-            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+            style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
@@ -1444,7 +1520,8 @@ export default function PurchaseClient(props: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Edit sheet (QuickEditSheet) ── */}
@@ -1461,11 +1538,11 @@ export default function PurchaseClient(props: Props) {
         />
       )}
 
-      {/* ── Delete confirm ── */}
-      {deletingRecord && (
+      {/* ── Delete confirm — portaled to body ── */}
+      {deletingRecord && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[450] flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+          className="fixed flex items-center justify-center"
+          style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
           onClick={() => setDeletingRecord(null)}
         >
           <div className="bg-white rounded-2xl mx-6 p-5 w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
@@ -1485,7 +1562,8 @@ export default function PurchaseClient(props: Props) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Inline field edit sheet (shared NumericEditorSheet) ── */}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
 import CatalogCombobox from './CatalogCombobox'
@@ -19,6 +20,8 @@ import type { ChecklistEntry } from './checklist-actions'
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
 
 // ── Shared input styles ───────────────────────────────────────────────────────
+const Z_MAX = 2147483647
+
 const inputCls =
   'w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400 bg-white'
 
@@ -74,15 +77,19 @@ function ItemFormSheet({
   onSave: () => void
   onClose: () => void
 }) {
-  return (
+  const content = (
     <div
-      className="fixed inset-0 z-[400] flex flex-col justify-end"
-      style={{ background: 'rgba(0,0,0,0.4)' }}
+      className="fixed flex flex-col justify-end"
+      style={{
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: Z_MAX,
+        background: 'rgba(0,0,0,0.4)',
+      }}
       onClick={onClose}
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '90vh', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 12px)' }}
+        style={{ maxHeight: '90vh', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 20px)' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
@@ -190,6 +197,9 @@ function ItemFormSheet({
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(content, document.body)
 }
 
 // ── Completion sheet: now uses shared NumericEditorSheet ──
@@ -844,11 +854,11 @@ export default function ChecklistSection({
         />
       )}
 
-      {/* Delete confirmation dialog */}
-      {deleteTarget && (
+      {/* Delete confirmation dialog — portaled to body to clear bottom nav */}
+      {deleteTarget && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[500] flex items-center justify-center"
-          style={{ background: 'rgba(0,0,0,0.4)' }}
+          className="fixed flex items-center justify-center"
+          style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
           onClick={() => setDeleteTarget(null)}
         >
           <div className="bg-white rounded-2xl mx-6 p-5 w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
@@ -870,7 +880,8 @@ export default function ChecklistSection({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

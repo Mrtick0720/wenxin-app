@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { updateRecordAction } from './actions'
 
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
@@ -36,6 +37,7 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
   const [unit, setUnit] = useState(record.unit)
   const [unitPrice, setUnitPrice] = useState(record.unit_price != null ? String(record.unit_price) : '')
   const [supplier, setSupplier] = useState(record.supplier ?? '')
+  const [note, setNote] = useState(record.note ?? '')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unitOpen, setUnitOpen] = useState(false)
@@ -61,7 +63,7 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
       supplier: showCosts ? supplier.trim() || null : null,
       purchaser: record.purchaser ?? null,
       receiver: record.receiver ?? null,
-      remarks: record.note ?? null,
+      remarks: note.trim() || null,
     })
     setSaving(false)
     if (!res.ok) { setError(res.error); return }
@@ -69,15 +71,17 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
     onClose()
   }
 
-  return (
+  const Z_MAX = 2147483647
+
+  const content = (
     <div
-      className="fixed inset-0 z-[400] flex flex-col justify-end"
-      style={{ background: 'rgba(0,0,0,0.4)' }}
+      className="fixed flex flex-col justify-end"
+      style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
       onClick={onClose}
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -143,6 +147,18 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
             </div>
           </div>
 
+          {/* Note — visible to all roles */}
+          <div>
+            <label className="text-xs text-gray-400 mb-1 block">Note (optional)</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
+              style={{ fontSize: 16 }}
+              placeholder="e.g. fresh only, no frozen"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+
           {/* Unit Price + Total + Supplier — owner/manager only */}
           {showCosts && (
             <>
@@ -202,4 +218,7 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(content, document.body)
 }

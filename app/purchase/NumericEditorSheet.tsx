@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 // ── Custom numeric keypad (compact) ──────────────────────────────────────────
 // Digit key button — declared at module scope to avoid react-hooks/static-components
@@ -160,23 +161,31 @@ export default function NumericEditorSheet({
   const qtyDisplay   = qtyStr === '' ? '0' : qtyStr
   const priceDisplay = priceStr === '' ? '0.00' : priceStr
 
-  return (
+  // Maximum safe z-index (32-bit signed int max) so the sheet trumps everything
+  // including any intermediate stacking contexts created by transforms or position:fixed.
+  const Z_MAX = 2147483647
+
+  const sheet = (
     <div
-      className="fixed inset-0 z-[500]"
+      className="fixed"
       style={{
+        top: 0, left: 0, right: 0, bottom: 0,
+        zIndex: visible ? Z_MAX : -1,
         background: visible ? 'rgba(0,0,0,0.4)' : 'rgba(0,0,0,0)',
         transition: 'background 0.25s ease',
+        // When invisible or closing, let taps pass through to content beneath
+        pointerEvents: visible ? 'auto' : 'none',
       }}
       onClick={dismiss}
     >
       {/* Sheet — slides up from bottom, covers everything including bottom nav */}
       <div
-        className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl flex flex-col"
+        className="fixed left-0 right-0 bg-white rounded-t-3xl flex flex-col"
         style={{
+          bottom: 0,
           transform: visible ? 'translateY(0)' : 'translateY(100%)',
           transition: 'transform 0.25s ease',
-          maxHeight: 'calc(100dvh - 48px)',
-          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)',
+          maxHeight: '100dvh',
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -260,7 +269,7 @@ export default function NumericEditorSheet({
         {/* Action buttons */}
         <div
           className="flex-shrink-0 px-4 pt-2"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 4px)' }}
+          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
         >
           <div className="flex gap-3">
             <button
@@ -285,4 +294,7 @@ export default function NumericEditorSheet({
       </div>
     </div>
   )
+
+  if (typeof document === 'undefined') return null
+  return createPortal(sheet, document.body)
 }
