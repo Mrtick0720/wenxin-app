@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, lazy, Suspense } from 'react'
+import { useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { useNavigation } from './NavigationStack'
@@ -82,16 +82,32 @@ export default function HeroCard({
 
   const animIdRef = useRef(0)
 
+  const pctPerSlide = 100 / SLIDE_COUNT
+
+  // Refs mirror the latest state/props so the once-bound NATIVE touch listeners
+  // (below) always read fresh values without rebinding on every render.
+  const slideRef = useRef(0)
+  const animatingRef = useRef(false)
+  const startedOnControlRef = useRef(false)
+  slideRef.current = slide
+  animatingRef.current = animating
+  const feedMeRevenueRef = useRef(feedMeRevenue)
+  const feedMeMtdRef = useRef(feedMeMtd)
+  const feedMe7DayRef = useRef(feedMe7Day)
+  feedMeRevenueRef.current = feedMeRevenue
+  feedMeMtdRef.current = feedMeMtd
+  feedMe7DayRef.current = feedMe7Day
+
   const goTo = (next: number) => {
-    if (animating || next === slide || next < 0 || next >= SLIDE_COUNT) return
+    if (animatingRef.current || next === slideRef.current || next < 0 || next >= SLIDE_COUNT) return
     const el = trackRef.current
     if (!el) return
     // Drive the transition entirely via inline style so React's style prop
     // (which writes to the same CSS properties) never causes a flash.
     el.style.transition = 'transform 0.3s cubic-bezier(0.3,0,0.1,1)'
     el.style.transform = `translateX(${-(next * pctPerSlide)}%)`
-    setAnimating(true)
-    setSlide(next)
+    setAnimating(true); animatingRef.current = true
+    setSlide(next); slideRef.current = next
     animIdRef.current++
     const id = animIdRef.current
     setTimeout(() => {
@@ -100,96 +116,121 @@ export default function HeroCard({
       // Clear transition only — keep transform so there is no frame where
       // the track reverts to translateX(0) before React's next render.
       el.style.transition = ''
-      setAnimating(false)
+      setAnimating(false); animatingRef.current = false
     }, 320)
   }
 
-  const pctPerSlide = 100 / SLIDE_COUNT
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX
-    touchStartY.current = e.touches[0].clientY
-    tracking.current = true
-    touchAxis.current = null
-    // Cache width at touch start — avoids forced layout during drag
-    containerWidth.current = containerRef.current?.offsetWidth ?? 0
-  }
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    if (!tracking.current || animating) return
-    const dx = e.touches[0].clientX - touchStartX.current
-    const dy = e.touches[0].clientY - touchStartY.current
-    if (!touchAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
-      touchAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
-    }
-    if (touchAxis.current !== 'h') return
-    e.preventDefault()
-    const el = trackRef.current
+  // ── Native touch listeners ──────────────────────────────────────────────────
+  // React's synthetic onTouchMove is registered as a PASSIVE listener on the root,
+  // so e.preventDefault() inside it is silently ignored. The carousel then relied
+  // only on `touch-action: pan-y`, which iOS Safari does not honour reliably for a
+  // horizontal swipe inside a vertically-scrollable page — the scroller claims any
+  // slightly-diagonal gesture first and the swipe (and small-target taps) become
+  // flaky. Binding NATIVE listeners with { passive: false } lets preventDefault()
+  // actually claim the gesture once it is classified horizontal. This mirrors the
+  // working pattern in PullToRefresh and NavigationStack.
+  useEffect(() => {
+    const el = containerRef.current
     if (!el) return
-    const cw = containerWidth.current
-    if (cw <= 0) return
-    const basePx = -(slide * cw)
-    const maxPx = 0
-    const minPx = -((SLIDE_COUNT - 1) * cw)
 
-    // Clamp + elastic: never allow the track to move beyond valid slide bounds
-    let offset = basePx + dx
-    if (offset > maxPx) {
-      // Past first slide (right edge) — rubber-band resistance
-      offset = maxPx + (offset - maxPx) * ELASTIC
-    } else if (offset < minPx) {
-      // Past last slide (left edge) — rubber-band resistance
-      offset = minPx + (offset - minPx) * ELASTIC
+    const onStart = (e: TouchEvent) => {
+      touchStartX.current = e.touches[0].clientX
+      touchStartY.current = e.touches[0].clientY
+      tracking.current = true
+      touchAxis.current = null
+      containerWidth.current = el.offsetWidth
+      // Taps that begin on a control (eye toggle, page dots) belong to that
+      // button's own click handler — never hijack them as a card tap/swipe.
+      startedOnControlRef.current = !!(e.target as HTMLElement | null)?.closest('button')
     }
 
-    el.style.transition = 'none'
-    el.style.transform = `translateX(${Math.round(offset)}px)`
-  }
-
-  const onTouchEnd = (e: React.TouchEvent) => {
-    // ── Tap detection (no directional classification = tap, not a swipe) ──
-    if (tracking.current && touchAxis.current === null) {
-      tracking.current = false
-      if (slide === 0) {
-        if (feedMeRevenue) {
-          push('/revenue/today', <Suspense fallback={null}><RevenueTodayStack data={feedMeRevenue} /></Suspense>)
-        } else {
-          router.push('/revenue/today')
-        }
-      } else if (slide === 1) {
-        push('/revenue/analytics', <Suspense fallback={null}><RevenueAnalyticsStack mtd={feedMeMtd} week={feedMe7Day} /></Suspense>)
-      } else if (slide === 2) {
-        const el = getPageElement('/bento')
-        if (el) push('/bento', el)
+    const onMove = (e: TouchEvent) => {
+      if (!tracking.current || animatingRef.current || startedOnControlRef.current) return
+      const dx = e.touches[0].clientX - touchStartX.current
+      const dy = e.touches[0].clientY - touchStartY.current
+      if (!touchAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        touchAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
       }
-      return
+      if (touchAxis.current !== 'h') return
+      e.preventDefault() // effective: native non-passive listener — claims the swipe
+      const track = trackRef.current
+      if (!track) return
+      const cw = containerWidth.current
+      if (cw <= 0) return
+      const slideNow = slideRef.current
+      const basePx = -(slideNow * cw)
+      const maxPx = 0
+      const minPx = -((SLIDE_COUNT - 1) * cw)
+
+      // Clamp + elastic: never allow the track to move beyond valid slide bounds
+      let offset = basePx + dx
+      if (offset > maxPx) {
+        offset = maxPx + (offset - maxPx) * ELASTIC
+      } else if (offset < minPx) {
+        offset = minPx + (offset - minPx) * ELASTIC
+      }
+
+      track.style.transition = 'none'
+      track.style.transform = `translateX(${Math.round(offset)}px)`
     }
 
-    if (!tracking.current || touchAxis.current !== 'h') { tracking.current = false; return }
-    tracking.current = false
-    const dx = e.changedTouches[0].clientX - touchStartX.current
-    const threshold = 50
-    const el = trackRef.current
-    if (!el) return
+    const onEnd = (e: TouchEvent) => {
+      const slideNow = slideRef.current
+      // ── Tap detection (no directional classification = tap, not a swipe) ──
+      if (tracking.current && touchAxis.current === null) {
+        tracking.current = false
+        // Control taps (eye / dots) are handled by their own onClick — don't navigate.
+        if (startedOnControlRef.current) return
+        if (slideNow === 0) {
+          if (feedMeRevenueRef.current) {
+            push('/revenue/today', <Suspense fallback={null}><RevenueTodayStack data={feedMeRevenueRef.current} /></Suspense>)
+          } else {
+            router.push('/revenue/today')
+          }
+        } else if (slideNow === 1) {
+          push('/revenue/analytics', <Suspense fallback={null}><RevenueAnalyticsStack mtd={feedMeMtdRef.current} week={feedMe7DayRef.current} /></Suspense>)
+        } else if (slideNow === 2) {
+          const pe = getPageElement('/bento')
+          if (pe) push('/bento', pe)
+        }
+        return
+      }
 
-    if (slide > 0 && dx > threshold) {
-      goTo(slide - 1)
-    } else if (slide < SLIDE_COUNT - 1 && dx < -threshold) {
-      goTo(slide + 1)
-    } else {
-      // Spring-back: animate entirely via inline style.
-      // No React state change — avoids React style prop overwriting inline values.
-      el.style.transition = 'transform 0.25s ease-out'
-      el.style.transform = `translateX(${-(slide * pctPerSlide)}%)`
-      animIdRef.current++
-      const id = animIdRef.current
-      setTimeout(() => {
-        if (id !== animIdRef.current) return
-        // Clear transition only — keep transform to avoid translateX(0) flash
-        el.style.transition = ''
-      }, 260)
+      if (!tracking.current || touchAxis.current !== 'h') { tracking.current = false; return }
+      tracking.current = false
+      const dx = e.changedTouches[0].clientX - touchStartX.current
+      const threshold = 50
+      const track = trackRef.current
+      if (!track) return
+
+      if (slideNow > 0 && dx > threshold) {
+        goTo(slideNow - 1)
+      } else if (slideNow < SLIDE_COUNT - 1 && dx < -threshold) {
+        goTo(slideNow + 1)
+      } else {
+        // Spring-back: animate entirely via inline style.
+        track.style.transition = 'transform 0.25s ease-out'
+        track.style.transform = `translateX(${-(slideNow * pctPerSlide)}%)`
+        animIdRef.current++
+        const id = animIdRef.current
+        setTimeout(() => {
+          if (id !== animIdRef.current) return
+          track.style.transition = ''
+        }, 260)
+      }
     }
-  }
+
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+    // Listeners read live values via refs — bind once, never rebind.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const mtdRevenueLabel =
     mergedMtdRevenue === null ? '—' : `RM ${Math.floor(mergedMtdRevenue).toLocaleString('en-US')}`
@@ -229,9 +270,6 @@ export default function HeroCard({
         touchAction: 'pan-y',
         overflow: 'hidden',
       }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
     >
       <div className="px-0 pt-3 pb-2 overflow-hidden">
         <div
@@ -255,9 +293,8 @@ export default function HeroCard({
             <div className="flex items-center justify-between">
               <div className="text-3xl font-bold tracking-tight text-white leading-none">{revenueLabel}</div>
               <button
-                onClick={(e) => { e.stopPropagation(); e.preventDefault(); toggleHidden() }}
-                onTouchStart={(e) => e.stopPropagation()}
-                onTouchEnd={(e) => e.stopPropagation()}
+                type="button"
+                onClick={() => toggleHidden()}
                 aria-label={hidden ? 'Show amounts' : 'Hide amounts'}
                 className="flex-shrink-0 flex items-center justify-center w-10 h-10 -mr-2 opacity-70 hover:opacity-100 transition-opacity"
               >
