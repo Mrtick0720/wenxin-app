@@ -110,7 +110,6 @@ function StackLayer({
         axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
       }
       if (axis !== 'h' || dx <= 0) return
-      e.preventDefault()
       if (animRef.current) { animRef.current.cancel(); animRef.current = null }
       el.style.transform = `translateX(${dx}px)`
     }
@@ -132,7 +131,10 @@ function StackLayer({
       }
     }
     el.addEventListener('touchstart', onStart, { passive: true })
-    el.addEventListener('touchmove', onMove, { passive: false })
+    // passive: true so iOS Safari can start scroll immediately without waiting for JS
+    // e.preventDefault() is only called after axis is confirmed horizontal, which
+    // won't happen for vertical scrolls — safe to use passive here.
+    el.addEventListener('touchmove', onMove, { passive: true })
     el.addEventListener('touchend', onEnd, { passive: true })
     return () => {
       el.removeEventListener('touchstart', onStart)
@@ -156,7 +158,6 @@ function StackLayer({
         transform: 'translateX(100%)',
         display: 'flex',
         flexDirection: 'column',
-        overflow: 'hidden',
       }}
     >
       {children}
@@ -170,11 +171,8 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [stack, setStack] = useState<StackEntry[]>([])
   const [leavingIds, setLeavingIds] = useState<Set<string>>(new Set())
 
-  // Lock body scroll when layers are on top
-  useEffect(() => {
-    document.body.style.overflow = stack.length > 0 ? 'hidden' : ''
-    return () => { document.body.style.overflow = '' }
-  }, [stack.length])
+  // StackLayer is position:fixed and covers the full viewport — no body lock needed.
+  // Setting body overflow:hidden on iOS Safari prevents scroll inside fixed children.
 
   const pop = useCallback(() => {
     setStack(prev => {
