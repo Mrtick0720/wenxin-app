@@ -18,10 +18,12 @@ const ApprovalIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const MarketingIcon = ({ active }: { active: boolean }) => (
+const StaffIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 11l18-5v12L3 14v-3z"/>
-    <path d="M11.6 16.8a3 3 0 11-5.8-1.6"/>
+    <path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/>
+    <circle cx="9" cy="7" r="4"/>
+    <path d="M22 21v-2a4 4 0 00-3-3.87"/>
+    <path d="M16 3.13a4 4 0 010 7.75"/>
   </svg>
 )
 
@@ -44,7 +46,7 @@ const tabs = [
   { href: '/', label: 'Home', Icon: HomeIcon },
   { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
   { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
-  { href: '/marketing', label: 'Marketing', Icon: MarketingIcon },
+  { href: '/staff', label: 'Staff', Icon: StaffIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 

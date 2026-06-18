@@ -72,12 +72,12 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
   return (
     <div
       className="fixed inset-0 z-[400] flex flex-col justify-end"
-      style={{ background: 'rgba(0,0,0,0.4)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 56px)' }}
+      style={{ background: 'rgba(0,0,0,0.4)' }}
       onClick={onClose}
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: 'calc(92vh - env(safe-area-inset-bottom, 0px) - 56px)' }}
+        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -178,8 +178,7 @@ export default function QuickEditSheet({ record, showCosts, onClose, onSaved }: 
 
         {/* Footer */}
         <div
-          className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)' }}
+          className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-3"
         >
           <div className="grid grid-cols-2 gap-3">
             <button

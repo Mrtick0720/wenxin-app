@@ -21,7 +21,10 @@ const ROLE_LABELS: Record<StaffRole, string> = {
   manager: 'Manager',
   kitchen: 'Kitchen',
   front_desk: 'Front Desk',
+  cashier: 'Cashier',
+  packing: 'Packing',
   delivery: 'Delivery',
+  other: 'Other',
 }
 
 type BentoOrder = {

@@ -86,6 +86,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
   const [form, setForm] = useState({
     name: '', specification: '', category: 'Vegetables', unit: 'kg',
     quantity: '', unit_price: '', supplier: '', purchaser: '', receiver: '', remarks: '',
+    purchase_method: '', payment_status: '',
   })
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -113,6 +114,8 @@ export default function DetailClient({ itemId, onChanged }: Props) {
         purchaser: r.purchaser ?? '',
         receiver: r.receiver ?? '',
         remarks: r.note ?? '',
+        purchase_method: r.purchase_method ?? '',
+        payment_status: r.payment_status ?? 'unpaid',
       })
       setLoading(false)
     })
@@ -155,6 +158,8 @@ export default function DetailClient({ itemId, onChanged }: Props) {
       purchaser: form.purchaser.trim() || null,
       receiver: form.receiver.trim() || null,
       remarks: form.remarks.trim() || null,
+      purchase_method: form.purchase_method.trim() || null,
+      payment_status: form.payment_status.trim() || null,
     })
     setSaving(false)
     if (!res.ok) { setError(res.error); return }
@@ -285,11 +290,43 @@ export default function DetailClient({ itemId, onChanged }: Props) {
               value={form.remarks} onChange={(e) => setForm((f) => ({ ...f, remarks: e.target.value }))} placeholder="Optional" />
           </FieldRow>
 
-          {/* System fields — read-only, visible to all roles (no costs) */}
-          <FieldRow label="Entered By">
-            <span className="text-gray-700" style={{ fontSize: 16 }}>{enteredByName ?? '—'}</span>
+          {/* Payment fields */}
+          {canViewCosts && (
+            <>
+              <FieldRow label="Pay Method">
+                {readOnly ? (
+                  <span className="text-gray-700" style={{ fontSize: 16 }}>{form.purchase_method || '—'}</span>
+                ) : (
+                  <InlinePicker label="" value={form.purchase_method || 'Supplier Delivery'}
+                    options={['Supplier Delivery', 'Cash', 'QR', 'Bank Transfer', 'Other']}
+                    disabled={false}
+                    onChange={(v) => setForm((f) => ({ ...f, purchase_method: v }))} />
+                )}
+              </FieldRow>
+              <FieldRow label="Pay Status">
+                {readOnly ? (
+                  <span className="text-gray-700" style={{ fontSize: 16 }}>{form.payment_status === 'paid' ? 'Paid' : form.payment_status === 'unpaid' ? 'Unpaid' : form.payment_status === 'pay_later' ? 'Pay Later' : form.payment_status || '—'}</span>
+                ) : (
+                  <InlinePicker label="" value={form.payment_status || 'unpaid'}
+                    options={['paid', 'unpaid', 'pay_later']}
+                    disabled={false}
+                    onChange={(v) => setForm((f) => ({ ...f, payment_status: v }))} />
+                )}
+              </FieldRow>
+            </>
+          )}
+
+          {/* ── Audit info (read-only) ── */}
+          <div className="mt-4 pt-2 border-t-2 border-gray-100">
+            <div className="text-xs text-gray-400 font-medium px-1 mb-1">Audit</div>
+          </div>
+          <FieldRow label="Added by">
+            <span className="text-gray-700" style={{ fontSize: 16 }}>{record?.created_by_name ?? enteredByName ?? '—'}</span>
           </FieldRow>
-          <FieldRow label="Created Time">
+          <FieldRow label="Purchased by">
+            <span className="text-gray-700" style={{ fontSize: 16 }}>{record?.purchased_by_name ?? '—'}</span>
+          </FieldRow>
+          <FieldRow label="Created At">
             <span className="text-gray-700" style={{ fontSize: 16 }}>{formatCreatedAt(record?.created_at ?? null)}</span>
           </FieldRow>
         </div>

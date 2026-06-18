@@ -152,7 +152,9 @@ function StackLayer({
         zIndex,
         background: '#f9fafb',
         transform: 'translateX(100%)',
-        overflowX: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
       {children}

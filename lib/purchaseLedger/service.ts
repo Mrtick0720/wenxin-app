@@ -144,6 +144,7 @@ export async function createRecord(
     receiver: input.receiver?.trim() || null,
     note: input.remarks?.trim() || null,
     created_by: staffUserId,
+    created_by_name: staffName,
     status: 'pending',
   }
 
@@ -152,6 +153,7 @@ export async function createRecord(
     row.total_price = computeTotal(input.quantity, input.unit_price)
     row.supplier = input.supplier?.trim() || null
     row.purchase_method = input.purchase_method?.trim() || 'Supplier Delivery'
+    row.payment_status = input.payment_status?.trim() || 'unpaid'
   } else {
     // Staff records never carry costs or supplier.
     row.unit_price = null
@@ -199,6 +201,7 @@ export async function updateRecord(
     patch.total_price = computeTotal(input.quantity, input.unit_price)
     patch.supplier = input.supplier?.trim() || null
     if (input.purchase_method) patch.purchase_method = input.purchase_method.trim()
+    if (input.payment_status) patch.payment_status = input.payment_status.trim()
     if (input.date) patch.date = input.date.trim()
   }
   // Staff: date/costs/supplier are intentionally not patched.

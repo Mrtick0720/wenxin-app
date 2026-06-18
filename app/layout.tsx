@@ -63,7 +63,15 @@ export default async function RootLayout({
 
   return (
     <html lang="en" style={{ colorScheme: 'light', background: '#ffffff' }}>
+      <head>
+        {/* Force iOS PWA to never serve stale cached app shell */}
+        <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta httpEquiv="Pragma" content="no-cache" />
+        <meta httpEquiv="Expires" content="0" />
+      </head>
       <body className="min-h-full" style={{ colorScheme: 'light', background: '#ffffff' }}>
+        {/* Unregister any stale service workers — prevents iOS PWA cache from serving outdated JS */}
+        <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})})}` }} />
         <StaffProvider staff={staff}>
           <SessionHeartbeat />
           <NavigationProvider>

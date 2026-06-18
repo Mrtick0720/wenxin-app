@@ -24,9 +24,14 @@ export type PurchaseRecord = {
   receiver: string | null
   note: string | null
   purchase_method: string | null
+  payment_status: string | null
   status: string
   created_by: string | null
+  created_by_name: string | null
+  purchased_by_user_id: string | null
+  purchased_by_name: string | null
   created_at: string | null
+  checklist_item_id?: number | null
 }
 
 /** The record as served to staff (kitchen) — cost columns are absent. */
@@ -52,6 +57,7 @@ export type PurchaseRecordInput = {
   receiver?: string | null
   remarks?: string | null
   purchase_method?: string | null
+  payment_status?: string | null
 }
 
 /** Search / filter criteria (applied within the role's allowed window). */

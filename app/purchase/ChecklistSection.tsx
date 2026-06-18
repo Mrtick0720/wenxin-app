@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
 import CatalogCombobox from './CatalogCombobox'
+import NumericEditorSheet from './NumericEditorSheet'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
 import {
   fetchChecklistAction,
@@ -16,10 +17,6 @@ import {
 import type { ChecklistEntry } from './checklist-actions'
 
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
-
-function rm(n: number) {
-  return `RM ${n.toFixed(2)}`
-}
 
 // ── Shared input styles ───────────────────────────────────────────────────────
 const inputCls =
@@ -80,12 +77,12 @@ function ItemFormSheet({
   return (
     <div
       className="fixed inset-0 z-[400] flex flex-col justify-end"
-      style={{ background: 'rgba(0,0,0,0.4)', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 56px)' }}
+      style={{ background: 'rgba(0,0,0,0.4)' }}
       onClick={onClose}
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: 'calc(90vh - env(safe-area-inset-bottom,0px) - 56px)' }}
+        style={{ maxHeight: '90vh', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 12px)' }}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
@@ -176,8 +173,7 @@ function ItemFormSheet({
         </div>
 
         <div
-          className="flex-shrink-0 border-t border-gray-100 px-4 pt-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 12px)' }}
+          className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-3"
         >
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose}
@@ -196,100 +192,9 @@ function ItemFormSheet({
   )
 }
 
-// ── Completion sheet (owner/manager only) ─────────────────────────────────────
-function CompletionSheet({
-  item, saving, error, onSave, onClose,
-}: {
-  item: ChecklistEntry
-  saving: boolean
-  error: string | null
-  onSave: (unitPrice: number, supplier: string) => void
-  onClose: () => void
-}) {
-  const [price, setPrice] = useState(item.unit_price != null ? String(item.unit_price) : '')
-  const [supplier, setSupplier] = useState('')
-
-  const qty = item.quantity
-  const up = parseFloat(price) || 0
-  const total = qty * up
-
-  return (
-    <div
-      className="fixed inset-0 z-[420] flex flex-col justify-end"
-      style={{ background: 'rgba(0,0,0,0.5)', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 56px)' }}
-      onClick={onClose}
-    >
-      <div className="bg-white rounded-t-3xl" onClick={e => e.stopPropagation()}>
-        <div className="px-4 pt-5 pb-3 border-b border-gray-100">
-          <div className="font-semibold text-base">Mark as Purchased</div>
-          <div className="text-sm text-gray-500 mt-0.5">
-            {item.name} · {qty % 1 === 0 ? qty.toFixed(0) : qty.toFixed(2)} {item.unit}
-          </div>
-        </div>
-
-        <div className="px-4 pt-4 pb-3 space-y-3">
-          {error && (
-            <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
-          )}
-
-          <Field label="Unit Price (RM) *">
-            <input
-              autoFocus
-              className={inputCls}
-              style={{ fontSize: 24, fontWeight: 600 }}
-              type="number"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={price}
-              onChange={e => setPrice(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && price) onSave(parseFloat(price), supplier) }}
-            />
-          </Field>
-
-          {qty > 0 && up > 0 && (
-            <div className="flex items-center justify-between px-1 text-sm">
-              <span className="text-gray-400">
-                {qty % 1 === 0 ? qty.toFixed(0) : qty.toFixed(2)} {item.unit} × {rm(up)}
-              </span>
-              <span className="font-semibold text-gray-900">{rm(total)}</span>
-            </div>
-          )}
-
-          <Field label="Supplier (optional)">
-            <input
-              className={inputCls}
-              style={{ fontSize: 16 }}
-              placeholder="e.g. KK Meat Supply"
-              value={supplier}
-              onChange={e => setSupplier(e.target.value)}
-            />
-          </Field>
-        </div>
-
-        <div
-          className="border-t border-gray-100 px-4 pt-3"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 12px)' }}
-        >
-          <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={onClose}
-              className="py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={saving || !price || parseFloat(price) <= 0}
-              onClick={() => onSave(parseFloat(price), supplier)}
-              className="py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
-              style={{ background: price && parseFloat(price) > 0 && !saving ? '#22c55e' : '#d1d5db' }}
-            >
-              {saving ? 'Saving…' : 'Mark as Purchased'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ── Completion sheet: now uses shared NumericEditorSheet ──
+// The NumericEditorSheet provides the custom keypad, dual cards, and identical
+// interaction pattern as the Purchase Records inline edit.
 
 // ── Checkbox circle ───────────────────────────────────────────────────────────
 function Checkbox({
@@ -330,9 +235,52 @@ function Checkbox({
 }
 
 // ── Single checklist row — same 5-column grid as RecordRow, with swipe for pending ──
+// ── Kitchen display name helper ──────────────────────────────────────────────
+// Resolves the best translated name for kitchen staff.
+
+const NORM = (v?: string | null): string =>
+  (v ?? '').trim().toLowerCase().normalize('NFC')
+
+function getKitchenDisplayName(
+  item: ChecklistEntry,
+  catalog: CatalogItem[],
+  catalogLoading: boolean,
+): { name: string; loading: boolean } {
+  // Still loading — show a neutral placeholder, never Chinese.
+  if (catalogLoading) {
+    return { name: '...', loading: true }
+  }
+  // Catalog is empty (failed to load or not yet fetched).
+  if (catalog.length === 0) {
+    return { name: item.name || 'Unknown item', loading: false }
+  }
+
+  const target = NORM(item.name)
+  const match = catalog.find(
+    c => NORM(c.name_zh) === target ||
+         NORM(c.name_ms) === target,
+  )
+  if (!match) {
+    if (typeof window !== 'undefined') {
+      console.warn('[kitchen-name] no catalog match for', item.id, item.name)
+    }
+    return { name: item.name || 'Unknown item', loading: false }
+  }
+
+  const translated = match.name_ms
+  if (!translated) {
+    if (typeof window !== 'undefined') {
+      console.warn('[kitchen-name] no ms/en translation for', item.id, item.name)
+    }
+    return { name: item.name || 'Unknown item', loading: false }
+  }
+  return { name: translated, loading: false }
+}
+
 function CheckRow({
   item, canComplete, showCosts,
   onComplete, onUncomplete, onEdit, onDelete,
+  catalog, catalogLoading,
 }: {
   item: ChecklistEntry
   canComplete: boolean
@@ -341,12 +289,15 @@ function CheckRow({
   onUncomplete: (item: ChecklistEntry) => void
   onEdit: (item: ChecklistEntry) => void
   onDelete: (item: ChecklistEntry) => void
+  catalog: CatalogItem[]
+  catalogLoading: boolean
 }) {
   const done = item.status === 'done'
   const categoryClr = categoryColor(item.category)
   const qtyStr = item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)
-  const up = item.unit_price ?? null
-  const total = up !== null ? item.quantity * up : null
+
+  const { name: displayNameKitchen, loading: catalogLoadingName } =
+    getKitchenDisplayName(item, catalog, catalogLoading)
 
   // Swipe state (same pattern as RecordRow; only active for pending owner/manager rows)
   const [swiped, _setSwiped] = useState(false)
@@ -382,22 +333,68 @@ function CheckRow({
   const ACTION_W = 96 // edit + delete buttons
   const translate = canSwipe && swiped ? -ACTION_W : 0
 
-  // Kitchen: simple flex row, no prices, no swipe
+  // Kitchen: compact swipe row with Malay/English names, edit + delete actions, creator
   if (!showCosts) {
+    const ACTION_W = 96 // edit + delete buttons
+    const canSwipe = !done
+
+    const translate = canSwipe && swiped ? -ACTION_W : 0
+
     return (
-      <div style={{ position: 'relative', background: '#fff' }} className="border-b border-gray-50 last:border-0">
-        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr }} />
-        <div className="flex items-center gap-3 px-4 py-3">
-          <Checkbox
-            done={done}
-            canAct={canComplete}
-            onClick={() => done ? onUncomplete(item) : onComplete(item)}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="font-medium text-sm" style={{ color: done ? '#9ca3af' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
-              {item.name}
+      <div style={{ position: 'relative', overflow: 'hidden', borderBottom: '1px solid #f3f4f6', background: '#fff' }} className="last:border-b-0">
+        {/* Category color strip */}
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, zIndex: 2, pointerEvents: 'none' }} />
+        {/* Swipe action area */}
+        {canSwipe && (
+          <div style={{
+            position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W,
+            display: 'flex', alignItems: 'stretch', background: '#ef4444', zIndex: 0,
+          }}>
+            <button type="button"
+              onClick={() => { setSwiped(false); onEdit(item) }}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+            </button>
+            <button type="button"
+              onClick={() => { setSwiped(false); onDelete(item) }}
+              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #f87171' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Sliding content */}
+        <div
+          style={{ transform: `translateX(${translate}px)`, transition: 'transform 0.22s ease', background: '#fff', position: 'relative', zIndex: 1, width: '100%' }}
+          onTouchStart={canSwipe ? onTouchStart : undefined}
+          onTouchEnd={canSwipe ? onTouchEnd : undefined}
+          onClick={canSwipe ? handleRowTap : undefined}
+        >
+          {/* Kitchen grid — 2-column: name | qty */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'minmax(0, 1fr) auto',
+            alignItems: 'center',
+            minHeight: 56,
+            padding: '0 12px',
+            gap: 16,
+          }}>
+            {/* Col 0: Item name — flexible, truncates with ellipsis */}
+            <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ minWidth: 0, fontSize: 14, color: done ? '#9ca3af' : catalogLoadingName ? '#d1d5db' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
+              {displayNameKitchen}
             </div>
-            <div className="text-xs text-gray-400 mt-0.5 tabular-nums">{qtyStr} {item.unit}</div>
+            {/* Col 1: Qty + unit */}
+            <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
+              {qtyStr} {item.unit}
+            </span>
           </div>
         </div>
       </div>
@@ -443,16 +440,16 @@ function CheckRow({
         onTouchEnd={canSwipe ? onTouchEnd : undefined}
         onClick={canSwipe ? handleRowTap : undefined}
       >
-        {/* Grid — identical spec to RecordRow for cross-section column alignment */}
+        {/* Checklist grid — fixed columns: checkbox | name | qty | creator */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '40px 1.1fr 0.7fr 1.2fr 1fr',
+          gridTemplateColumns: '40px minmax(0, 1fr) 72px 96px',
           alignItems: 'center',
           minHeight: 56,
           padding: '0 12px',
-          gap: 4,
+          gap: 12,
         }}>
-          {/* Col 0: Checkbox — 40px fixed, centers the 24px circle */}
+          {/* Col 0: Checkbox */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Checkbox
               done={done}
@@ -460,25 +457,17 @@ function CheckRow({
               onClick={() => done ? onUncomplete(item) : onComplete(item)}
             />
           </div>
-          {/* Col 1: Item name */}
-          <span className="font-semibold text-gray-900 block truncate" style={{ minWidth: 0, fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
+          {/* Col 1: Item name — gets remaining space */}
+          <div className="font-semibold text-gray-900 truncate" style={{ minWidth: 0, fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
             {item.name}
-          </span>
-          {/* Col 2: Qty + unit */}
-          <span className="font-medium text-gray-600 block truncate tabular-nums" style={{ minWidth: 0, fontSize: 13 }}>
+          </div>
+          {/* Col 2: Qty + unit — fixed width, left-aligned, nowrap */}
+          <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
             {qtyStr} {item.unit}
           </span>
-          {/* Col 3: Unit price */}
-          <span className="font-medium text-gray-600 block truncate tabular-nums" style={{ minWidth: 0, fontSize: 13 }}>
-            {up !== null
-              ? `RM${up % 1 === 0 ? up.toFixed(0) : up.toFixed(2)}/${item.unit}`
-              : <span className="text-gray-300">—</span>}
-          </span>
-          {/* Col 4: Total — right-aligned */}
-          <span className="tabular-nums text-right block" style={{ minWidth: 0, fontSize: 14 }}>
-            {total !== null
-              ? <span className="font-semibold text-gray-900">{`RM ${total.toFixed(2)}`}</span>
-              : <span className="text-gray-300">—</span>}
+          {/* Col 3: Creator name — fixed width, left-aligned, truncated */}
+          <span className="font-medium text-gray-500 truncate text-left" style={{ fontSize: 13 }}>
+            {item.created_by_name || '—'}
           </span>
         </div>
       </div>
@@ -486,23 +475,40 @@ function CheckRow({
   )
 }
 
+export type RestoreChecklistAction =
+  | { type: 'add'; item: ChecklistEntry }
+  | { type: 'replace'; tempId: number; item: ChecklistEntry }
+  | { type: 'remove'; id: number }
+
 // ── Main ChecklistSection ─────────────────────────────────────────────────────
 export default function ChecklistSection({
   showCosts,
   catalog,
   catalogLoading,
   onRecordCreated,
+  onItemCompleting,
   onItemCompleted,
+  onItemCompleteFailed,
   initialItems,
   refreshKey = 0,
+  restoreItemRef,
+  triggerAddRef,
+  purchasedChecklistIds,
+  updateItemsRef,
 }: {
   showCosts: boolean
   catalog: CatalogItem[]
   catalogLoading: boolean
   onRecordCreated: () => void
-  onItemCompleted?: (record: PurchaseRecord) => void
+  onItemCompleting?: (item: ChecklistEntry, completion: { unit_price: number; supplier: string | null }) => number
+  onItemCompleted?: (record: PurchaseRecord, optimisticId?: number) => void
+  onItemCompleteFailed?: (optimisticId?: number) => void
   initialItems?: ChecklistEntry[]
   refreshKey?: number
+  restoreItemRef?: React.MutableRefObject<((action: RestoreChecklistAction) => void) | null>
+  triggerAddRef?: React.MutableRefObject<(() => void) | null>
+  purchasedChecklistIds?: Set<number>
+  updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
 }) {
   const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
   const [loading, setLoading] = useState(!initialItems)
@@ -522,8 +528,11 @@ export default function ChecklistSection({
 
   // Completion sheet
   const [completingItem, setCompletingItem] = useState<ChecklistEntry | null>(null)
-  const [completionSaving, setCompletionSaving] = useState(false)
-  const [completionError, setCompletionError] = useState<string | null>(null)
+  const pendingCompletes = useRef<Set<number>>(new Set())
+  const pendingDeletes = useRef<Set<number>>(new Set())
+
+  // Delete confirmation
+  const [deleteTarget, setDeleteTarget] = useState<ChecklistEntry | null>(null)
 
   const [toast, setToast] = useState<string | null>(null)
 
@@ -539,11 +548,86 @@ export default function ChecklistSection({
     if (skipFirstFetch.current) { skipFirstFetch.current = false; return }
     setLoading(true)
     fetchChecklistAction().then(res => {
-      if (res.ok) setItems(res.data)
+      if (res.ok) {
+        // Don't restore items being optimistically removed (completion or delete in flight).
+        // Without this guard, a concurrent refreshKey bump can undo an optimistic removal.
+        setItems(prev => {
+          const protected_ = new Set([...pendingCompletes.current, ...pendingDeletes.current])
+          // Keep any temp-id items (negative IDs) that were added optimistically
+          const tempItems = prev.filter(i => i.id < 0)
+          const fresh = protected_.size > 0
+            ? res.data.filter(i => !protected_.has(i.id))
+            : res.data
+          // Merge: fresh server items + any temp optimistic items not yet reconciled
+          const tempNotInFresh = tempItems.filter(t => !fresh.some(f => f.id === t.id))
+          return [...tempNotInFresh, ...fresh]
+        })
+      }
       setLoading(false)
     })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
+
+  // Expose restoreItem to parent via ref.
+  // Supports:
+  //   1. { type: 'add', item }        — add a new item (skips duplicates by id)
+  //   2. { type: 'replace', tempId, item } — replace a temp-id item with a real one
+  //   3. { type: 'remove', id }       — remove an item by id (e.g. rollback on failure)
+  //
+  // NOTE: No cleanup sets current = null, because the parent may call the ref
+  // during the same render cycle (e.g. optimistic updates in handleUncheck).
+  // A null ref would silently swallow those calls.
+  useEffect(() => {
+    if (restoreItemRef) {
+      restoreItemRef.current = (action) => {
+        if (action.type === 'replace') {
+          setItems(prev => {
+            const withoutTemp = prev.filter(i => i.id !== action.tempId)
+            const deduped = withoutTemp.filter(i => i.id !== action.item.id)
+            return [action.item, ...deduped]
+          })
+        } else if (action.type === 'remove') {
+          setItems(prev => prev.filter(i => i.id !== action.id))
+        } else {
+          setItems(prev => {
+            if (prev.some(i => i.id === action.item.id)) return prev
+            return [action.item, ...prev]
+          })
+        }
+      }
+    }
+  }, [restoreItemRef])
+
+  // Expose openAdd to parent so the + button can live in the section header.
+  useEffect(() => {
+    if (triggerAddRef) {
+      triggerAddRef.current = () => {
+        setAddForm(emptyAddForm)
+        setAddCatalogItem(null)
+        setAddError(null)
+        setShowAdd(true)
+      }
+    }
+  }, [triggerAddRef])
+
+  // Expose a direct items updater so the parent can push fresh server data
+  // atomically (in the same React batch as records/KPI), eliminating the
+  // sequential delay that would otherwise cause cross-device dual-display.
+  useEffect(() => {
+    if (updateItemsRef) {
+      updateItemsRef.current = (freshItems: ChecklistEntry[]) => {
+        setItems(prev => {
+          const protected_ = new Set([...pendingCompletes.current, ...pendingDeletes.current])
+          const tempItems = prev.filter(i => i.id < 0)
+          const fresh = protected_.size > 0
+            ? freshItems.filter(i => !protected_.has(i.id))
+            : freshItems
+          const tempNotInFresh = tempItems.filter(t => !fresh.some(f => f.id === t.id))
+          return [...tempNotInFresh, ...fresh]
+        })
+      }
+    }
+  }, [updateItemsRef])
 
   // ── Add ────────────────────────────────────────────────────────────────────
   async function handleAdd() {
@@ -556,20 +640,18 @@ export default function ChecklistSection({
       category: addForm.category,
       unit: addForm.unit,
       quantity: qty,
-      unit_price: addForm.unit_price ? parseFloat(addForm.unit_price) : null,
       note: addForm.note || null,
     })
     setAddSaving(false)
     if (!res.ok) { setAddError(res.error); return }
     setItems(prev => [res.data, ...prev])
     setAddForm(emptyAddForm); setAddCatalogItem(null); setShowAdd(false)
-    showToast('Added to checklist')
   }
 
   // ── Edit ───────────────────────────────────────────────────────────────────
   function openEdit(item: ChecklistEntry) {
     setEditingItem(item)
-    setEditForm({ name: item.name, category: item.category, unit: item.unit, quantity: String(item.quantity), unit_price: item.unit_price != null ? String(item.unit_price) : '', note: item.note ?? '' })
+    setEditForm({ name: item.name, category: item.category, unit: item.unit, quantity: String(item.quantity), unit_price: '', note: item.note ?? '' })
     setEditError(null)
   }
 
@@ -584,7 +666,6 @@ export default function ChecklistSection({
       category: editForm.category,
       unit: editForm.unit,
       quantity: qty,
-      unit_price: editForm.unit_price ? parseFloat(editForm.unit_price) : null,
       note: editForm.note || null,
     })
     setEditSaving(false)
@@ -593,43 +674,64 @@ export default function ChecklistSection({
     setEditingItem(null)
   }
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
-  async function handleDelete(item: ChecklistEntry) {
+  // ── Delete (with confirmation) ────────────────────────────────────────────
+  function requestDelete(item: ChecklistEntry) {
+    setDeleteTarget(item)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const item = deleteTarget
+    setDeleteTarget(null)
+    if (pendingDeletes.current.has(item.id)) return
+    pendingDeletes.current.add(item.id)
+    // Optimistic: remove immediately
+    setItems(prev => prev.filter(i => i.id !== item.id))
     const res = await deleteChecklistItemAction(item.id)
-    if (res.ok) {
-      setItems(prev => prev.filter(i => i.id !== item.id))
-      showToast(`${item.name} removed`)
+    pendingDeletes.current.delete(item.id)
+    if (!res.ok) {
+      // Rollback: restore item in place
+      setItems(prev => {
+        if (prev.some(i => i.id === item.id)) return prev
+        return [item, ...prev]
+      })
+      showToast('Delete failed')
     }
   }
 
   // ── Complete ───────────────────────────────────────────────────────────────
-    const handleComplete = useCallback(async (unitPrice: number, supplier: string) => {
-    if (!completingItem) return
-    setCompletionSaving(true); setCompletionError(null)
+  // Wraps the existing completion logic to match NumericEditorSheet's onSave signature.
+  const handleCompleteSave = useCallback(async (data: {
+    quantity: number
+    unitPrice: number
+    supplier: string
+  }): Promise<{ ok: boolean; error?: string }> => {
+    if (!completingItem) return { ok: false, error: 'No item selected' }
+    if (pendingCompletes.current.has(completingItem.id)) return { ok: false, error: 'Already in progress' }
+    pendingCompletes.current.add(completingItem.id)
 
     // Optimistic: immediately remove from checklist before server responds
     const optimisticItem = completingItem
+    const completion = { unit_price: data.unitPrice, supplier: data.supplier || null }
+    const optimisticId = onItemCompleting?.(optimisticItem, completion)
     setItems(prev => prev.filter(i => i.id !== optimisticItem.id))
     setCompletingItem(null)
 
-    const res = await completeChecklistItemAction(optimisticItem.id, {
-      unit_price: unitPrice,
-      supplier: supplier.trim() || null,
-    })
-    setCompletionSaving(false)
+    const res = await completeChecklistItemAction(optimisticItem.id, completion)
+    pendingCompletes.current.delete(optimisticItem.id)
 
     if (!res.ok) {
       // Rollback: put item back
+      onItemCompleteFailed?.(optimisticId)
       setItems(prev => [optimisticItem, ...prev])
-      setCompletionError(res.error)
       setCompletingItem(optimisticItem)
-      return
+      return { ok: false, error: res.error }
     }
 
-    // Notify parent to prepend the new purchase record — no refresh() needed
-    onItemCompleted?.(res.data.record)
-    showToast(`${optimisticItem.name} → Purchase Record created`)
-  }, [completingItem, onItemCompleted])
+    // Notify parent to replace the temporary record — no records refresh needed
+    onItemCompleted?.(res.data.record, optimisticId)
+    return { ok: true }
+  }, [completingItem, onItemCompleting, onItemCompleted, onItemCompleteFailed])
 
   // ── Uncomplete (revert done → pending, delete linked purchase record) ─────────
   async function handleUncomplete(item: ChecklistEntry) {
@@ -637,47 +739,42 @@ export default function ChecklistSection({
     if (!res.ok) { showToast('Failed to revert'); return }
     setItems(prev => prev.map(i => i.id === item.id ? res.data : i))
     onRecordCreated()
-    showToast(`${item.name} moved back to Checklist`)
   }
 
-  const pending = items.filter(i => i.status === 'pending')
+  // Only show truly pending items. Reconcile against purchase records by
+  // checklist_item_id (passed from parent): if a record already references this
+  // checklist item, it has been purchased — hide it here even if this device's
+  // own checklist row hasn't yet been refetched with status='done'. This closes
+  // the cross-device dual-display window. Temp optimistic items (id < 0) are
+  // never matched since records carry only real positive checklist ids.
+  const pending = items.filter(i =>
+    i.status === 'pending' &&
+    i.purchase_record_id === null &&
+    !(purchasedChecklistIds?.has(i.id) ?? false)
+  )
 
   return (
-    <div className="px-4 pt-4">
-      {/* Section header */}
-      <div className="flex items-center justify-between px-1 mb-2">
-        <span className="text-xs font-semibold text-gray-500">Today&apos;s Purchase Checklist</span>
-        <button
-          type="button"
-          onClick={() => { setAddForm(emptyAddForm); setAddCatalogItem(null); setAddError(null); setShowAdd(true) }}
-          aria-label="Add checklist item"
-          className="w-7 h-7 rounded-full flex items-center justify-center active:opacity-80"
-          style={{ background: '#f97316' }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-6 text-center text-gray-400 text-sm">Loading…</div>
+    <div>
+      {loading && items.length === 0 ? (
+        <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
       ) : pending.length === 0 ? (
-        <div className="bg-white rounded-2xl shadow-sm px-4 py-8 text-center text-gray-400 text-sm">
+        <div className="py-8 text-center text-gray-400 text-sm">
           No items — tap + to add a purchase request.
         </div>
       ) : (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div>
           {pending.map(item => (
             <CheckRow
               key={item.id}
               item={item}
               canComplete={showCosts}
               showCosts={showCosts}
-              onComplete={item => { setCompletionError(null); setCompletingItem(item) }}
+              onComplete={item => { setCompletingItem(item) }}
               onUncomplete={handleUncomplete}
               onEdit={openEdit}
-              onDelete={handleDelete}
+              onDelete={requestDelete}
+              catalog={catalog}
+              catalogLoading={catalogLoading}
             />
           ))}
         </div>
@@ -731,15 +828,49 @@ export default function ChecklistSection({
         />
       )}
 
-      {/* Completion sheet */}
+      {/* Completion sheet — shared NumericEditorSheet with custom keypad */}
       {completingItem && (
-        <CompletionSheet
-          item={completingItem}
-          saving={completionSaving}
-          error={completionError}
-          onSave={handleComplete}
+        <NumericEditorSheet
+          title="Mark as Purchased"
+          itemName={completingItem.name}
+          unit={completingItem.unit}
+          initialQuantity={completingItem.quantity}
+          initialUnitPrice={null}
+          initialSupplier=""
+          quantityEditable={false}
+          showSupplier={true}
+          onSave={handleCompleteSave}
           onClose={() => setCompletingItem(null)}
         />
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[500] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div className="bg-white rounded-2xl mx-6 p-5 w-full max-w-xs" onClick={(e) => e.stopPropagation()}>
+            <div className="text-center">
+              <div className="text-base font-semibold text-gray-900">Delete Item</div>
+              <div className="text-sm text-gray-500 mt-2">
+                Remove <strong>{deleteTarget.name}</strong> from the checklist?
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button type="button" onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDelete}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white active:opacity-80"
+                style={{ background: '#ef4444' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -7,9 +7,10 @@ export type CatalogItem = {
 }
 
 export function normalizeCatalogSearch(value: string | null | undefined): string {
-  return String(value ?? '')
-    .toLowerCase()
+  return (value ?? '')
     .trim()
+    .toLowerCase()
+    .normalize('NFC')
     .replace(/\s+/g, '')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
 }

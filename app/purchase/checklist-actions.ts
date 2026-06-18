@@ -11,12 +11,13 @@ export type ChecklistEntry = {
   category: string
   unit: string
   quantity: number
-  unit_price: number | null
   note: string | null
   status: 'pending' | 'done'
   purchase_record_id: number | null
   created_at: string
   completed_at: string | null
+  created_by: string | null
+  created_by_name: string | null
 }
 
 export type ChecklistItemInput = {
@@ -24,14 +25,13 @@ export type ChecklistItemInput = {
   category: string
   unit: string
   quantity: number
-  unit_price?: number | null
   note?: string | null
 }
 
 const ROLES = ['owner', 'manager', 'kitchen'] as const
 // unit_price omitted until migration 20260617_checklist_unit_price.sql is applied
 const SELECT_COLS =
-  'id, name, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at'
+  'id, name, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
 
 function fail(error: unknown): ActionResult<never> {
   const message =
@@ -98,8 +98,8 @@ export async function addChecklistItemAction(
       quantity: input.quantity,
       note: input.note?.trim() || null,
       created_by: staff.id,
+      created_by_name: staff.displayName,
     }
-    if (input.unit_price != null) insertPayload.unit_price = input.unit_price
 
     const { data, error } = await supabase
       .from('purchase_checklist')
@@ -130,7 +130,6 @@ export async function editChecklistItemAction(
       quantity: input.quantity,
       note: input.note?.trim() || null,
     }
-    if (input.unit_price !== undefined) updatePayload.unit_price = input.unit_price ?? null
 
     const { data, error } = await supabase
       .from('purchase_checklist')
@@ -208,10 +207,11 @@ export async function uncompleteChecklistItemAction(
 /**
  * Move a purchase record back to Today's Purchase Checklist (owner/manager only).
  * If the record came from a checklist item, revert it. Otherwise create a new one.
+ * Returns the restored checklist entry so the client can reconcile optimistic state.
  */
 export async function moveRecordToChecklistAction(
   purchaseRecordId: number,
-): Promise<ActionResult<true>> {
+): Promise<ActionResult<ChecklistEntry>> {
   try {
     await requireRole('owner', 'manager')
     const supabase = await createServerSupabaseClient()
@@ -226,22 +226,25 @@ export async function moveRecordToChecklistAction(
     const linked = linkedRows?.[0] ?? null
 
     if (linked) {
-      // Revert: delete the purchase record (FK on delete set null handles checklist FK),
-      // then reset the checklist item status to pending.
+      // Revert: delete the purchase record, then reset the checklist item to pending.
       const { error: delErr } = await supabase
         .from('purchase_items')
         .delete()
         .eq('id', purchaseRecordId)
       if (delErr) throw delErr
 
-      const { error: resetErr } = await supabase
+      const { data: restored, error: resetErr } = await supabase
         .from('purchase_checklist')
         .update({ status: 'pending', purchase_record_id: null, completed_at: null })
         .eq('id', linked.id)
+        .select(SELECT_COLS)
+        .single()
       if (resetErr) throw resetErr
+      if (!restored) return { ok: false, error: 'Failed to restore checklist item.' }
+
+      return { ok: true, data: restored as ChecklistEntry }
     } else {
       // No linked checklist item — copy record data into a new checklist item, then delete record.
-      // Omit unit_price: the checklist is a "to-buy" list; price is confirmed at purchase time.
       const { data: record, error: fetchErr } = await supabase
         .from('purchase_items')
         .select('name, category, unit, quantity, note')
@@ -249,13 +252,17 @@ export async function moveRecordToChecklistAction(
         .single()
       if (fetchErr || !record) return { ok: false, error: 'Purchase record not found.' }
 
-      const { error: insertErr } = await supabase.from('purchase_checklist').insert({
-        name: record.name,
-        category: record.category,
-        unit: record.unit,
-        quantity: record.quantity,
-        note: record.note ?? null,
-      })
+      const { data: inserted, error: insertErr } = await supabase
+        .from('purchase_checklist')
+        .insert({
+          name: record.name,
+          category: record.category,
+          unit: record.unit,
+          quantity: record.quantity,
+          note: record.note ?? null,
+        })
+        .select(SELECT_COLS)
+        .single()
       if (insertErr) throw insertErr
 
       const { error: delErr } = await supabase
@@ -263,9 +270,9 @@ export async function moveRecordToChecklistAction(
         .delete()
         .eq('id', purchaseRecordId)
       if (delErr) throw delErr
-    }
 
-    return { ok: true, data: true }
+      return { ok: true, data: inserted as ChecklistEntry }
+    }
   } catch (error) {
     return fail(error)
   }
@@ -304,6 +311,19 @@ export async function completeChecklistItemAction(
       receiver: null,
       remarks: item.note ?? null,
     })
+
+    // Set back-reference + purchaser audit fields so remote clients can reconcile
+    // during the race window between this INSERT and the checklist UPDATE below.
+    // Also copy created_by_name from the checklist item to the purchase record.
+    await supabase
+      .from('purchase_items')
+      .update({
+        checklist_item_id: item.id,
+        created_by_name: item.created_by_name ?? staff.displayName,
+        purchased_by_user_id: staff.id,
+        purchased_by_name: staff.displayName,
+      })
+      .eq('id', record.id)
 
     // Mark checklist item done
     const { error: updateErr } = await supabase

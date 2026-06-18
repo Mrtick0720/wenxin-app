@@ -34,6 +34,14 @@ import {
   statusLabel,
   COST_RATIO_TARGET,
 } from '../lib/purchaseLedger/kpiMath.ts'
+import {
+  applyRecordToKpi,
+  applyRecordToSummary,
+  createOptimisticPurchaseRecord,
+  prependOptimisticRecord,
+  reconcileOptimisticRecord,
+  removeOptimisticRecord,
+} from '../app/purchase/optimistic.ts'
 
 let passed = 0
 let failed = 0
@@ -167,6 +175,63 @@ section('14. KPI labels + target')
 assert(COST_RATIO_TARGET === 30, 'target is 30%')
 assert(statusLabel('good') === 'Good', 'good label')
 assert(statusLabel('na') === 'No data', 'na label')
+
+// ── Purchase checklist optimistic completion ──
+section('15. checklist optimistic completion')
+const checklistItem = {
+  id: 88,
+  name: '菜心',
+  category: 'Vegetables',
+  unit: 'bag',
+  quantity: 1,
+  unit_price: null,
+  note: 'fresh',
+  status: 'pending',
+  purchase_record_id: null,
+  created_at: '2026-06-17T01:00:00.000Z',
+  completed_at: null,
+}
+const tempRecord = createOptimisticPurchaseRecord({
+  item: checklistItem,
+  tempId: -1,
+  today: '2026-06-17',
+  unitPrice: 15,
+  supplier: null,
+})
+assert(tempRecord.id === -1, 'optimistic record uses temporary id')
+assert(tempRecord.total_price === 15, 'optimistic record computes total')
+assert(tempRecord.date === '2026-06-17', 'optimistic record uses business date')
+
+const existingRecord = { ...tempRecord, id: 7, name: 'Fish', total_price: 20, category: 'Seafood' }
+const withTemp = prependOptimisticRecord([existingRecord], tempRecord)
+const withTempAgain = prependOptimisticRecord(withTemp, tempRecord)
+assert(withTemp[0].id === -1 && withTemp[1].id === 7, 'optimistic record is prepended immediately')
+assert(withTempAgain.filter(r => r.id === -1).length === 1, 'prepending same temp id is idempotent')
+
+const serverRecord = { ...tempRecord, id: 101, purchaser: 'Bruce', created_by: 'u1' }
+const reconciled = reconcileOptimisticRecord(withTemp, -1, serverRecord)
+assert(reconciled[0].id === 101 && reconciled.length === 2, 'server record replaces temp record')
+assert(reconcileOptimisticRecord([...withTemp, serverRecord], -1, serverRecord).filter(r => r.id === 101).length === 1, 'reconcile prevents duplicate server records')
+assert(removeOptimisticRecord(withTemp, -1).every(r => r.id !== -1), 'rollback removes temp record')
+
+const summary0 = { today: 20, week: 40, month: 100, categoryBreakdown: [{ category: 'Seafood', total: 20 }] }
+const summary1 = applyRecordToSummary(summary0, tempRecord, 1, '2026-06-17')
+assert(summary1.today === 35 && summary1.week === 55 && summary1.month === 115, 'summary totals increase immediately')
+assert(summary1.categoryBreakdown.some(c => c.category === 'Vegetables' && c.total === 15), 'category breakdown includes optimistic record')
+const summary2 = applyRecordToSummary(summary1, tempRecord, -1, '2026-06-17')
+assert(summary2.today === 20 && summary2.week === 40 && summary2.month === 100, 'summary rollback restores totals')
+assert(!summary2.categoryBreakdown.some(c => c.category === 'Vegetables'), 'category breakdown rollback removes zero category')
+
+const kpi0 = {
+  target: 30,
+  showAmounts: true,
+  today: { ratio: 10, status: 'good', revenue: 200, purchase: 20 },
+  week: { ratio: 20, status: 'good', revenue: 200, purchase: 40 },
+  month: { ratio: 50, status: 'bad', revenue: 200, purchase: 100 },
+}
+const kpi1 = applyRecordToKpi(kpi0, tempRecord, 1, '2026-06-17')
+assert(kpi1.today.purchase === 35 && kpi1.today.ratio === 17.5, 'KPI today purchase and ratio update')
+assert(kpi1.week?.purchase === 55 && kpi1.month?.purchase === 115, 'KPI week and month update')
 
 console.log(`\n${'═'.repeat(60)}`)
 console.log(`  Passed: ${passed}`)

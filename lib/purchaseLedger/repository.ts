@@ -9,7 +9,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { PurchaseFilters, PurchaseRecord } from './types'
 
 const BASE_COLUMNS =
-  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, purchase_method, status, created_by, created_at'
+  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, purchase_method, payment_status, status, created_by, created_by_name, purchased_by_user_id, purchased_by_name, created_at, checklist_item_id'
 const COST_COLUMNS = 'unit_price, total_price, supplier'
 const FULL_COLUMNS = `${BASE_COLUMNS}, ${COST_COLUMNS}`
 

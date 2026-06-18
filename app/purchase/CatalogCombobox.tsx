@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { filterCatalogItems, type CatalogItem } from '@/lib/purchaseLedger/catalog'
 
 type Props = {
@@ -24,15 +24,22 @@ export default function CatalogCombobox({
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const filteredItems = filterCatalogItems(items, query)
 
-  useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 80)
-  }, [open])
+  // Do NOT auto-focus the search input on open — it triggers the Android
+  // keyboard instantly, hiding the item list. The input only gains focus
+  // when the user explicitly taps inside it.
 
-  function close() { setOpen(false); setQuery('') }
+  function close() { setOpen(false); setQuery(''); setInputFocused(false) }
+
+  function handleInputTap() {
+    setInputFocused(true)
+    // Defer focus so the state update above commits first
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
 
   const triggerCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-left flex items-center justify-between bg-white'
 
@@ -86,20 +93,32 @@ export default function CatalogCombobox({
               <button onClick={close} className="text-gray-400 text-2xl leading-none">×</button>
             </div>
 
-            {/* Search */}
+            {/* Search — shown as a tappable row; only focuses input on explicit tap */}
             <div className="px-4 pt-3 pb-2 flex-shrink-0">
-              <input
-                ref={inputRef}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
-                style={{ fontSize: 16 }}
-                placeholder="中文 / Malay…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="none"
-                spellCheck={false}
-              />
+              {inputFocused ? (
+                <input
+                  ref={inputRef}
+                  className="w-full border border-orange-400 rounded-xl px-3 py-2.5 outline-none"
+                  style={{ fontSize: 16 }}
+                  placeholder="中文 / Malay…"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onBlur={() => { if (!query) setInputFocused(false) }}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleInputTap}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-left text-gray-400 bg-white"
+                  style={{ fontSize: 16 }}
+                >
+                  {query || '🔍 中文 / Malay…'}
+                </button>
+              )}
             </div>
 
             {/* List */}

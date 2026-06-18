@@ -11,6 +11,7 @@
     "test:auth-audit": "node scripts/test-auth-audit.mjs",
     "test:auth-migration": "node scripts/test-auth-migration.mjs",
     "test:auth-permissions": "node scripts/test-auth-permissions.mjs",
+    "test:staff-account-actions": "node --no-warnings --experimental-strip-types scripts/test-staff-account-actions.mjs",
     "test:subscription-schedule": "node scripts/test-subscription-schedule.mjs",
     "test:bento-interactions": "node scripts/test-bento-interactions.mjs",
     "test:permission-layer": "npx tsx scripts/test-permission-layer.mjs",
