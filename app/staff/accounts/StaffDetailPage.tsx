@@ -39,8 +39,8 @@ function formatJoinDate(value: string | null) {
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-3 border-b border-gray-100 last:border-0">
-      <span className="shrink-0 text-sm text-gray-400 w-28">{label}</span>
-      <span className="flex-1 text-sm font-medium text-gray-800 text-right">{value}</span>
+      <span className="shrink-0 text-base text-gray-400 w-28">{label}</span>
+      <span className="flex-1 text-base font-medium text-gray-800 text-right">{value}</span>
     </div>
   )
 }
@@ -83,11 +83,8 @@ export default function StaffDetailPage({
       {/* Header */}
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3">
         <BackButton href="/staff/accounts" />
-        <div className="min-w-0 flex-1">
-          <h1 className="text-base font-semibold text-gray-900 truncate">{account.display_name}</h1>
-          <p className="text-xs text-gray-400">{account.staff_id}</p>
-        </div>
-        <span className={`text-xs font-medium ${statusColor}`}>{statusLabel}</span>
+        <h1 className="flex-1 truncate text-base font-semibold text-gray-900">{account.display_name}</h1>
+        <span className={`text-sm font-medium ${statusColor}`}>{statusLabel}</span>
       </header>
 
       <div
@@ -98,7 +95,7 @@ export default function StaffDetailPage({
         {/* ── Basic Information ── */}
         <section className="mx-4 mt-4 rounded-xl bg-white overflow-hidden">
           <div className="px-4 pt-3 pb-1">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Basic Information</h2>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Basic Information</h2>
           </div>
           <form action={infoAction} id="info-form">
             <input type="hidden" name="targetId" value={account.id} />
@@ -108,40 +105,40 @@ export default function StaffDetailPage({
 
               {/* Phone — editable */}
               <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-100">
-                <span className="shrink-0 text-sm text-gray-400 w-28">Phone</span>
+                <span className="shrink-0 text-base text-gray-400 w-28">Phone</span>
                 <input
                   name="phone"
                   type="tel"
                   value={phone}
                   onChange={e => setPhone(e.target.value)}
                   placeholder="—"
-                  className="flex-1 text-sm font-medium text-gray-800 text-right outline-none bg-transparent placeholder:text-gray-300"
+                  className="flex-1 text-base font-medium text-gray-800 text-right outline-none bg-transparent placeholder:text-gray-300"
                 />
               </div>
 
               {/* Address — editable */}
               <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-100">
-                <span className="shrink-0 text-sm text-gray-400 w-28">Address</span>
+                <span className="shrink-0 text-base text-gray-400 w-28">Address</span>
                 <input
                   name="address"
                   value={address}
                   onChange={e => setAddress(e.target.value)}
                   placeholder="—"
-                  className="flex-1 text-sm font-medium text-gray-800 text-right outline-none bg-transparent placeholder:text-gray-300"
+                  className="flex-1 text-base font-medium text-gray-800 text-right outline-none bg-transparent placeholder:text-gray-300"
                 />
               </div>
             </div>
 
             {/* Notes — multi-line */}
             <div className="px-4 pb-3 pt-1">
-              <label className="text-xs text-gray-400 mb-1.5 block">Notes</label>
+              <label className="text-sm text-gray-400 mb-1.5 block">Notes</label>
               <textarea
                 name="notes"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Part-time, can work morning shift only, speaks Chinese…"
-                rows={3}
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 outline-none focus:border-orange-400 resize-none placeholder:text-gray-300"
+                rows={4}
+                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-base text-gray-800 outline-none focus:border-orange-400 resize-none placeholder:text-gray-300"
               />
             </div>
 
@@ -166,7 +163,7 @@ export default function StaffDetailPage({
         {/* ── Employment Information ── */}
         <section className="mx-4 mt-3 rounded-xl bg-white overflow-hidden">
           <div className="px-4 pt-3 pb-1">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Employment</h2>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Employment</h2>
           </div>
           <div className="px-4 pb-3">
             <Row label="Role"      value={roleLabel} />
@@ -184,7 +181,7 @@ export default function StaffDetailPage({
         {/* ── System Information ── */}
         <section className="mx-4 mt-3 rounded-xl bg-white overflow-hidden">
           <div className="px-4 pt-3 pb-1">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">System</h2>
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">System</h2>
           </div>
           <div className="px-4 pb-3">
             <Row label="Last Login" value={formatDate(account.last_login_at)} />
@@ -195,7 +192,7 @@ export default function StaffDetailPage({
         {actionKeys.length > 0 && (
           <section className="mx-4 mt-3 mb-4 rounded-xl bg-white overflow-hidden">
             <div className="px-4 pt-3 pb-1">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account Actions</h2>
+              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">Account Actions</h2>
             </div>
             <div className="px-4 pb-4 space-y-2">
 
