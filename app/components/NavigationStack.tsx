@@ -11,6 +11,12 @@ import React, {
 
 const DURATION = 280
 
+// Monotonic layer id. Date.now() can collide across a rapid push→replace→pop in
+// the same millisecond, which made the cleanup filter remove the wrong entry and
+// leave a layer stuck in the stack — a permanent full-screen touch-intercepting overlay.
+let layerSeq = 0
+const nextLayerId = () => `layer-${++layerSeq}`
+
 type StackEntry = { id: string; path: string; element: React.ReactNode }
 
 type NavCtx = {
@@ -49,11 +55,13 @@ function StackLayer({
   children,
   onPop,
   isLeaving,
+  isActive,
   zIndex,
 }: {
   children: React.ReactNode
   onPop: () => void
   isLeaving: boolean
+  isActive: boolean
   zIndex: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -147,6 +155,11 @@ function StackLayer({
     <div
       data-stack-layer
       ref={ref}
+      // Only the active (top, non-leaving) layer is interactive. Inactive, exiting,
+      // or offscreen layers get pointer-events:none + inert + aria-hidden so they
+      // cannot intercept touches over the content beneath them on iOS Safari.
+      aria-hidden={!isActive}
+      inert={!isActive}
       style={{
         position: 'fixed',
         top: 0,
@@ -159,6 +172,7 @@ function StackLayer({
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
+        pointerEvents: isActive ? 'auto' : 'none',
       }}
     >
       {children}
@@ -196,13 +210,13 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   }, [])
 
   const push = useCallback((path: string, element: React.ReactNode) => {
-    const id = String(Date.now())
+    const id = nextLayerId()
     setStack(prev => [...prev, { id, path, element }])
   }, [])
 
   // Replace the top layer with a new page — new slides in from right, old slides out right behind it
   const replace = useCallback((path: string, element: React.ReactNode) => {
-    const newId = String(Date.now())
+    const newId = nextLayerId()
     setStack(prev => {
       if (prev.length === 0) return [{ id: newId, path, element }]
       const topId = prev[prev.length - 1].id
@@ -240,6 +254,15 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
 
   const currentPath = stack.length > 0 ? stack[stack.length - 1].path : '/'
 
+  // The active layer is the topmost one that is NOT leaving. Everything below it,
+  // and every exiting layer, is inactive (pointer-events:none). When all layers are
+  // leaving (e.g. popToRoot of a single layer), none is active and the base content
+  // beneath the stack becomes interactive again.
+  let activeIdx = -1
+  for (let i = stack.length - 1; i >= 0; i--) {
+    if (!leavingIds.has(stack[i].id)) { activeIdx = i; break }
+  }
+
   return (
     <Context.Provider value={{ push, pop, replace, popToRoot, reset, canPop: stack.length > 0, currentPath }}>
       {children}
@@ -248,6 +271,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
           key={entry.id}
           onPop={pop}
           isLeaving={leavingIds.has(entry.id)}
+          isActive={i === activeIdx}
           zIndex={100 + i * 10}
         >
           {entry.element}
