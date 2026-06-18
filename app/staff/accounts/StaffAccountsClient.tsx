@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { StaffRole } from '@/lib/auth/types'
 import {
@@ -91,7 +91,7 @@ function StatusBadge({ status }: { status: StaffAccountStatus }) {
   }
   const labels = { active: 'Active', suspended: 'Suspended', archived: 'Archived' }
   return (
-    <span className={`rounded-full px-2 py-1 text-[11px] font-medium ${styles[status]}`}>
+    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${styles[status]}`}>
       {labels[status]}
     </span>
   )
@@ -122,6 +122,11 @@ export default function StaffAccountsClient({
   const [localRoles, setLocalRoles] = useState<Record<string, StaffRole>>(() =>
     Object.fromEntries(accounts.map(a => [a.id, a.role]))
   )
+
+  // Refresh server data immediately when role change succeeds
+  useEffect(() => {
+    if (roleState.success) router.refresh()
+  }, [roleState.success, router])
 
   const sorted = useMemo(() => sortAccounts(accounts, ownerId), [accounts, ownerId])
 
@@ -199,31 +204,31 @@ export default function StaffAccountsClient({
           })
 
           return (
-            <article key={account.id} className="rounded-lg border border-gray-100 bg-white p-4">
+            <article key={account.id} className="rounded-xl border border-gray-100 bg-white p-4">
 
               {/* Name + status badge */}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <h2 className="truncate text-sm font-semibold text-gray-900">{account.display_name}</h2>
+                    <h2 className="truncate text-base font-semibold text-gray-900">{account.display_name}</h2>
                     {isActive && (
                       <span
-                        className={`h-2 w-2 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                        className={`h-2 w-2 flex-shrink-0 rounded-full ${account.session_active ? 'bg-green-500' : 'bg-gray-300'}`}
                         aria-label={account.session_active ? 'Online' : 'Offline'}
                       />
                     )}
                   </div>
-                  <p className="mt-0.5 text-xs text-gray-400">{account.staff_id}</p>
+                  <p className="mt-0.5 text-sm text-gray-400">{account.staff_id}</p>
                 </div>
                 <StatusBadge status={status} />
               </div>
 
               {/* Role + last login */}
-              <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+              <div className="mt-3 grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-gray-400">Role</div>
+                  <div className="text-xs text-gray-400">Role</div>
                   {isOwner || isArchived ? (
-                    <div className="mt-1 font-medium text-gray-700 capitalize">
+                    <div className="mt-1 text-sm font-medium text-gray-700 capitalize">
                       {account.role.replace('_', ' ')}
                     </div>
                   ) : (
@@ -235,12 +240,9 @@ export default function StaffAccountsClient({
                           const select = (event.currentTarget as HTMLFormElement).elements.namedItem('role') as HTMLSelectElement
                           const newRole = select?.value as StaffRole
                           setRoleTargetId(account.id)
-                          // Optimistically update local role so dropdown shows new value immediately
                           if (newRole) {
                             setLocalRoles(prev => ({ ...prev, [account.id]: newRole }))
                           }
-                          // Refresh server data after action completes
-                          setTimeout(() => router.refresh(), 800)
                         }}
                       >
                         <input type="hidden" name="targetId" value={account.id} />
@@ -248,7 +250,7 @@ export default function StaffAccountsClient({
                           name="role"
                           value={localRoles[account.id] ?? account.role}
                           onChange={event => setLocalRoles(prev => ({ ...prev, [account.id]: event.target.value as StaffRole }))}
-                          className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-xs"
+                          className="h-8 min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 text-sm"
                         >
                           {ALL_ROLES.map(r => (
                             <option key={r.value} value={r.value}>{r.label}</option>
@@ -257,23 +259,23 @@ export default function StaffAccountsClient({
                         <button
                           type="submit"
                           disabled={rolePending && roleTargetId === account.id}
-                          className="h-8 rounded-md bg-gray-100 px-2 font-medium text-gray-600 disabled:opacity-50"
+                          className="h-8 rounded-md bg-gray-100 px-3 text-sm font-medium text-gray-600 disabled:opacity-50"
                         >
                           {rolePending && roleTargetId === account.id ? '…' : 'Save'}
                         </button>
                       </form>
                       {roleTargetId === account.id && roleState.error && (
-                        <p className="mt-1 text-[11px] text-red-500">{roleState.error}</p>
+                        <p className="mt-1 text-xs text-red-500">{roleState.error}</p>
                       )}
                       {roleTargetId === account.id && roleState.success && (
-                        <p className="mt-1 text-[11px] text-green-600">{roleState.success}</p>
+                        <p className="mt-1 text-xs text-green-600">{roleState.success}</p>
                       )}
                     </div>
                   )}
                 </div>
                 <div>
-                  <div className="text-gray-400">Last login</div>
-                  <div className="mt-1 font-medium text-gray-700">{formatDate(account.last_login_at)}</div>
+                  <div className="text-xs text-gray-400">Last login</div>
+                  <div className="mt-1 text-sm font-medium text-gray-700">{formatDate(account.last_login_at)}</div>
                 </div>
               </div>
 
@@ -288,66 +290,60 @@ export default function StaffAccountsClient({
               )}
 
               {actionKeys.length > 0 && (
-                <div className="mt-4 grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3">
                   {actionKeys.includes('reset-password') && (
                     <button
                       type="button"
                       onClick={() => setResetTarget(account)}
-                      className="w-full rounded-md bg-gray-100 px-3 py-2 text-xs font-medium text-gray-700"
+                      className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 active:bg-gray-200"
                     >
                       Reset password
                     </button>
                   )}
                   {actionKeys.includes('force-logout') && (
-                    <div className="min-w-0">
-                      <form
-                        action={forceLogoutStaffAction}
-                        onSubmit={event => {
-                          if (!window.confirm(`Force ${account.display_name} to sign out?`)) event.preventDefault()
-                        }}
-                      >
-                        <input type="hidden" name="targetId" value={account.id} />
-                        <button type="submit" className="w-full rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                          Force logout
-                        </button>
-                      </form>
-                    </div>
+                    <form
+                      action={forceLogoutStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Force ${account.display_name} to sign out?`)) event.preventDefault()
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={account.id} />
+                      <button type="submit" className="rounded-lg bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 active:bg-amber-100">
+                        Force logout
+                      </button>
+                    </form>
                   )}
                   {actionKeys.includes('suspend') && (
-                    <div className="min-w-0">
-                      <form
-                        action={suspendStaffAction}
-                        onSubmit={event => {
-                          if (!window.confirm(`Suspend ${account.display_name}?`)) event.preventDefault()
-                        }}
-                      >
-                        <input type="hidden" name="targetId" value={account.id} />
-                        <button type="submit" className="w-full rounded-md bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                          Suspend
-                        </button>
-                      </form>
-                    </div>
+                    <form
+                      action={suspendStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Suspend ${account.display_name}?`)) event.preventDefault()
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={account.id} />
+                      <button type="submit" className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-600 active:bg-red-100">
+                        Suspend
+                      </button>
+                    </form>
                   )}
                   {actionKeys.includes('reactivate') && (
-                    <div className="min-w-0">
-                      <form
-                        action={reactivateStaffAction}
-                        onSubmit={event => {
-                          if (!window.confirm(`Reactivate ${account.display_name}?`)) event.preventDefault()
-                        }}
-                      >
-                        <input type="hidden" name="targetId" value={account.id} />
-                        <button type="submit" className="w-full rounded-md bg-green-50 px-3 py-2 text-xs font-medium text-green-600">
-                          Reactivate
-                        </button>
-                      </form>
-                    </div>
+                    <form
+                      action={reactivateStaffAction}
+                      onSubmit={event => {
+                        if (!window.confirm(`Reactivate ${account.display_name}?`)) event.preventDefault()
+                      }}
+                    >
+                      <input type="hidden" name="targetId" value={account.id} />
+                      <button type="submit" className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-600 active:bg-green-100">
+                        Reactivate
+                      </button>
+                    </form>
                   )}
                   {actionKeys.includes('archive') && (
                     <button
                       type="button"
                       onClick={() => setArchiveTarget(account)}
-                      className="w-full rounded-md bg-gray-800 px-3 py-2 text-xs font-medium text-white"
+                      className="rounded-lg bg-gray-800 px-3 py-2 text-sm font-medium text-white active:bg-gray-700"
                     >
                       Archive
                     </button>
@@ -355,13 +351,12 @@ export default function StaffAccountsClient({
                   {actionKeys.includes('restore') && (
                     <form
                       action={restoreStaffAction}
-                      className="min-w-0"
                       onSubmit={event => {
                         if (!window.confirm(`Restore ${account.display_name} to active?`)) event.preventDefault()
                       }}
                     >
                       <input type="hidden" name="targetId" value={account.id} />
-                      <button type="submit" className="w-full rounded-md bg-green-50 px-3 py-2 text-xs font-medium text-green-600">
+                      <button type="submit" className="rounded-lg bg-green-50 px-3 py-2 text-sm font-medium text-green-600 active:bg-green-100">
                         Restore
                       </button>
                     </form>

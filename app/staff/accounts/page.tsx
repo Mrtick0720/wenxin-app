@@ -35,13 +35,10 @@ export default async function StaffAccountsPage() {
   }))
 
   return (
-    <main className="min-h-screen bg-gray-50">
+    <main className="page-slide-in min-h-screen bg-gray-50">
       <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3">
         <BackButton href="/staff" />
-        <div>
-          <h1 className="text-base font-semibold text-gray-900">Staff Accounts</h1>
-          <p className="text-xs text-gray-400">{accounts.length} accounts</p>
-        </div>
+        <h1 className="text-base font-semibold text-gray-900">Staff Accounts</h1>
       </header>
       <div
         className="mx-auto max-w-3xl px-4 py-4"

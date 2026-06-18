@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import DatePicker from '../components/DatePicker'
+import { useRouter } from 'next/navigation'
 import { useNavigation } from '../components/NavigationStack'
 import { useStaff } from '../components/StaffProvider'
 import { todayLocalStr } from '@/lib/dateUtils'
@@ -89,6 +90,7 @@ function summaryForDate(dateKey: string) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function StaffPage() {
+  const router = useRouter()
   const staff = useStaff()
   const { push } = useNavigation()
   const isOwnerOrManager = staff?.role === 'owner' || staff?.role === 'manager'
@@ -112,7 +114,7 @@ export default function StaffPage() {
   }))
 
   function openAccounts() {
-    window.location.href = '/staff/accounts'
+    router.push('/staff/accounts')
   }
 
   return (
