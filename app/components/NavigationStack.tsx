@@ -158,6 +158,7 @@ function StackLayer({
         transform: 'translateX(100%)',
         display: 'flex',
         flexDirection: 'column',
+        overflow: 'hidden',
       }}
     >
       {children}
@@ -171,8 +172,15 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   const [stack, setStack] = useState<StackEntry[]>([])
   const [leavingIds, setLeavingIds] = useState<Set<string>>(new Set())
 
-  // StackLayer is position:fixed and covers the full viewport — no body lock needed.
-  // Setting body overflow:hidden on iOS Safari prevents scroll inside fixed children.
+  // Lock document scroll when a layer is on top so iOS Safari doesn't scroll the page
+  // behind the overlay. Must lock <html> not <body>: body overflow:hidden is an iOS
+  // quirk that blocks scroll inside ALL children including position:fixed overlays;
+  // html overflow:hidden only prevents document scroll and leaves fixed children alone.
+  useEffect(() => {
+    if (stack.length === 0) return
+    document.documentElement.style.overflow = 'hidden'
+    return () => { document.documentElement.style.overflow = '' }
+  }, [stack.length])
 
   const pop = useCallback(() => {
     setStack(prev => {
