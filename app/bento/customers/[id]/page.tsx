@@ -7,7 +7,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
-import { buildSubscriptionPlan, getDefaultMenuType, type Holiday, type PlannedSubscriptionDay, type SubscriptionDay } from '@/lib/subscriptionSchedule'
+import { buildSubscriptionPlan, getDefaultMenuType, type DeliveryFrequency, type Holiday, type PlannedSubscriptionDay, type SubscriptionDay } from '@/lib/subscriptionSchedule'
 import { todayLocalStr } from '@/lib/dateUtils'
 
 type Customer = {
@@ -18,6 +18,7 @@ type Customer = {
   delivery_method: string
   delivery_address: string
   area: string
+  delivery_frequency: DeliveryFrequency
   menu_preference: string
   taste_notes: string
   start_date: string
@@ -147,6 +148,7 @@ export default function CustomerDetailPage() {
           holidays: fetchedHolidays,
           defaults: { menuType: defaultMenu, timeSlot: 'lunch', note: cust.taste_notes || '' },
           customerId: cust.id,
+          deliveryFrequency: cust.delivery_frequency,
         })
 
         const generatedRows = plan.days.filter(day => day.is_generated).map(toSubscriptionDay)
@@ -347,6 +349,7 @@ export default function CustomerDetailPage() {
       note: customer.taste_notes || '',
     },
     customerId: customer.id,
+    deliveryFrequency: customer.delivery_frequency,
   })
   const endDate = plan.endDate
   const planByDate = new Map(plan.days.map(day => [day.date, day]))

@@ -14,6 +14,10 @@ const DELIVERY_METHODS = [
   { value: 'delivery', label: '🚚 Delivery' },
 ]
 const AREAS = ['Likas', 'Luyang', 'Lintas', 'Other']
+const DELIVERY_FREQUENCIES = [
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays' },
+]
 
 export default function NewCustomerPage() {
   const [saving, setSaving] = useState(false)
@@ -23,6 +27,7 @@ export default function NewCustomerPage() {
     phone: '',
     subscription_type: 'monthly',
     delivery_method: 'pickup',
+    delivery_frequency: 'weekdays',
     delivery_address: '',
     area: '',
     menu_preference: '',
@@ -45,6 +50,7 @@ export default function NewCustomerPage() {
         phone: form.phone,
         subscription_type: form.subscription_type,
         delivery_method: form.delivery_method,
+        delivery_frequency: form.delivery_frequency,
         delivery_address: form.delivery_address,
         area: form.area,
         menu_preference: form.menu_preference,
@@ -108,6 +114,21 @@ export default function NewCustomerPage() {
                 {m.label}
               </button>
             ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Delivery Frequency</label>
+          <div className="flex gap-2">
+            {DELIVERY_FREQUENCIES.map(f => (
+              <button key={f.value} type="button" onClick={() => set('delivery_frequency', f.value)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.delivery_frequency === f.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-1">
+            {form.delivery_frequency === 'daily' ? 'Delivers every day, incl. weekends & public holidays' : 'Delivers Mon–Fri only (skips weekends)'}
           </div>
         </div>
 
