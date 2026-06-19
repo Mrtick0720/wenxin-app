@@ -1,5 +1,7 @@
 export type SubscriptionStatus = 'scheduled' | 'skipped' | 'completed'
 
+export type DeliveryFrequency = 'daily' | 'weekdays'
+
 export type SubscriptionDay = {
   id?: number
   customer_id: number
@@ -60,6 +62,7 @@ export function buildSubscriptionPlan({
   holidays,
   defaults,
   customerId = 0,
+  deliveryFrequency = 'weekdays',
 }: {
   startDate: string
   totalMeals: number
@@ -67,6 +70,7 @@ export function buildSubscriptionPlan({
   holidays: Holiday[]
   defaults: Defaults
   customerId?: number
+  deliveryFrequency?: DeliveryFrequency
 }) {
   if (!startDate || totalMeals <= 0) {
     return { days: [] as PlannedSubscriptionDay[], endDate: null as string | null }
@@ -79,16 +83,22 @@ export function buildSubscriptionPlan({
   let activeMealCount = 0
   let endDate: string | null = null
 
-  while (activeMealCount < totalMeals) {
-    if (!isWeekend(cursor)) {
+  // 'daily' delivers every calendar day (weekends + public holidays included);
+  // 'weekdays' skips Sat/Sun. Public holidays are always scheduled, just flagged.
+  while (deliveryFrequency === 'daily' ? days.length < totalMeals : activeMealCount < totalMeals) {
+    const isDeliveryDay = deliveryFrequency === 'daily' || !isWeekend(cursor)
+    if (isDeliveryDay) {
       const existing = existingByDate.get(cursor)
       const status = existing?.status ?? 'scheduled'
       const isActive = status !== 'skipped'
 
       if (isActive) {
         activeMealCount += 1
-        endDate = cursor
       }
+      // Daily subscriptions always cover exactly totalMeals calendar dates.
+      // Skipped/persisted rows can change a day's status, but never extend the
+      // fixed end date. Weekday plans still extend when a meal is skipped.
+      if (deliveryFrequency === 'daily' || isActive) endDate = cursor
 
       days.push({
         id: existing?.id,

@@ -20,6 +20,45 @@ assert.equal(base.days[1].date, '2026-06-08', 'skips the weekend after a Friday 
 assert.equal(base.endDate, '2026-07-02', '20 weekday meals from Jun 5 end on Jul 2')
 assert.equal(base.days[19].meal_number, 20, 'last active day is meal number 20')
 
+const daily = buildSubscriptionPlan({
+  startDate: '2026-06-16',
+  totalMeals: 30,
+  existingDays: [
+    {
+      id: 5,
+      customer_id: 1,
+      date: '2026-06-20',
+      status: 'skipped',
+      meal_number: null,
+      menu_type: 'standard',
+      time_slot: 'lunch',
+      note: '',
+      order_id: null,
+    },
+    {
+      id: 30,
+      customer_id: 1,
+      date: '2026-07-16',
+      status: 'scheduled',
+      meal_number: 23,
+      menu_type: 'standard',
+      time_slot: 'lunch',
+      note: '',
+      order_id: null,
+    },
+  ],
+  holidays: [],
+  defaults: { menuType: 'standard', timeSlot: 'lunch', note: '' },
+  customerId: 1,
+  deliveryFrequency: 'daily',
+})
+
+assert.equal(daily.endDate, '2026-07-15', '30 daily meals from Jun 16 end on Jul 15')
+assert.equal(daily.days.length, 30, 'daily subscriptions contain exactly totalMeals calendar days')
+assert.equal(daily.days[0].date, '2026-06-16', 'daily subscriptions include the start date')
+assert.equal(daily.days[29].date, '2026-07-15', 'daily subscriptions stop on the fixed end date')
+assert.equal(daily.days.some(day => day.date === '2026-07-16'), false, 'stale future rows do not extend a daily plan')
+
 const skipped = buildSubscriptionPlan({
   startDate: '2026-06-05',
   totalMeals: 20,

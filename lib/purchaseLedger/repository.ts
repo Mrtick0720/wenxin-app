@@ -34,6 +34,15 @@ export async function queryRecords(opts: {
 
   q = q.order('date', { ascending: false }).order('id', { ascending: false })
 
+  // Guard against unbounded queries — if no date range is provided (owner view),
+  // limit to the last 90 days / 500 rows to keep the initial load fast.
+  if (!opts.from && !opts.to) {
+    const ninetyDaysAgo = new Date()
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90)
+    q = q.gte('date', ninetyDaysAgo.toISOString().split('T')[0])
+  }
+  q = q.limit(500)
+
   const { data, error } = await q
   if (error) throw error
   return (data ?? []) as unknown as PurchaseRecord[]

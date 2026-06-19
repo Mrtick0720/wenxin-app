@@ -1,31 +1,56 @@
 'use client'
 
 import { useRef, useLayoutEffect } from 'react'
+import NavLink from '../NavLink'
+import type { StaffRole } from '@/lib/auth/types'
 
-// TODO: Replace PLACEHOLDER_FINANCIALS with real POS API data once the
-// POS integration lands. This section is intentionally NOT connected to
-// Supabase — the values below are static UI placeholders only.
-const PLACEHOLDER_FINANCIALS = {
-  receivables: { amount: 5200, note: '3 pending' },
-  payables: { amount: 8700, note: '2 due today' },
-  cash: { amount: 45320, note: '+RM 2,100' },
+const MAX_FONT = 18
+const MIN_FONT = 11
+const RIGHT_BUFFER = 6
+
+interface Props {
+  role: StaffRole
+  receivablesTotal: number
+  receivablesOpenCount: number
+  payablesTotal: number
+  payablesDueTodayCount: number
 }
 
-// Auto-fit each currency value to its own card width: never truncate, never
-// clip, never show an ellipsis. Each amount shrinks independently based on its
-// length until it fits, with a right-side buffer so the final digit always has
-// breathing room. Re-fits on container resize AND on web-font load (a late
-// font swap widens the text after the first measure — the classic clip bug).
-const MAX_FONT = 18 // px — matches the previous text-lg size
-const MIN_FONT = 11 // px — floor so values stay readable
-const RIGHT_BUFFER = 6 // px — guaranteed clearance after the last digit
+function fmt(n: number) {
+  return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
 
-export default function FinancialSnapshot() {
-  const { receivables, payables, cash } = PLACEHOLDER_FINANCIALS
+export default function FinancialSnapshot({ role, receivablesTotal, receivablesOpenCount, payablesTotal, payablesDueTodayCount }: Props) {
+  const isOwner = role === 'owner'
+
   const items = [
-    { key: 'receivables', label: 'Receivables', amount: receivables.amount, note: receivables.note, amountClass: 'text-gray-900', noteClass: 'text-gray-400' },
-    { key: 'payables', label: 'Payables', amount: payables.amount, note: payables.note, amountClass: 'text-gray-900', noteClass: 'text-orange-500 font-medium' },
-    { key: 'cash', label: 'Cash', amount: cash.amount, note: cash.note, amountClass: 'text-green-600', noteClass: 'text-gray-400' },
+    {
+      key: 'receivables',
+      label: 'Receivables',
+      value: fmt(receivablesTotal),
+      note: receivablesOpenCount === 0 ? 'All clear' : `${receivablesOpenCount} outstanding`,
+      amountClass: 'text-gray-900',
+      noteClass: 'text-gray-400',
+      href: '/receivables',
+    },
+    {
+      key: 'payables',
+      label: 'Payables',
+      value: fmt(payablesTotal),
+      note: payablesDueTodayCount > 0 ? `${payablesDueTodayCount} due today` : 'None due today',
+      amountClass: 'text-gray-900',
+      noteClass: payablesDueTodayCount > 0 ? 'text-orange-500 font-medium' : 'text-gray-400',
+      href: '/payables',
+    },
+    ...(isOwner ? [{
+      key: 'cash',
+      label: 'Cash',
+      value: '—',
+      note: 'Manual entry',
+      amountClass: 'text-gray-400',
+      noteClass: 'text-gray-300',
+      href: '/finance',
+    }] : []),
   ]
 
   const spanRefs = useRef<(HTMLSpanElement | null)[]>([])
@@ -43,41 +68,31 @@ export default function FinancialSnapshot() {
         guard += 1
       }
     }
-    const fitAll = () => {
-      for (const span of spanRefs.current) {
-        if (span) fitOne(span)
-      }
-    }
-
+    const fitAll = () => { for (const span of spanRefs.current) { if (span) fitOne(span) } }
     fitAll()
-
     const ro = new ResizeObserver(fitAll)
-    for (const span of spanRefs.current) {
-      if (span?.parentElement) ro.observe(span.parentElement)
-    }
-    // Re-measure once web fonts finish loading (their wider glyphs land after
-    // the first synchronous fit and would otherwise overflow).
+    for (const span of spanRefs.current) { if (span?.parentElement) ro.observe(span.parentElement) }
     document.fonts?.ready.then(fitAll).catch(() => {})
-
     return () => ro.disconnect()
-  }, [])
+  }, [items.length])
+
+  const cols = isOwner ? 'grid-cols-3' : 'grid-cols-2'
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className={`grid ${cols} gap-2`}>
       {items.map((it, i) => (
-        <div key={it.key} className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+        <NavLink key={it.key} href={it.href} className="bg-white rounded-2xl px-4 py-3 shadow-sm block">
           <div className="text-xs text-gray-500 truncate">{it.label}</div>
           <div className="mt-1 pr-1">
             <span
               ref={(el) => { spanRefs.current[i] = el }}
               className={`inline-block whitespace-nowrap font-bold ${it.amountClass}`}
-              style={{ fontSize: `${MAX_FONT}px`, lineHeight: 1.3 }}
-            >
-              RM {it.amount.toLocaleString()}
+              style={{ fontSize: `${MAX_FONT}px`, lineHeight: 1.3 }}>
+              {it.value}
             </span>
           </div>
           <div className={`text-[11px] mt-0.5 truncate ${it.noteClass}`}>{it.note}</div>
-        </div>
+        </NavLink>
       ))}
     </div>
   )

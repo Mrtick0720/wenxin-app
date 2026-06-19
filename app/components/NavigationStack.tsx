@@ -23,6 +23,7 @@ type NavCtx = {
   push: (path: string, element: React.ReactNode) => void
   pop: () => void
   replace: (path: string, element: React.ReactNode) => void
+  resetTo: (path: string, element: React.ReactNode) => void
   popToRoot: () => void
   reset: () => void
   canPop: boolean
@@ -67,7 +68,10 @@ function StackLayer({
   const ref = useRef<HTMLDivElement>(null)
   const animRef = useRef<Animation | null>(null)
   const onPopRef = useRef(onPop)
-  onPopRef.current = onPop
+
+  useEffect(() => {
+    onPopRef.current = onPop
+  }, [onPop])
 
   // Enter: slide in from right — fill:forwards keeps the end state without inline style tricks
   useEffect(() => {
@@ -232,6 +236,12 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
     })
   }, [])
 
+  // Replace every nested layer with one tab-root layer.
+  const resetTo = useCallback((path: string, element: React.ReactNode) => {
+    setLeavingIds(new Set())
+    setStack([{ id: nextLayerId(), path, element }])
+  }, [])
+
   // Animate the top layer out then clear the whole stack (Home tap)
   const popToRoot = useCallback(() => {
     setStack(prev => {
@@ -264,7 +274,7 @@ export function NavigationProvider({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <Context.Provider value={{ push, pop, replace, popToRoot, reset, canPop: stack.length > 0, currentPath }}>
+    <Context.Provider value={{ push, pop, replace, resetTo, popToRoot, reset, canPop: stack.length > 0, currentPath }}>
       {children}
       {stack.map((entry, i) => (
         <StackLayer

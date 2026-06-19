@@ -46,6 +46,8 @@ const ROUTE_RULES: RouteRule[] = [
   { prefix: '/reports', roles: { owner: true, manager: true } },
   { prefix: '/revenue', roles: { owner: true, manager: true } },
   { prefix: '/marketing', roles: { owner: true, manager: true } },
+  { prefix: '/receivables', roles: { owner: true, manager: true, front_desk: true } },
+  { prefix: '/payables',    roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/finance', roles: { owner: true } },
   { prefix: '/staff', roles: { owner: true, manager: true } },
   { prefix: '/bento', roles: ALL_ROLES },

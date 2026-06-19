@@ -30,6 +30,8 @@ export const routeMeta: RouteMeta[] = [
   { path: '/purchase',     label: 'Purchase',     section: 'inventory',  key: 'purchase' },
   { path: '/bento',        label: 'Bento',        section: 'operations', key: 'bento' },
   { path: '/staff',        label: 'Staff',        section: 'people',     key: 'staff' },
+  { path: '/receivables',  label: 'Receivables',  section: 'finance',    key: 'receivables' },
+  { path: '/payables',    label: 'Payables',     section: 'finance',    key: 'payables' },
   { path: '/finance',      label: 'Finance',      section: 'finance',    key: 'finance' },
   { path: '/inventory',    label: 'Inventory',    section: 'inventory',  key: 'inventory' },
   { path: '/reports',      label: 'Reports',      section: 'finance',    key: 'reports' },

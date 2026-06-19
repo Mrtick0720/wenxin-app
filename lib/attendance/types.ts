@@ -2,7 +2,7 @@
 // Approved entities from the Attendance module architecture.
 // Session-based model — multiple sessions per staff per day.
 
-export type ShiftType = 'morning' | 'full' | 'afternoon' | 'off' | 'leave'
+export type ShiftType = 'morning' | 'full_day' | 'afternoon' | 'off' | 'leave'
 
 export type StaffShift = {
   id: number

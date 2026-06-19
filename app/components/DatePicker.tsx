@@ -24,9 +24,11 @@ function getFirstDayOfMonth(y: number, m: number) { return new Date(y, m, 1).get
 interface DatePickerProps {
   selectedDate: string
   onDateChange: (date: string) => void
+  /** Dates that should show a small orange indicator dot (e.g. dates with reservations). */
+  markedDates?: Set<string>
 }
 
-export default function DatePicker({ selectedDate, onDateChange }: DatePickerProps) {
+export default function DatePicker({ selectedDate, onDateChange, markedDates }: DatePickerProps) {
   const today = todayLocalStr()
   const [viewWeekStart, setViewWeekStart] = useState(() => getMondayOfWeek(selectedDate))
 
@@ -415,6 +417,19 @@ export default function DatePicker({ selectedDate, onDateChange }: DatePickerPro
                         >
                           {day}
                         </span>
+                        {markedDates?.has(dateStr) && (
+                          <span
+                            className="absolute left-1/2"
+                            style={{
+                              bottom: -2,
+                              width: 4,
+                              height: 4,
+                              borderRadius: '50%',
+                              backgroundColor: isSelected ? '#fff' : '#f97316',
+                              transform: 'translateX(-50%)',
+                            }}
+                          />
+                        )}
                       </span>
                     </button>
                   )
