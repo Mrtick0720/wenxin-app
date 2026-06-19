@@ -20,7 +20,9 @@ function fmtTime(t: string): string { return t.slice(0, 5) }
 
 export default function HomeBell({ baseCount }: { baseCount: number }) {
   const staff = useStaff()
-  const rawRole = staff?.role ?? 'other'
+  // Normalize as a plain string so a legacy 'boss' value (removed from the role
+  // enum) still maps to owner without a no-overlap type error on the comparison.
+  const rawRole: string = staff?.role ?? 'other'
   const role = rawRole === 'boss' ? 'owner' : rawRole
   const canSeePii = role === 'owner' || role === 'manager' || role === 'front_desk'
 

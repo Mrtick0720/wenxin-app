@@ -14,10 +14,10 @@ function fail(error: unknown): ActionResult<never> {
   return { ok: false, error: message }
 }
 
-/** Some deployments use 'boss' instead of 'owner'. Normalise both ways. */
-const EDIT_ROLES = ['owner', 'boss', 'manager', 'front_desk'] as const
+/** Roles allowed to edit reservations (status/create). */
+const EDIT_ROLES = ['owner', 'manager', 'front_desk'] as const
 /** Detail editing (date/time/pax/customer/notes) — owner/manager only, not front_desk. */
-const EDIT_DETAIL_ROLES = ['owner', 'boss', 'manager'] as const
+const EDIT_DETAIL_ROLES = ['owner', 'manager'] as const
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -73,7 +73,10 @@ export async function fetchReservationsAction(
       .order('time_start', { ascending: true })
 
     if (error) throw error
-    return { ok: true, data: { reservations: (data ?? []) as ReservationRow[], canSeePii: canSee } }
+    // `select` is a ternary union of two literal strings, which the supabase-js
+    // type parser can't resolve, so the row type widens to ParserError. The shape
+    // is correct at runtime — cast through unknown.
+    return { ok: true, data: { reservations: (data ?? []) as unknown as ReservationRow[], canSeePii: canSee } }
   } catch (error) {
     return fail(error)
   }
@@ -85,7 +88,7 @@ export async function createReservationAction(
   input: NewReservationInput,
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    await requireRole(...(EDIT_ROLES as unknown as [string, ...string[]]))
+    await requireRole(...EDIT_ROLES)
     if (input.date < todayLocalStr()) throw new Error('Reservation date cannot be in the past.')
 
     const supabase = await createServerSupabaseClient()
@@ -120,7 +123,7 @@ export async function updateReservationAction(
   input: NewReservationInput,
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    await requireRole(...(EDIT_DETAIL_ROLES as unknown as [string, ...string[]]))
+    await requireRole(...EDIT_DETAIL_ROLES)
     if (input.date < todayLocalStr()) throw new Error('Reservation date cannot be in the past.')
 
     const supabase = await createServerSupabaseClient()
@@ -154,7 +157,7 @@ export async function updateReservationStatusAction(
   status: string,
 ): Promise<ActionResult<{ id: number; status: string }>> {
   try {
-    await requireRole(...(EDIT_ROLES as unknown as [string, ...string[]]))
+    await requireRole(...EDIT_ROLES)
 
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
@@ -201,7 +204,7 @@ export async function deleteReservationAction(
   id: number,
 ): Promise<ActionResult<{ id: number }>> {
   try {
-    await requireRole('owner', 'boss', 'manager')
+    await requireRole('owner', 'manager')
 
     const supabase = await createServerSupabaseClient()
     const { error } = await supabase
@@ -265,7 +268,8 @@ export async function fetchUpcomingReservationsAction(): Promise<
       .order('time_start', { ascending: true })
 
     if (error) throw error
-    const reservations = (data ?? []) as ReservationRow[]
+    // See note in fetchReservationsAction: ternary select string widens to ParserError.
+    const reservations = (data ?? []) as unknown as ReservationRow[]
     return { ok: true, data: { reservations, canSeePii: canSee, count: reservations.length } }
   } catch (error) {
     return fail(error)

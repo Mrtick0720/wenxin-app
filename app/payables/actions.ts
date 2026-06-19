@@ -38,7 +38,7 @@ export type PaymentInput = {
   notes?: string
 }
 
-function computeStatus(original: number, paid: number, dueDate: string | null, paymentStatus: string | null): string {
+function computeStatus(original: number, paid: number, dueDate: string | null, paymentStatus: string | null = null): string {
   if (paymentStatus === 'Paid' || paymentStatus === 'paid') return 'paid'
   if (paid >= original && original > 0) return 'paid'
   if (paid > 0) return 'partial'

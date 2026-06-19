@@ -73,7 +73,9 @@ function CelebrationDots() {
 
 export default function ReservationsPage() {
   const staff = useStaff()
-  const rawRole = staff?.role ?? 'other'
+  // Normalize as a plain string so a legacy 'boss' value (removed from the role
+  // enum) still maps to owner without a no-overlap type error on the comparison.
+  const rawRole: string = staff?.role ?? 'other'
   const role = rawRole === 'boss' ? 'owner' : rawRole
   const canEdit = role === 'owner' || role === 'manager' || role === 'front_desk'
   const canEditDetails = role === 'owner' || role === 'manager'
