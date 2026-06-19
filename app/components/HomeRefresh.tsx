@@ -9,9 +9,8 @@ import { preloadRoutes } from '@/app/lib/stackPages'
 export default function HomeRefresh({ children }: { children: React.ReactNode }) {
   const router = useRouter()
 
-  // Preload all secondary page chunks after homepage mounts.
-  // This ensures the first navigation shows the full page during slide-in
-  // instead of a blank Suspense fallback while the chunk loads.
+  // Preload the Purchase chunk after homepage mounts so its first tab switch
+  // can show the real cached shell without competing with Home's initial load.
   useEffect(() => {
     const id = setTimeout(() => preloadRoutes(), 100)
     return () => clearTimeout(id)

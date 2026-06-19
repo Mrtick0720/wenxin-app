@@ -42,6 +42,7 @@ import {
   getMutationId,
 } from './optimistic'
 import { usePurchaseSync } from './usePurchaseSync'
+import { useChecklistRealtime } from './useChecklistRealtime'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
 const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
@@ -65,6 +66,8 @@ export type LedgerRecord = {
   total_price?: number | null
   supplier?: string | null
   checklist_item_id?: number | null
+  purchase_method?: string | null
+  payment_status?: string | null
 }
 
 type Perms = { canViewCosts: boolean; canDelete: boolean; canExport: boolean }
@@ -202,7 +205,7 @@ function groupHistory(records: LedgerRecord[], today: string): MonthGroup[] {
 // ── Record row with swipe-to-reveal actions ──
 function RecordRow({
   item, isFirst, isLast, showCosts, canDelete,
-  onDetail, onEditRecord, onDeleteRecord, onEditField, onUncheck,
+  onDetail, onEditRecord, onDeleteRecord, onUncheck,
 }: {
   item: LedgerRecord
   isFirst: boolean
@@ -240,26 +243,6 @@ function RecordRow({
       setSwiped(dx > 0) // left = open, right = close
       setTimeout(() => { isSwipeGest.current = false }, 350)
     }
-  }
-
-  function handleDetailTap() {
-    if (isSwipeGest.current) return
-    if (swipedRef.current) { setSwiped(false); return }
-    onDetail(item)
-  }
-
-  function handleQtyTap(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (isSwipeGest.current) return
-    if (swipedRef.current) { setSwiped(false); return }
-    onEditField(item, 'quantity')
-  }
-
-  function handlePriceTap(e: React.MouseEvent) {
-    e.stopPropagation()
-    if (isSwipeGest.current) return
-    if (swipedRef.current) { setSwiped(false); return }
-    onEditField(item, 'unit_price')
   }
 
   const translate = showCosts && swiped ? -ACTION_W : 0
@@ -330,33 +313,44 @@ function RecordRow({
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
       >
-        <div
+        {/* Row content — tap anywhere to edit */}
+        <button
+          type="button"
+          onClick={() => {
+            if (isSwipeGest.current) return
+            if (swipedRef.current) { setSwiped(false); return }
+            onEditRecord(item)
+          }}
           style={{
             display: 'grid',
-            gridTemplateColumns: '40px 1.1fr 0.7fr 1.2fr 1fr',
+            gridTemplateColumns: '40px minmax(0, 1fr) auto auto',
             alignItems: 'center',
             minHeight: 56,
+            width: '100%',
+            maxWidth: '100%',
+            overflow: 'hidden',
             padding: '0 12px',
-            gap: 4,
+            columnGap: 12,
+            cursor: 'pointer',
           }}
         >
+          {/* Checkbox */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <button
-              type="button"
-              onClick={() => { if (swipedRef.current) { setSwiped(false); return } onUncheck(item) }}
+            <span
+              onClick={(e) => {
+                e.stopPropagation()
+                if (swipedRef.current) { setSwiped(false); return }
+                onUncheck(item)
+              }}
               style={{
-                WebkitAppearance: 'none',
-                appearance: 'none',
-                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
                 width: 24,
                 height: 24,
                 minWidth: 24,
                 minHeight: 24,
                 borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 0,
                 cursor: 'pointer',
                 background: '#22c55e',
                 border: 'none',
@@ -365,56 +359,24 @@ function RecordRow({
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-            </button>
+            </span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleDetailTap}
-            className="text-left active:opacity-70"
-            style={{ minWidth: 0 }}
-          >
-            <span className="font-semibold text-gray-900 block truncate" style={{ fontSize: 16 }}>
-              {item.name}
-            </span>
-          </button>
+          {/* Name — flexible, truncates */}
+          <span className="font-semibold text-gray-900 text-left" style={{ fontSize: 16, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {item.name}
+          </span>
 
-          <button
-            type="button"
-            onClick={handleQtyTap}
-            className="text-left active:opacity-70 tabular-nums"
-            style={{ minWidth: 0 }}
-          >
-            <span className="font-medium text-gray-600 block truncate" style={{ fontSize: 13 }}>
-              {item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)} {item.unit}
-            </span>
-          </button>
+          {/* Quantity — auto width, never wraps */}
+          <span className="font-medium text-gray-600 tabular-nums text-left" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
+            {item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)} {item.unit}
+          </span>
 
-          <button
-            type="button"
-            onClick={handlePriceTap}
-            className="text-left active:opacity-70 tabular-nums"
-            style={{ minWidth: 0 }}
-          >
-            <span className="font-medium text-gray-600 block truncate" style={{ fontSize: 13 }}>
-              {(item.unit_price ?? 0) > 0
-                ? `RM${item.unit_price! % 1 === 0 ? item.unit_price!.toFixed(0) : item.unit_price!.toFixed(2)}/${item.unit}`
-                : <span className="text-gray-300">—</span>}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleDetailTap}
-            className="text-right active:opacity-70 tabular-nums"
-            style={{ minWidth: 0 }}
-          >
-            {(item.total_price ?? 0) > 0
-              ? <span className="font-semibold text-gray-900" style={{ fontSize: 14 }}>{rm(item.total_price)}</span>
-              : <span className="text-gray-300" style={{ fontSize: 14 }}>—</span>
-            }
-          </button>
-        </div>
+          {/* Total Amount — auto width, never wraps, capped */}
+          <span className="font-semibold text-gray-900 tabular-nums text-right" style={{ fontSize: 15, whiteSpace: 'nowrap', maxWidth: 90 }}>
+            {(item.total_price ?? 0) > 0 ? rm(item.total_price) : '—'}
+          </span>
+        </button>
       </div>
     </div>
   )
@@ -574,52 +536,47 @@ export default function PurchaseClient(props: Props) {
     // On explicit retry (bootAttempt > 0), ignore any stale cache and force a fresh load
     const cache = bootAttempt === 0 ? initCache : null
 
-    // Delay fetches on first open (no cache) so they don't compete with the
-    // 280ms slide-in animation on the main thread. Retries skip the delay.
-    const delay = !cache && bootAttempt === 0 ? 340 : 0
-
-    const timer = setTimeout(() => {
-      if (!cache) {
-        // No cached data — show skeleton and fetch context + checklist in parallel
-        setInitialLoading(true)
-        setBootError(null)
-        Promise.all([fetchPurchaseContextAction(), fetchChecklistAction()]).then(([ctxRes, checkRes]) => {
+    // Start fetches immediately — the slide-in animation is already complete
+    // by the time React mounts this component. Cached data renders instantly.
+    if (!cache) {
+      setInitialLoading(true)
+      setBootError(null)
+      Promise.all([fetchPurchaseContextAction(), fetchChecklistAction()]).then(([ctxRes, checkRes]) => {
+        if (!active) return
+        if (!ctxRes.ok) { setBootError(ctxRes.error); setInitialLoading(false); return }
+        const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
+        setCtx(newCtx)
+        setRecords(ctxRes.data.records as LedgerRecord[])
+        setSummary(ctxRes.data.summary)
+        setKpi(ctxRes.data.kpi)
+        const checklist = checkRes.ok ? checkRes.data : undefined
+        setChecklistSeed(checklist)
+        purchaseCache = { ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, checklist, cachedAt: Date.now() }
+        setInitialLoading(false)
+      })
+    } else {
+      // Have cached data — show it immediately, refresh in background if stale
+      const isFresh = Date.now() - cache.cachedAt < CACHE_TTL_MS
+      if (!isFresh) {
+        setRefreshing(true)
+        fetchPurchaseContextAction().then((ctxRes) => {
           if (!active) return
-          if (!ctxRes.ok) { setBootError(ctxRes.error); setInitialLoading(false); return }
-          const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-          setCtx(newCtx)
-          setRecords(ctxRes.data.records as LedgerRecord[])
-          setSummary(ctxRes.data.summary)
-          setKpi(ctxRes.data.kpi)
-          const checklist = checkRes.ok ? checkRes.data : undefined
-          setChecklistSeed(checklist)
-          purchaseCache = { ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, checklist, cachedAt: Date.now() }
-          setInitialLoading(false)
+          if (ctxRes.ok) {
+            const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
+            setCtx(newCtx)
+            setRecords(ctxRes.data.records as LedgerRecord[])
+            setSummary(ctxRes.data.summary)
+            setKpi(ctxRes.data.kpi)
+            purchaseCache = { ...purchaseCache!, ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, cachedAt: Date.now() }
+            setChecklistRefreshKey(k => k + 1)
+          }
+          setRefreshing(false)
         })
-      } else {
-        // Have cached data — show it immediately, refresh in background if stale
-        const isFresh = Date.now() - cache.cachedAt < CACHE_TTL_MS
-        if (!isFresh) {
-          setRefreshing(true)
-          fetchPurchaseContextAction().then((ctxRes) => {
-            if (!active) return
-            if (ctxRes.ok) {
-              const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-              setCtx(newCtx)
-              setRecords(ctxRes.data.records as LedgerRecord[])
-              setSummary(ctxRes.data.summary)
-              setKpi(ctxRes.data.kpi)
-              purchaseCache = { ...purchaseCache!, ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, cachedAt: Date.now() }
-              setChecklistRefreshKey(k => k + 1)
-            }
-            setRefreshing(false)
-          })
-        }
-        // Fresh cache: nothing to do — cached state already applied at useState init
       }
-    }, delay)
+      // Fresh cache: nothing to do — cached state already applied at useState init
+    }
 
-    return () => { active = false; clearTimeout(timer) }
+    return () => { active = false }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootAttempt])
 
@@ -631,17 +588,13 @@ export default function PurchaseClient(props: Props) {
   const [catalogLoading, setCatalogLoading] = useState(true)
   const [catalogError, setCatalogError]     = useState<string | null>(null)
   useEffect(() => {
-    // Defer catalog fetch so it doesn't compete with the slide-in animation
-    const timer = setTimeout(() => {
-      fetchCatalogAction()
-        .then((res) => {
-          if (res.ok) setCatalog(res.data)
-          else setCatalogError(res.error)
-        })
-        .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
-        .finally(() => setCatalogLoading(false))
-    }, 340)
-    return () => clearTimeout(timer)
+    fetchCatalogAction()
+      .then((res) => {
+        if (res.ok) setCatalog(res.data)
+        else setCatalogError(res.error)
+      })
+      .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
+      .finally(() => setCatalogLoading(false))
   }, [])
 
   const [showAdd, setShowAdd]                 = useState(false)
@@ -704,6 +657,9 @@ export default function PurchaseClient(props: Props) {
 
   // ── Cross-device sync: polling, visibility, reconnect ──
   usePurchaseSync(backgroundRefresh)
+
+  // ── Realtime subscription — refreshes checklist when any device changes it ──
+  useChecklistRealtime(() => setChecklistRefreshKey(k => k + 1))
 
   // ── Pull-to-refresh touch handlers ──
   const startY = useRef(0)
@@ -943,8 +899,12 @@ export default function PurchaseClient(props: Props) {
   }
 
   // ── handleQuickEditSaved: optimistic in-place update ──
+  // Updates the row immediately with recalculated quantity, unit_price, and total_price.
+  // No async fetch — the row total changes instantly.
   function handleQuickEditSaved(updated: LedgerRecord) {
-    setRecords((prev) => updateRecordInList(prev, updated.id, updated))
+    const total_price = (updated.quantity ?? 1) * (updated.unit_price ?? 0)
+    setRecords((prev) => updateRecordInList(prev, updated.id, { ...updated, total_price }))
+    // Silently refresh KPI/summary in the background — doesn't block the row update
     refreshKpiAndSummaryAsync()
   }
 
@@ -1008,6 +968,8 @@ export default function PurchaseClient(props: Props) {
     const tempEntry: ChecklistEntry = {
       id: tempChecklistId,
       name: record.name,
+      specification: record.specification ?? null,
+      supplier: record.supplier ?? null,
       category: record.category,
       unit: record.unit,
       quantity: record.quantity,
@@ -1030,12 +992,11 @@ export default function PurchaseClient(props: Props) {
     pendingUnchecks.current.delete(record.id)
 
     if (res.ok) {
-      // Replace temp checklist entry with the real server-confirmed entry
+      // Replace temp checklist entry with the real server-confirmed entry.
+      // Sort by id DESC matches the server order, so the replace prepend is correct.
       restoreChecklistRef.current?.({ type: 'replace', tempId: tempChecklistId, item: res.data })
-      // Refresh KPI/summary for server-consistent cost ratio after uncheck
-      refreshKpiAndSummaryAsync()
-      // No checklistRefreshKey bump needed — the optimistic replace already gives
-      // the correct visual state; the rate-limited background sync will reconcile later.
+      // Silently refresh KPI in background — does not affect row position
+      refreshKpiAsync()
     } else {
       // Rollback: remove temp entry from checklist, restore record and KPI/summary
       restoreChecklistRef.current?.({ type: 'remove', id: tempChecklistId })
@@ -1080,17 +1041,35 @@ export default function PurchaseClient(props: Props) {
     return acc
   }, [])
 
-  // ── Loading state ──
+  // ── Loading skeleton — shell appears instantly ──
   if (initialLoading) {
     return (
       <div className="flex flex-col h-dvh bg-gray-50">
         <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
           <BackButton href="/purchase" />
-          <div className="h-5 w-24 bg-gray-200 rounded animate-pulse" />
+          <span className="text-base font-semibold text-gray-800">Purchase</span>
           <div className="w-10" />
         </div>
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-gray-400 text-sm">Loading…</div>
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+          {/* KPI skeleton */}
+          <div className="h-32 bg-white rounded-2xl animate-pulse" />
+          {/* Checklist skeleton */}
+          <div className="space-y-2">
+            <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+            <div className="bg-white rounded-2xl p-4 space-y-3">
+              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
+            </div>
+          </div>
+          {/* Records skeleton */}
+          <div className="space-y-2">
+            <div className="h-5 w-36 bg-gray-200 rounded animate-pulse" />
+            <div className="bg-white rounded-2xl p-4 space-y-3">
+              <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+              <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -1524,16 +1503,20 @@ export default function PurchaseClient(props: Props) {
         document.body
       )}
 
-      {/* ── Edit sheet (QuickEditSheet) ── */}
+      {/* ── Edit sheet (QuickEditSheet) — optimistic save ── */}
       {editingRecord && (
         <QuickEditSheet
           record={editingRecord}
           showCosts={showCosts}
           onClose={() => setEditingRecord(null)}
-          onSaved={() => {
-            // Re-fetch records silently after full edit so totals stay accurate
-            refresh(filters, true)
+          onOptimisticSave={(optimistic) => {
             setEditingRecord(null)
+            handleQuickEditSaved(optimistic)
+          }}
+          onSaveFailed={(original) => {
+            // Revert to original values if the background save failed
+            setRecords((prev) => updateRecordInList(prev, original.id, original as unknown as LedgerRecord))
+            refreshKpiAndSummaryAsync()
           }}
         />
       )}

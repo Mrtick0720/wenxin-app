@@ -1,14 +1,77 @@
-import NavLink from '../NavLink'
+'use client'
 
-// TODO: Replace PLACEHOLDER_SHIFTS with real staff scheduling data once a
-// shifts table / API exists. Static UI placeholders only — same names as the
-// previous hardcoded Shift Board.
-const PLACEHOLDER_SHIFTS = [
-  { name: 'Ah Ming', role: 'Kitchen', hours: '10:00 - 20:00', status: 'On Duty', avatarBg: 'bg-purple-500' },
-  { name: 'Lina', role: 'Front', hours: '11:00 - 19:00', status: 'Incoming', avatarBg: 'bg-blue-500' },
-] as const
+import { useEffect, useState } from 'react'
+import NavLink from '../NavLink'
+import { createBrowserSupabaseClient } from '@/lib/supabase/client'
+import { todayLocalStr } from '@/lib/dateUtils'
+
+type ShiftEntry = {
+  id: string
+  name: string
+  role: string
+  clockIn: string | null   // HH:MM from clock_in timestamp
+}
 
 export default function ShiftBoardCard() {
+  const [staff, setStaff] = useState<ShiftEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    const supabase = createBrowserSupabaseClient()
+    const today = todayLocalStr()
+
+    async function load() {
+      // Fetch staff who have an open attendance session today
+      const { data: sessions, error } = await supabase
+        .from('attendance_sessions')
+        .select('staff_user_id,clock_in')
+        .eq('business_date', today)
+        .is('clock_out', null)
+        .order('clock_in', { ascending: true })
+
+      if (error || !sessions || sessions.length === 0) {
+        if (active) setLoading(false)
+        return
+      }
+
+      const staffIds = [...new Set(sessions.map(s => s.staff_user_id))]
+
+      const { data: profiles } = await supabase
+        .from('staff_profiles')
+        .select('id,display_name,role')
+        .in('id', staffIds)
+        .eq('active', true)
+
+      const profileMap = new Map((profiles ?? []).map(p => [p.id, p]))
+      const earliestByStaff = new Map<string, string>()
+      for (const s of sessions) {
+        if (!earliestByStaff.has(s.staff_user_id)) {
+          const t = new Date(s.clock_in)
+          earliestByStaff.set(s.staff_user_id, `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`)
+        }
+      }
+
+      const entries: ShiftEntry[] = staffIds
+        .map(id => {
+          const p = profileMap.get(id)
+          if (!p) return null
+          return { id, name: p.display_name, role: p.role, clockIn: earliestByStaff.get(id) ?? null }
+        })
+        .filter((e): e is ShiftEntry => e !== null)
+
+      if (active) {
+        setStaff(entries)
+        setLoading(false)
+      }
+    }
+
+    load()
+    return () => { active = false }
+  }, [])
+
+  const avatarColors = ['bg-purple-500','bg-blue-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500']
+
   return (
     <div>
       <div className="flex items-center justify-between mb-2 px-1">
@@ -18,22 +81,32 @@ export default function ShiftBoardCard() {
         </svg>
       </div>
       <div className="space-y-2">
-        {PLACEHOLDER_SHIFTS.map(shift => (
-          <NavLink key={shift.name} href="/staff" className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 block">
-            <span className={`w-9 h-9 rounded-full ${shift.avatarBg} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}>
-              {shift.name.charAt(0)}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold text-gray-900 truncate">{shift.name}</span>
-              <span className="block text-xs text-gray-500 truncate mt-0.5">{shift.role} · {shift.hours}</span>
-            </span>
-            <span className={`flex-shrink-0 text-xs font-medium rounded-full px-2.5 py-1 ${
-              shift.status === 'On Duty' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
-            }`}>
-              {shift.status}
-            </span>
-          </NavLink>
-        ))}
+        {loading ? (
+          <div className="bg-white rounded-2xl px-4 py-6 text-center text-sm text-gray-400 shadow-sm">
+            Loading…
+          </div>
+        ) : staff.length === 0 ? (
+          <div className="bg-white rounded-2xl px-4 py-6 text-center text-sm text-gray-400 shadow-sm">
+            No one clocked in yet
+          </div>
+        ) : (
+          staff.map((entry, i) => (
+            <NavLink key={entry.id} href="/staff" className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 block">
+              <span className={`w-9 h-9 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}>
+                {entry.name.charAt(0).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-gray-900 truncate">{entry.name}</span>
+                <span className="block text-xs text-gray-500 truncate mt-0.5">
+                  {entry.role}{entry.clockIn ? ` · since ${entry.clockIn}` : ''}
+                </span>
+              </span>
+              <span className="flex-shrink-0 text-xs font-medium rounded-full px-2.5 py-1 bg-green-50 text-green-600">
+                On Duty
+              </span>
+            </NavLink>
+          ))
+        )}
       </div>
     </div>
   )

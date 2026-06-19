@@ -1,5 +1,8 @@
 import HeroCard from "./components/HeroCard"
 import HomeRefresh from './components/HomeRefresh'
+import HomeReservationsRealtime from './components/HomeReservationsRealtime'
+import HomePurchaseRealtime from './components/HomePurchaseRealtime'
+import HomeBell from './components/HomeBell'
 import StatusSummaryGrid from './components/home/StatusSummaryGrid'
 import FinancialSnapshot from './components/home/FinancialSnapshot'
 import BentoOpsCard from './components/home/BentoOpsCard'
@@ -13,6 +16,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayStore'
 import { businessToday } from '@/lib/feedme/parseQueryResult'
+import { todayLocalStr } from '@/lib/dateUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -34,7 +38,7 @@ type BentoOrder = {
 
 async function getStats(supabase: SupabaseClient, enabled: boolean) {
   if (!enabled) return null
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('daily_stats')
     .select('*')
@@ -44,7 +48,7 @@ async function getStats(supabase: SupabaseClient, enabled: boolean) {
 }
 
 async function getBentoStats(supabase: SupabaseClient, role: StaffRole, showRevenue: boolean) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const source = role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
   const query = supabase.from(source)
   const { data } = showRevenue
@@ -59,7 +63,7 @@ async function getBentoStats(supabase: SupabaseClient, role: StaffRole, showReve
 
 async function getAnomalyCount(supabase: SupabaseClient, enabled: boolean) {
   if (!enabled) return 0
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('incidents')
     .select('id')
@@ -69,7 +73,7 @@ async function getAnomalyCount(supabase: SupabaseClient, enabled: boolean) {
 }
 
 async function getPendingCount(supabase: SupabaseClient) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const { data } = await supabase
     .from('tasks')
     .select('id')
@@ -78,11 +82,47 @@ async function getPendingCount(supabase: SupabaseClient) {
   return data?.length ?? 0
 }
 
+async function getPendingChecklistCount(supabase: SupabaseClient) {
+  const { data } = await supabase
+    .from('purchase_checklist')
+    .select('id')
+    .eq('status', 'pending')
+  return data?.length ?? 0
+}
+
 // Placeholder — real data will come from Supabase tables
 async function getComplaintCount() { return 1 }
 
-// Placeholder — no reservations data source yet; static UI count only.
-async function getReservationCount() { return 8 }
+async function getReceivablesSummary(supabase: SupabaseClient) {
+  const { data } = await supabase
+    .from('receivables')
+    .select('original_amount, paid_amount')
+    .neq('status', 'paid')
+  const rows = (data ?? []) as { original_amount: number; paid_amount: number }[]
+  return {
+    totalBalance: rows.reduce((s, r) => s + Math.max(0, Number(r.original_amount) - Number(r.paid_amount)), 0),
+    openCount: rows.length,
+  }
+}
+
+/** Delegates to the shared Payables server action so Home card and Payables
+ *  detail page always show identical numbers from one query. */
+async function getPayablesSummary() {
+  const { fetchPayablesSummaryAction } = await import('@/app/payables/actions')
+  const res = await fetchPayablesSummaryAction()
+  if (!res.ok) return { totalBalance: 0, dueTodayCount: 0 }
+  return res.data
+}
+
+async function getReservationCount(supabase: SupabaseClient) {
+  const today = todayLocalStr()
+  const { data } = await supabase
+    .from('reservations')
+    .select('id')
+    .eq('date', today)
+    .in('status', ['confirmed', 'pending'])
+  return data?.length ?? 0
+}
 
 // Per-request fault isolation: resolve to `fallback` instead of rejecting, so a
 // single failed data source (FeedMe timeout, token-refresh failure, a flaky DB
@@ -118,17 +158,22 @@ export default async function Home() {
   // Promise.all therefore never rejects — one failed metric falls back without
   // blocking the others or the page render. FeedMe metrics fall back to null,
   // which the UI renders as "—".
-  const [stats, bentoStats, anomalyCount, pendingCount, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day] = await Promise.all([
+  const showPurchase = canAccessPath(staff.role, '/purchase')
+  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary] = await Promise.all([
     safe(getStats(supabase, visibility.revenue), null),
     safe(getBentoStats(supabase, staff.role, visibility.revenue), { total: 0, completed: 0, revenue: 0 }),
     safe(getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')), 0),
     safe(getPendingCount(supabase), 0),
+    safe(showPurchase ? getPendingChecklistCount(supabase) : Promise.resolve(0), 0),
     safe(canAccessPath(staff.role, '/complaints') ? getComplaintCount() : Promise.resolve(0), 0),
-    safe(getReservationCount(), 0),
+    safe(getReservationCount(supabase), 0),
     safe(visibility.revenue ? readRelayDaily() : Promise.resolve(null), null),
     safe(visibility.revenue ? readRelayMtd() : Promise.resolve(null), null),
     safe(visibility.revenue ? readRelayWeek() : Promise.resolve(null), null),
+    safe(visibility.revenue ? getReceivablesSummary(supabase) : Promise.resolve({ totalBalance: 0, openCount: 0 }), { totalBalance: 0, openCount: 0 }),
+    safe(visibility.revenue ? getPayablesSummary() : Promise.resolve({ totalBalance: 0, dueTodayCount: 0 }), { totalBalance: 0, dueTodayCount: 0 }),
   ])
+  const notificationCount = anomalyCount + pendingChecklist
 
   // Today's Revenue is the LIVE FeedMe parser result (source of truth). If the
   // live call is unavailable, getFeedMeDailyRevenue() returns the last
@@ -207,6 +252,8 @@ export default async function Home() {
 
   return (
     <HomeRefresh>
+    <HomeReservationsRealtime />
+    <HomePurchaseRealtime />
     <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header — status strip (date · pill · bell), identity row below.
           Top padding = iOS safe-area inset (notch / Dynamic Island) + 0.75rem;
@@ -223,15 +270,7 @@ export default async function Home() {
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
               Open
             </span>
-            <div className="relative">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                <path d="M13.73 21a2 2 0 01-3.46 0"/>
-              </svg>
-              {anomalyCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center leading-none">{anomalyCount}</span>
-              )}
-            </div>
+            <HomeBell baseCount={notificationCount} />
           </div>
         </div>
         <div className="flex items-center gap-3 mt-2.5 min-w-0">
@@ -271,7 +310,15 @@ export default async function Home() {
           tasks={pendingCount}
         />
 
-        {visibility.revenue && <FinancialSnapshot />}
+        {visibility.revenue && (
+          <FinancialSnapshot
+            role={staff.role}
+            receivablesTotal={receivablesSummary.totalBalance}
+            receivablesOpenCount={receivablesSummary.openCount}
+            payablesTotal={payablesSummary.totalBalance}
+            payablesDueTodayCount={payablesSummary.dueTodayCount}
+          />
+        )}
 
         {/* Bento metrics now live in the Hero carousel (slide 3) for roles that
             see the revenue Hero; keep the standalone card only for roles whose

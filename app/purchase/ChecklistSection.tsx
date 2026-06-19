@@ -54,17 +54,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // ── Empty form defaults ───────────────────────────────────────────────────────
-const emptyAddForm = { name: '', category: 'Vegetables', unit: 'kg', quantity: '', unit_price: '', note: '' }
+const emptyAddForm = {
+  name: '',
+  specification: '',
+  supplier: '',
+  category: 'Vegetables',
+  unit: 'kg',
+  quantity: '',
+  unit_price: '',
+  note: '',
+}
 
 // ── Add / Edit sheet (shared layout) ─────────────────────────────────────────
 function ItemFormSheet({
   title, form, setForm, catalogItem, setCatalogItem,
   catalog, catalogLoading, saving, error,
-  showCatalog, showCosts,
+  showCatalog, showCosts, planningOnly = false,
   onSave, onClose,
 }: {
   title: string
-  form: { name: string; category: string; unit: string; quantity: string; unit_price: string; note: string }
+  form: typeof emptyAddForm
   setForm: React.Dispatch<React.SetStateAction<typeof emptyAddForm>>
   catalogItem: CatalogItem | null
   setCatalogItem: (item: CatalogItem | null) => void
@@ -74,9 +83,28 @@ function ItemFormSheet({
   error: string | null
   showCatalog: boolean
   showCosts: boolean
+  planningOnly?: boolean
   onSave: () => void
   onClose: () => void
 }) {
+  // Keyboard-aware height — keep sheet above the mobile keyboard
+  const [kbHeight, setKbHeight] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    function update() {
+      const kh = window.innerHeight - vv!.height
+      setKbHeight(kh > 0 ? kh : 0)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
+
   const content = (
     <div
       className="fixed flex flex-col justify-end"
@@ -89,7 +117,12 @@ function ItemFormSheet({
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '90vh', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 20px)' }}
+        style={{
+          maxHeight: kbHeight > 0
+            ? `calc(${window.innerHeight - kbHeight}px - 16px)`
+            : '90vh',
+          paddingBottom: kbHeight > 0 ? kbHeight : 'calc(env(safe-area-inset-bottom,0px) + 20px)',
+        }}
         onClick={e => e.stopPropagation()}
       >
         <div className="px-4 pt-5 pb-3 flex items-center justify-between border-b border-gray-100 flex-shrink-0">
@@ -125,22 +158,24 @@ function ItemFormSheet({
             )}
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <NativeSelect
-              label="Category"
-              value={form.category}
-              options={[...PURCHASE_CATEGORIES]}
-              onChange={v => setForm(f => ({ ...f, category: v }))}
-            />
-            <NativeSelect
-              label="Unit"
-              value={form.unit}
-              options={UNITS}
-              onChange={v => setForm(f => ({ ...f, unit: v }))}
-            />
-          </div>
+          {!planningOnly && (
+            <div className="grid grid-cols-2 gap-3">
+              <NativeSelect
+                label="Category"
+                value={form.category}
+                options={[...PURCHASE_CATEGORIES]}
+                onChange={v => setForm(f => ({ ...f, category: v }))}
+              />
+              <NativeSelect
+                label="Unit"
+                value={form.unit}
+                options={UNITS}
+                onChange={v => setForm(f => ({ ...f, unit: v }))}
+              />
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={planningOnly ? '' : 'grid grid-cols-2 gap-3'}>
             <Field label="Quantity *">
               <input
                 className={inputCls}
@@ -153,7 +188,7 @@ function ItemFormSheet({
                 onKeyDown={e => { if (e.key === 'Enter') onSave() }}
               />
             </Field>
-            {showCosts && (
+            {!planningOnly && showCosts && (
               <Field label="Unit Price (RM)">
                 <input
                   className={inputCls}
@@ -167,6 +202,26 @@ function ItemFormSheet({
               </Field>
             )}
           </div>
+
+          <Field label="Specification">
+            <input
+              className={inputCls}
+              style={{ fontSize: 16 }}
+              placeholder="e.g. large size, boneless"
+              value={form.specification}
+              onChange={e => setForm(f => ({ ...f, specification: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Supplier">
+            <input
+              className={inputCls}
+              style={{ fontSize: 16 }}
+              placeholder="e.g. KK Fresh Market"
+              value={form.supplier}
+              onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+            />
+          </Field>
 
           <Field label="Note (optional)">
             <input
@@ -305,6 +360,10 @@ function CheckRow({
   const done = item.status === 'done'
   const categoryClr = categoryColor(item.category)
   const qtyStr = item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)
+  const planningDetails = [
+    item.specification?.trim() || null,
+    item.supplier?.trim() ? `Supplier: ${item.supplier.trim()}` : null,
+  ].filter((value): value is string => Boolean(value))
 
   const { name: displayNameKitchen, loading: catalogLoadingName } =
     getKitchenDisplayName(item, catalog, catalogLoading)
@@ -398,8 +457,15 @@ function CheckRow({
             gap: 16,
           }}>
             {/* Col 0: Item name — flexible, truncates with ellipsis */}
-            <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ minWidth: 0, fontSize: 14, color: done ? '#9ca3af' : catalogLoadingName ? '#d1d5db' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
-              {displayNameKitchen}
+            <div className="min-w-0">
+              <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontSize: 14, color: done ? '#9ca3af' : catalogLoadingName ? '#d1d5db' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
+                {displayNameKitchen}
+              </div>
+              {planningDetails.length > 0 && (
+                <div className="mt-0.5 truncate text-[11px] text-gray-400">
+                  {planningDetails.join(' · ')}
+                </div>
+              )}
             </div>
             {/* Col 1: Qty + unit */}
             <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
@@ -450,10 +516,10 @@ function CheckRow({
         onTouchEnd={canSwipe ? onTouchEnd : undefined}
         onClick={canSwipe ? handleRowTap : undefined}
       >
-        {/* Checklist grid — fixed columns: checkbox | name | qty | creator */}
+        {/* Checklist grid — fluid columns: name priority > qty > creator */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '40px minmax(0, 1fr) 72px 96px',
+          gridTemplateColumns: '40px minmax(0, 2fr) minmax(0, 0.75fr) minmax(0, 1fr)',
           alignItems: 'center',
           minHeight: 56,
           padding: '0 12px',
@@ -468,8 +534,15 @@ function CheckRow({
             />
           </div>
           {/* Col 1: Item name — gets remaining space */}
-          <div className="font-semibold text-gray-900 truncate" style={{ minWidth: 0, fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
-            {item.name}
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-900 truncate" style={{ fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
+              {item.name}
+            </div>
+            {planningDetails.length > 0 && (
+              <div className="mt-0.5 truncate text-[11px] font-normal text-gray-400">
+                {planningDetails.join(' · ')}
+              </div>
+            )}
           </div>
           {/* Col 2: Qty + unit — fixed width, left-aligned, nowrap */}
           <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
@@ -647,6 +720,8 @@ export default function ChecklistSection({
     setAddSaving(true); setAddError(null)
     const res = await addChecklistItemAction({
       name: addForm.name,
+      specification: addForm.specification || null,
+      supplier: addForm.supplier || null,
       category: addForm.category,
       unit: addForm.unit,
       quantity: qty,
@@ -661,7 +736,16 @@ export default function ChecklistSection({
   // ── Edit ───────────────────────────────────────────────────────────────────
   function openEdit(item: ChecklistEntry) {
     setEditingItem(item)
-    setEditForm({ name: item.name, category: item.category, unit: item.unit, quantity: String(item.quantity), unit_price: '', note: item.note ?? '' })
+    setEditForm({
+      name: item.name,
+      specification: item.specification ?? '',
+      supplier: item.supplier ?? '',
+      category: item.category,
+      unit: item.unit,
+      quantity: String(item.quantity),
+      unit_price: '',
+      note: item.note ?? '',
+    })
     setEditError(null)
   }
 
@@ -673,6 +757,8 @@ export default function ChecklistSection({
     setEditSaving(true); setEditError(null)
     const res = await editChecklistItemAction(editingItem.id, {
       name: editForm.name,
+      specification: editForm.specification || null,
+      supplier: editForm.supplier || null,
       category: editForm.category,
       unit: editForm.unit,
       quantity: qty,
@@ -814,6 +900,7 @@ export default function ChecklistSection({
           error={addError}
           showCatalog={true}
           showCosts={showCosts}
+          planningOnly={true}
           onSave={handleAdd}
           onClose={() => setShowAdd(false)}
         />
@@ -846,7 +933,7 @@ export default function ChecklistSection({
           unit={completingItem.unit}
           initialQuantity={completingItem.quantity}
           initialUnitPrice={null}
-          initialSupplier=""
+          initialSupplier={completingItem.supplier ?? ''}
           quantityEditable={false}
           showSupplier={true}
           onSave={handleCompleteSave}

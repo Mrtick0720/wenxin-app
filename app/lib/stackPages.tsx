@@ -3,6 +3,7 @@
 import React, { lazy, Suspense } from 'react'
 import { useStaff } from '@/app/components/StaffProvider'
 import type { StaffRole } from '@/lib/auth/types'
+import { preloadRouteLoaders } from '@/lib/routePreload'
 
 // Client-side stack page registry.
 //
@@ -15,30 +16,73 @@ import type { StaffRole } from '@/lib/auth/types'
 // Pure route metadata (path/label/section/key) lives in ./stackRoutes, which
 // imports no page modules at all.
 
-const PurchaseClient      = lazy(() => import('@/app/purchase/PurchaseClient'))
-const BentoClient         = lazy(() => import('@/app/bento/BentoClient'))
-const StaffPage           = lazy(() => import('@/app/staff/page'))
-const StaffAccountsStack  = lazy(() => import('@/app/staff/accounts/StaffAccountsStack'))
-const TasksPage           = lazy(() => import('@/app/tasks/page'))
-const ProfileStack        = lazy(() => import('@/app/profile/ProfileStack'))
-const FinancePage      = lazy(() => import('@/app/finance/page'))
-const InventoryPage    = lazy(() => import('@/app/inventory/page'))
-const ReportsPage      = lazy(() => import('@/app/reports/page'))
-const DineInPage       = lazy(() => import('@/app/dine-in/page'))
-const ReservationsPage = lazy(() => import('@/app/reservations/page'))
-const ComplaintsPage   = lazy(() => import('@/app/complaints/page'))
-const IncidentsPage    = lazy(() => import('@/app/incidents/page'))
-const AllModulesPage   = lazy(() => import('@/app/all/page'))
-const SuppliersPage    = lazy(() => import('@/app/suppliers/page'))
-const AssetsPage       = lazy(() => import('@/app/assets/page'))
-const MarketingPage    = lazy(() => import('@/app/marketing/page'))
+const loadPurchaseClient = () => import('@/app/purchase/PurchaseClient')
+const loadBentoClient = () => import('@/app/bento/BentoClient')
+const loadStaffPage = () => import('@/app/staff/page')
+const loadStaffAccountsStack = () => import('@/app/staff/accounts/StaffAccountsStack')
+const loadTasksPage = () => import('@/app/tasks/page')
+const loadProfileStack = () => import('@/app/profile/ProfileStack')
+const loadReceivablesPage = () => import('@/app/receivables/page')
+const loadPayablesPage = () => import('@/app/payables/page')
+const loadFinancePage = () => import('@/app/finance/page')
+const loadInventoryPage = () => import('@/app/inventory/page')
+const loadReportsPage = () => import('@/app/reports/page')
+const loadDineInPage = () => import('@/app/dine-in/page')
+const loadReservationsPage = () => import('@/app/reservations/page')
+const loadComplaintsPage = () => import('@/app/complaints/page')
+const loadIncidentsPage = () => import('@/app/incidents/page')
+const loadAllModulesPage = () => import('@/app/all/page')
+const loadSuppliersPage = () => import('@/app/suppliers/page')
+const loadAssetsPage = () => import('@/app/assets/page')
+const loadMarketingPage = () => import('@/app/marketing/page')
+
+const PurchaseClient = lazy(loadPurchaseClient)
+const BentoClient = lazy(loadBentoClient)
+const StaffPage = lazy(loadStaffPage)
+const StaffAccountsStack = lazy(loadStaffAccountsStack)
+const TasksPage = lazy(loadTasksPage)
+const ProfileStack = lazy(loadProfileStack)
+const ReceivablesPage = lazy(loadReceivablesPage)
+const PayablesPage = lazy(loadPayablesPage)
+const FinancePage = lazy(loadFinancePage)
+const InventoryPage = lazy(loadInventoryPage)
+const ReportsPage = lazy(loadReportsPage)
+const DineInPage = lazy(loadDineInPage)
+const ReservationsPage = lazy(loadReservationsPage)
+const ComplaintsPage = lazy(loadComplaintsPage)
+const IncidentsPage = lazy(loadIncidentsPage)
+const AllModulesPage = lazy(loadAllModulesPage)
+const SuppliersPage = lazy(loadSuppliersPage)
+const AssetsPage = lazy(loadAssetsPage)
+const MarketingPage = lazy(loadMarketingPage)
 
 function PageFallback() {
   return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
 }
 
-function S({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<PageFallback />}>{children}</Suspense>
+function PurchaseFallback() {
+  return (
+    <div className="flex h-dvh flex-col bg-gray-50">
+      <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
+        <div className="h-6 w-6" />
+        <span className="text-base font-semibold text-gray-800">Purchase</span>
+        <div className="w-6" />
+      </div>
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+        <div className="h-32 animate-pulse rounded-2xl bg-white" />
+        <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
+        <div className="space-y-3 rounded-2xl bg-white p-4">
+          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function S({ children, fallback = <PageFallback /> }: { children: React.ReactNode; fallback?: React.ReactNode }) {
+  return <Suspense fallback={fallback}>{children}</Suspense>
 }
 
 // BentoClient requires a role — read from StaffProvider context
@@ -51,12 +95,14 @@ function BentoStack() {
 type RouteFactory = () => React.ReactNode
 
 const pages: Record<string, RouteFactory> = {
-  '/purchase':     () => <S><PurchaseClient /></S>,
+  '/purchase':     () => <S fallback={<PurchaseFallback />}><PurchaseClient /></S>,
   '/bento':        () => <S><BentoStack /></S>,
   '/staff':          () => <S><StaffPage /></S>,
   '/staff/accounts': () => <S><StaffAccountsStack /></S>,
   '/tasks':          () => <S><TasksPage /></S>,
   '/profile':        () => <S><ProfileStack /></S>,
+  '/receivables':  () => <S><ReceivablesPage /></S>,
+  '/payables':     () => <S><PayablesPage /></S>,
   '/finance':      () => <S><FinancePage /></S>,
   '/inventory':    () => <S><InventoryPage /></S>,
   '/reports':      () => <S><ReportsPage /></S>,
@@ -80,27 +126,7 @@ export function getPageElement(href: string): React.ReactNode | null {
   return factory ? factory() : null
 }
 
-/** Preload all client-safe lazy page chunks so the first stack navigation has zero code-loading delay. */
+/** Preload the performance-critical Purchase chunk after Home becomes interactive. */
 export function preloadRoutes() {
-  // `.preload()` is a runtime method React attaches to lazy components
-  // but does not expose in the TS types. Cast to access it.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const p = (c: any) => c.preload?.()
-  p(PurchaseClient)
-  p(BentoClient)
-  p(StaffPage)
-  p(StaffAccountsStack)
-  p(TasksPage)
-  p(ProfileStack)
-  p(FinancePage)
-  p(InventoryPage)
-  p(ReportsPage)
-  p(DineInPage)
-  p(ReservationsPage)
-  p(ComplaintsPage)
-  p(IncidentsPage)
-  p(AllModulesPage)
-  p(SuppliersPage)
-  p(AssetsPage)
-  p(MarketingPage)
+  preloadRouteLoaders([loadPurchaseClient])
 }

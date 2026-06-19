@@ -1,20 +1,14 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useNavigation } from './NavigationStack'
 import { getPageElement } from '@/app/lib/stackPages'
+import { resolveBottomTabAction } from '@/lib/bottomTabNavigation'
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/>
     <path d="M9 21V12h6v9"/>
-  </svg>
-)
-
-const ApprovalIcon = ({ active }: { active: boolean }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M9 11l3 3L22 4"/>
-    <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
   </svg>
 )
 
@@ -24,6 +18,13 @@ const StaffIcon = ({ active }: { active: boolean }) => (
     <circle cx="9" cy="7" r="4"/>
     <path d="M22 21v-2a4 4 0 00-3-3.87"/>
     <path d="M16 3.13a4 4 0 010 7.75"/>
+  </svg>
+)
+
+const BentoIcon = ({ active }: { active: boolean }) => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z"/>
+    <path d="M6 17h12"/>
   </svg>
 )
 
@@ -42,37 +43,41 @@ const ProfileIcon = ({ active }: { active: boolean }) => (
   </svg>
 )
 
-const tabs = [
+type BottomTab = {
+  href: string
+  label: string
+  Icon: ({ active }: { active: boolean }) => React.JSX.Element
+  badge?: boolean
+}
+
+const tabs: BottomTab[] = [
   { href: '/', label: 'Home', Icon: HomeIcon },
-  { href: '/tasks', label: 'Approvals', Icon: ApprovalIcon, badge: true },
+  { href: '/bento', label: 'Bento', Icon: BentoIcon },
   { href: '/purchase', label: 'Purchase', Icon: PurchaseIcon },
   { href: '/staff', label: 'Staff', Icon: StaffIcon },
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
 export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
-  const { push, replace, popToRoot, canPop, currentPath } = useNavigation()
+  const { reset, resetTo, canPop, currentPath } = useNavigation()
   const router = useRouter()
+  const pathname = usePathname()
 
   const handleTap = (e: React.MouseEvent, href: string) => {
     e.preventDefault()
+    const action = resolveBottomTabAction({ href, currentPath })
 
-    if (href === '/') {
-      popToRoot()
+    if (action === 'home') {
+      reset()
+      if (pathname !== '/') router.replace('/')
       return
     }
 
-    // Don't re-navigate to the tab already open
-    if (currentPath === href || currentPath.startsWith(`${href}/`)) return
+    if (action === 'noop') return
 
     const el = getPageElement(href)
     if (el) {
-      // Replace existing layer so tabs swap cleanly (no stacking of tab pages)
-      if (canPop) {
-        replace(href, el)
-      } else {
-        push(href, el)
-      }
+      resetTo(href, el)
       return
     }
 
@@ -80,7 +85,7 @@ export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number 
     router.push(href)
   }
 
-  const activePath = currentPath
+  const activePath = canPop ? currentPath : pathname
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-[300]">

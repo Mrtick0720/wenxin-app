@@ -188,10 +188,10 @@ export async function findTodaySessions(
 function mapShiftRow(row: Record<string, unknown>): StaffShift {
   return {
     id: row.id as number,
-    staffUserId: row.staff_user_id as string,
-    date: row.date as string,
+    staffUserId: row.staff_id as string,
+    date: row.shift_date as string,
     shiftType: row.shift_type as StaffShift['shiftType'],
-    shiftLabel: (row.shift_label as string) ?? '',
+    shiftLabel: (row.time_label as string) ?? '',
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   }
@@ -204,7 +204,7 @@ export async function findShiftsByDate(
   const { data, error } = await supabase
     .from('staff_shifts')
     .select('*')
-    .eq('date', date)
+    .eq('shift_date', date)
 
   if (error) throw error
   return (data ?? []).map(mapShiftRow)
@@ -218,12 +218,38 @@ export async function findShiftByStaffAndDate(
   const { data, error } = await supabase
     .from('staff_shifts')
     .select('*')
-    .eq('staff_user_id', staffUserId)
-    .eq('date', date)
+    .eq('staff_id', staffUserId)
+    .eq('shift_date', date)
     .maybeSingle()
 
   if (error) throw error
   return data ? mapShiftRow(data) : null
+}
+
+export async function upsertShift(
+  staffUserId: string,
+  date: string,
+  shiftType: StaffShift['shiftType'],
+  shiftLabel?: string,
+): Promise<StaffShift> {
+  const supabase = await createServerSupabaseClient()
+
+  const { data, error } = await supabase
+    .from('staff_shifts')
+    .upsert(
+      {
+        staff_id: staffUserId,
+        shift_date: date,
+        shift_type: shiftType,
+        time_label: shiftLabel ?? '',
+      },
+      { onConflict: 'staff_id,shift_date' },
+    )
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return mapShiftRow(data)
 }
 
 export async function findLateThreshold(): Promise<number> {

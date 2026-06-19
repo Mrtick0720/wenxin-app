@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { filterCatalogItems, type CatalogItem } from '@/lib/purchaseLedger/catalog'
 
 type Props = {
@@ -26,6 +26,29 @@ export default function CatalogCombobox({
   const [query, setQuery] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Track keyboard height via visualViewport so the sheet stays above the keyboard
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  useEffect(() => {
+    if (!open) {
+      // Defer reset so it's not a synchronous setState in the effect body
+      const t = setTimeout(() => setKeyboardHeight(0), 0)
+      return () => clearTimeout(t)
+    }
+    const vv = window.visualViewport
+    if (!vv) return
+    function update() {
+      const kh = window.innerHeight - vv!.height
+      setKeyboardHeight(kh > 0 ? kh : 0)
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [open])
 
   const filteredItems = filterCatalogItems(items, query)
 
@@ -84,7 +107,12 @@ export default function CatalogCombobox({
         >
           <div
             className="bg-white rounded-t-3xl flex flex-col"
-            style={{ maxHeight: '82vh' }}
+            style={{
+              maxHeight: keyboardHeight > 0
+                ? `calc(${window.innerHeight - keyboardHeight}px - 16px)`
+                : '82vh',
+              paddingBottom: keyboardHeight > 0 ? keyboardHeight : 'calc(env(safe-area-inset-bottom,0px) + 20px)',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}

@@ -26,6 +26,15 @@ export default function NewBentoOrder() {
     note: '',
     amount: '',
     quantity: '1',
+    // Bento production fields
+    bento_items: '',
+    compartment_a: '',
+    compartment_b: '',
+    compartment_c: '',
+    fulfillment_type: 'delivery',
+    ready_by: '',
+    delivery_or_pickup_time: '',
+    pack_time: '',
   })
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
@@ -52,6 +61,15 @@ export default function NewBentoOrder() {
         quantity: parseInt(form.quantity) || 1,
         paid: false,
         status: 'pending',
+        // Bento production fields (empty time/text → null)
+        bento_items: form.bento_items || null,
+        compartment_a: form.compartment_a || null,
+        compartment_b: form.compartment_b || null,
+        compartment_c: form.compartment_c || null,
+        fulfillment_type: form.fulfillment_type || null,
+        ready_by: form.ready_by || null,
+        delivery_or_pickup_time: form.delivery_or_pickup_time || null,
+        pack_time: form.pack_time || null,
       })
       if (insertError) {
         setError(insertError.message || 'Failed to create order. Please try again.')
@@ -67,13 +85,17 @@ export default function NewBentoOrder() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 w-full mx-auto">
-      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
+    <div className="page-slide-in flex min-h-0 w-full max-w-full flex-col overflow-hidden" style={{ position: 'relative', flex: '1 1 0%', minHeight: 0, width: '100%', height: '100dvh', maxHeight: '100dvh', overflowX: 'hidden', overflowY: 'hidden', background: '#f9fafb' }}>
+      <div className="flex-none bg-white px-4 py-3 flex items-center gap-3 border-b">
         <BackButton href="/bento" />
         <span className="font-semibold text-base">New Bento Order</span>
       </div>
 
-      <form onSubmit={handleSubmit} className="px-4 py-4 space-y-4 pb-8">
+      <form
+        onSubmit={handleSubmit}
+        className="flex-1 min-h-0 w-full max-w-full overflow-x-hidden overflow-y-auto px-4 py-4 space-y-4"
+        style={{ flex: '1 1 0%', minHeight: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', touchAction: 'pan-y', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
+      >
         <div>
           <label className="text-sm text-gray-600 mb-1 block">Customer Name *</label>
           <input
@@ -162,8 +184,114 @@ export default function NewBentoOrder() {
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
+        {/* Bento production — feeds the Kitchen Production Sheet */}
+        <div className="pt-2 border-t border-gray-200">
+          <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3 mt-3">Kitchen production</div>
+
+          <div className="mb-4">
+            <label className="text-sm text-gray-600 mb-1 block">Bento name</label>
+            <input
+              type="text"
+              name="bento_items"
+              placeholder="Example: Salted egg yolk chicken"
+              value={form.bento_items}
+              onChange={handleChange}
+              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+            />
+          </div>
+
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: '#f97316' }}>A</span>
+              <input
+                type="text"
+                name="compartment_a"
+                placeholder="Main dish / protein"
+                value={form.compartment_a}
+                onChange={handleChange}
+                className="flex-1 min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: '#22c55e' }}>B</span>
+              <input
+                type="text"
+                name="compartment_b"
+                placeholder="Side dish / veg / fruit"
+                value={form.compartment_b}
+                onChange={handleChange}
+                className="flex-1 min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: '#3b82f6' }}>C</span>
+              <input
+                type="text"
+                name="compartment_c"
+                placeholder="Staple / rice / noodles"
+                value={form.compartment_c}
+                onChange={handleChange}
+                className="flex-1 min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4">
+            <label className="text-sm text-gray-600 mb-1 block">Fulfillment</label>
+            <div className="flex gap-2">
+              {(['delivery', 'pickup'] as const).map(ft => (
+                <button
+                  key={ft}
+                  type="button"
+                  onClick={() => setForm({ ...form, fulfillment_type: ft })}
+                  className={`flex-1 py-2 rounded-xl text-sm border capitalize ${
+                    form.fulfillment_type === ft
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : 'bg-white text-gray-600 border-gray-200'
+                  }`}
+                >
+                  {ft}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid w-full max-w-full grid-cols-3 gap-2 overflow-x-hidden">
+            <div className="min-w-0">
+              <label className="text-xs text-gray-500 mb-1 block">Ready by</label>
+              <input
+                type="time"
+                name="ready_by"
+                value={form.ready_by}
+                onChange={handleChange}
+                className="w-full min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-2 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="text-xs text-gray-500 mb-1 block capitalize">{form.fulfillment_type} time</label>
+              <input
+                type="time"
+                name="delivery_or_pickup_time"
+                value={form.delivery_or_pickup_time}
+                onChange={handleChange}
+                className="w-full min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-2 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+            <div className="min-w-0">
+              <label className="text-xs text-gray-500 mb-1 block">Pack time</label>
+              <input
+                type="time"
+                name="pack_time"
+                value={form.pack_time}
+                onChange={handleChange}
+                className="w-full min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-2 py-2.5 text-sm outline-none focus:border-orange-400"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="grid w-full max-w-full grid-cols-2 gap-3">
+          <div className="min-w-0">
             <label className="text-sm text-gray-600 mb-1 block">Amount (RM) *</label>
             <input
               type="number"
@@ -171,10 +299,10 @@ export default function NewBentoOrder() {
               placeholder="25.50"
               value={form.amount}
               onChange={handleChange}
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+              className="w-full min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="text-sm text-gray-600 mb-1 block">Portions *</label>
             <input
               type="number"
@@ -183,7 +311,7 @@ export default function NewBentoOrder() {
               min="1"
               value={form.quantity}
               onChange={handleChange}
-              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+              className="w-full min-w-0 max-w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
             />
           </div>
         </div>
@@ -217,6 +345,6 @@ export default function NewBentoOrder() {
           </div>
         )}
       </form>
-    </main>
+    </div>
   )
 }

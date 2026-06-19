@@ -8,6 +8,8 @@ import type { ActionResult, PurchaseRecord } from '@/lib/purchaseLedger/types'
 export type ChecklistEntry = {
   id: number
   name: string
+  specification: string | null
+  supplier: string | null
   category: string
   unit: string
   quantity: number
@@ -22,6 +24,8 @@ export type ChecklistEntry = {
 
 export type ChecklistItemInput = {
   name: string
+  specification?: string | null
+  supplier?: string | null
   category: string
   unit: string
   quantity: number
@@ -31,7 +35,7 @@ export type ChecklistItemInput = {
 const ROLES = ['owner', 'manager', 'kitchen'] as const
 // unit_price omitted until migration 20260617_checklist_unit_price.sql is applied
 const SELECT_COLS =
-  'id, name, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
+  'id, name, specification, supplier, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
 
 function fail(error: unknown): ActionResult<never> {
   const message =
@@ -59,7 +63,7 @@ export async function fetchChecklistAction(): Promise<ActionResult<ChecklistEntr
         .from('purchase_checklist')
         .select(SELECT_COLS)
         .eq('status', 'pending')
-        .order('created_at', { ascending: true }),
+        .order('id', { ascending: false }),
       supabase
         .from('purchase_checklist')
         .select(SELECT_COLS)
@@ -93,6 +97,8 @@ export async function addChecklistItemAction(
 
     const insertPayload: Record<string, unknown> = {
       name: input.name.trim(),
+      specification: input.specification?.trim() || null,
+      supplier: input.supplier?.trim() || null,
       category: input.category,
       unit: input.unit,
       quantity: input.quantity,
@@ -125,6 +131,8 @@ export async function editChecklistItemAction(
 
     const updatePayload: Record<string, unknown> = {
       name: input.name.trim(),
+      specification: input.specification?.trim() || null,
+      supplier: input.supplier?.trim() || null,
       category: input.category,
       unit: input.unit,
       quantity: input.quantity,
@@ -247,7 +255,7 @@ export async function moveRecordToChecklistAction(
       // No linked checklist item — copy record data into a new checklist item, then delete record.
       const { data: record, error: fetchErr } = await supabase
         .from('purchase_items')
-        .select('name, category, unit, quantity, note')
+        .select('name, specification, supplier, category, unit, quantity, note')
         .eq('id', purchaseRecordId)
         .single()
       if (fetchErr || !record) return { ok: false, error: 'Purchase record not found.' }
@@ -256,6 +264,8 @@ export async function moveRecordToChecklistAction(
         .from('purchase_checklist')
         .insert({
           name: record.name,
+          specification: record.specification ?? null,
+          supplier: record.supplier ?? null,
           category: record.category,
           unit: record.unit,
           quantity: record.quantity,
@@ -302,12 +312,12 @@ export async function completeChecklistItemAction(
     // Create purchase record via the existing service (enforces all business rules)
     const record = await svc.createRecord(staff.role, staff.id, staff.displayName, {
       name: item.name,
-      specification: null,
+      specification: item.specification ?? null,
       category: item.category,
       unit: item.unit,
       quantity: item.quantity,
       unit_price: completion.unit_price,
-      supplier: completion.supplier,
+      supplier: completion.supplier || item.supplier || null,
       receiver: null,
       remarks: item.note ?? null,
     })

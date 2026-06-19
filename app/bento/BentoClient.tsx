@@ -107,6 +107,7 @@ export default function BentoClient({
   const [refreshing, setRefreshing] = useState(false)
 
   const cache = useRef<Record<string, Order[]>>({ [today]: initialOrders })
+  const rootRef = useRef<HTMLDivElement>(null)
   const datepickerAreaRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const mainPullOffsetRef = useRef(0)
@@ -232,11 +233,14 @@ export default function BentoClient({
 
   // ── Gesture system ──
   // Key architecture for Android compatibility:
-  // 1. When panel is CLOSED → document-level touchmove for main-page gestures
-  // 2. When panel is OPEN   → NO document touchmove (avoids Android scroll deadlock)
+  // 1. When panel is CLOSED → Bento-root touchmove for main-page gestures
+  // 2. When panel is OPEN   → NO root touchmove (avoids Android scroll deadlock)
   // 3. Scroll area touchmove is stopped at source → browser scrolls natively
   // 4. Panel touchmove handles swipe-to-close from header/filter areas
   useEffect(() => {
+    const rootEl = rootRef.current
+    if (!rootEl) return
+
     let sx = 0, sy = 0
     let axis: 'h' | 'v' | null = null
     let tracking = false
@@ -343,9 +347,10 @@ export default function BentoClient({
     }
 
     // ── Attach listeners to the RIGHT elements ──
-    // touchstart/touchend always on document (passive, no perf impact)
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchend', onEnd, { passive: true })
+    // Scope gesture tracking to Bento itself. Stack pages pushed above Bento are
+    // siblings, so their native scrolling cannot be cancelled by these handlers.
+    rootEl.addEventListener('touchstart', onStart, { passive: true })
+    rootEl.addEventListener('touchend', onEnd, { passive: true })
 
     const panelEl = panelRef.current
     const scrollEl = scrollAreaRef.current
@@ -355,20 +360,20 @@ export default function BentoClient({
     function stopMove(e: TouchEvent) { e.stopPropagation() }
 
     if (detailOpen && panelEl) {
-      // Panel open: touchmove on panel (not document) + stopMove on scroll area
+      // Panel open: touchmove on panel (not root) + stopMove on scroll area
       panelEl.addEventListener('touchmove', onMove, { passive: false })
       if (scrollEl) scrollEl.addEventListener('touchmove', stopMove, { passive: false })
     } else {
-      // Panel closed: touchmove on document for main-page gestures
-      document.addEventListener('touchmove', onMove, { passive: false })
+      // Panel closed: touchmove on the Bento root for main-page gestures
+      rootEl.addEventListener('touchmove', onMove, { passive: false })
     }
 
     // Cleanup always tries all attachment points (removeEventListener on
     // a non-attached target is a safe no-op).
     return () => {
-      document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchend', onEnd)
-      document.removeEventListener('touchmove', onMove)
+      rootEl.removeEventListener('touchstart', onStart)
+      rootEl.removeEventListener('touchend', onEnd)
+      rootEl.removeEventListener('touchmove', onMove)
       if (panelEl) panelEl.removeEventListener('touchmove', onMove)
       if (scrollEl) scrollEl.removeEventListener('touchmove', stopMove)
     }
@@ -450,7 +455,7 @@ export default function BentoClient({
   const mainPullActive = mainPullOffset !== 0 || refreshing
 
   return (
-    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', overscrollBehavior: 'none', background: '#f9fafb' }}>
+    <div ref={rootRef} style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', overscrollBehavior: 'none', background: '#f9fafb' }}>
       <div
         style={{
           position: 'absolute',
