@@ -1,12 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useStaff } from '@/app/components/StaffProvider'
 import { useNavigation } from '../../components/NavigationStack'
+
+const loadCustomerDetailPage = () => import('@/app/bento/customers/[id]/page')
+const CustomerDetailPage = lazy(loadCustomerDetailPage)
+const loadNewCustomerPage = () => import('@/app/bento/customers/new/page')
+const NewCustomerPage = lazy(loadNewCustomerPage)
+const detailFallback = <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
 
 export type Customer = {
   id: number
@@ -16,6 +21,7 @@ export type Customer = {
   delivery_method: string
   delivery_address: string
   area: string
+  delivery_frequency: 'daily' | 'weekdays'
   menu_preference: string
   taste_notes: string
   start_date: string
@@ -57,6 +63,10 @@ export default function CustomersClient() {
       })
   }, [])
 
+  useEffect(() => {
+    void loadCustomerDetailPage()
+  }, [])
+
   const active = customers.filter(c => c.active)
   const weekly = active.filter(c => c.subscription_type === 'weekly')
   const monthly = active.filter(c => c.subscription_type === 'monthly')
@@ -78,7 +88,7 @@ export default function CustomersClient() {
           <BackButton href="/bento" />
           <span className="font-semibold text-base">Customers</span>
         </div>
-        <Link href="/bento/customers/new" className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-xl leading-none">+</Link>
+        <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage /></Suspense>)} className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-xl leading-none">+</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
@@ -100,7 +110,7 @@ export default function CustomersClient() {
           <div className="text-center text-gray-400 py-16">
             <div className="text-4xl mb-3">👥</div>
             <div className="text-sm">No customers yet</div>
-            <Link href="/bento/customers/new" className="mt-3 inline-block text-sm text-orange-500">+ Add first customer</Link>
+            <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage /></Suspense>)} className="mt-3 inline-block text-sm text-orange-500">+ Add first customer</button>
           </div>
         )}
 
@@ -119,7 +129,14 @@ export default function CustomersClient() {
                   const remaining = c.total_portions - c.used_portions
                   const pct = c.total_portions > 0 ? Math.round((c.used_portions / c.total_portions) * 100) : 0
                   return (
-                    <Link key={c.id} href={`/bento/customers/${c.id}`} className="block bg-white rounded-2xl p-4 shadow-sm">
+                    <button key={c.id} type="button" onClick={() => {
+                      push(
+                        `/bento/customers/${c.id}`,
+                        <Suspense fallback={detailFallback}>
+                          <CustomerDetailPage customerId={c.id} initialCustomer={c} />
+                        </Suspense>,
+                      )
+                    }} className="block w-full text-left bg-white rounded-2xl p-4 shadow-sm">
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-gray-900">{c.name}</span>
@@ -142,7 +159,7 @@ export default function CustomersClient() {
                           </div>
                         </div>
                       )}
-                    </Link>
+                    </button>
                   )
                 })}
               </div>
