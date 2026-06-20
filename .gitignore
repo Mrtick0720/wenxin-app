@@ -43,3 +43,4 @@ lib/feedme/.cache/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.worktrees/
