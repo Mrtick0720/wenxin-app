@@ -11,7 +11,8 @@ import type { PurchaseSummary, PurchaseKpi, RatioPeriod, PurchaseRecord } from '
 import BackButton from '../components/BackButton'
 import { useNavigation } from '../components/NavigationStack'
 import {
-  fetchPurchaseContextAction,
+  fetchPurchaseHeroAction,
+  fetchPurchaseRecordsAction,
   fetchRecordsAction,
   fetchSummaryAction,
   fetchKpiAction,
@@ -486,6 +487,8 @@ type PurchaseCache = {
   summary: PurchaseSummary | null
   kpi: PurchaseKpi | null
   checklist: ChecklistEntry[] | undefined
+  checklistLoaded: boolean
+  recordsLoaded: boolean
   cachedAt: number
 }
 let purchaseCache: PurchaseCache | null = null
@@ -508,8 +511,14 @@ export default function PurchaseClient(props: Props) {
   const [summary, setSummary]   = useState<PurchaseSummary | null>(props.initialSummary ?? initCache?.summary ?? null)
   const [kpi, setKpi]           = useState<PurchaseKpi | null>(props.initialKpi ?? initCache?.kpi ?? null)
 
-  // initialLoading: blank-screen state only when there is truly no data to show yet
-  const [initialLoading, setInitialLoading] = useState(!hasInitial && !initCache)
+  const [heroLoading, setHeroLoading] = useState(!hasInitial && !initCache)
+  const [checklistLoading, setChecklistLoading] = useState(
+    !hasInitial && !initCache?.checklistLoaded,
+  )
+  const [recordsLoading, setRecordsLoading] = useState(
+    !hasInitial && !initCache?.recordsLoaded,
+  )
+  const [recordsError, setRecordsError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   // Seed checklist from SSR props → cache → fetched on first load (set via setChecklistSeed)
   const [checklistSeed, setChecklistSeed] = useState<ChecklistEntry[] | undefined>(
@@ -536,41 +545,92 @@ export default function PurchaseClient(props: Props) {
     // On explicit retry (bootAttempt > 0), ignore any stale cache and force a fresh load
     const cache = bootAttempt === 0 ? initCache : null
 
-    // Start fetches immediately — the slide-in animation is already complete
-    // by the time React mounts this component. Cached data renders instantly.
-    if (!cache) {
-      setInitialLoading(true)
+    async function loadStages() {
       setBootError(null)
-      Promise.all([fetchPurchaseContextAction(), fetchChecklistAction()]).then(([ctxRes, checkRes]) => {
+      setRecordsError(null)
+
+      // Stage 1: render the hero as soon as role/context/KPI are available.
+      setHeroLoading(!cache?.kpi)
+      const heroRes = await fetchPurchaseHeroAction()
+      if (!active) return
+      if (!heroRes.ok) {
+        setBootError(heroRes.error)
+        setHeroLoading(false)
+        return
+      }
+
+      const newCtx = {
+        role: heroRes.data.role,
+        today: heroRes.data.today,
+        perms: heroRes.data.perms,
+      }
+      setCtx(newCtx)
+      setKpi(heroRes.data.kpi)
+      purchaseCache = {
+        ctx: newCtx,
+        records: purchaseCache?.records ?? [],
+        summary: purchaseCache?.summary ?? null,
+        kpi: heroRes.data.kpi,
+        checklist: purchaseCache?.checklist,
+        checklistLoaded: purchaseCache?.checklistLoaded ?? false,
+        recordsLoaded: purchaseCache?.recordsLoaded ?? false,
+        cachedAt: Date.now(),
+      }
+      setHeroLoading(false)
+
+      // Stage 2: reveal the checklist without waiting for purchase history.
+      setChecklistLoading(!cache?.checklistLoaded)
+      const checkRes = await fetchChecklistAction()
+      if (!active) return
+      if (checkRes.ok) {
+        setChecklistSeed(checkRes.data)
+        purchaseCache = {
+          ...purchaseCache!,
+          checklist: checkRes.data,
+          checklistLoaded: true,
+          cachedAt: Date.now(),
+        }
+      }
+      setChecklistLoading(false)
+
+      // Stage 3: load the larger records/history query last.
+      setRecordsLoading(!cache?.recordsLoaded)
+      const recordsRes = await fetchPurchaseRecordsAction()
+      if (!active) return
+      if (recordsRes.ok) {
+        setRecords(recordsRes.data.records as LedgerRecord[])
+        setSummary(recordsRes.data.summary)
+        purchaseCache = {
+          ...purchaseCache!,
+          records: recordsRes.data.records as LedgerRecord[],
+          summary: recordsRes.data.summary,
+          recordsLoaded: true,
+          cachedAt: Date.now(),
+        }
+      } else {
+        setRecordsError(recordsRes.error)
+      }
+      setRecordsLoading(false)
+    }
+
+    // Start fetches immediately. Cached data renders instantly; a cold entry
+    // deliberately reveals hero → checklist → records in that order.
+    if (!cache) {
+      loadStages().catch((error) => {
         if (!active) return
-        if (!ctxRes.ok) { setBootError(ctxRes.error); setInitialLoading(false); return }
-        const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-        setCtx(newCtx)
-        setRecords(ctxRes.data.records as LedgerRecord[])
-        setSummary(ctxRes.data.summary)
-        setKpi(ctxRes.data.kpi)
-        const checklist = checkRes.ok ? checkRes.data : undefined
-        setChecklistSeed(checklist)
-        purchaseCache = { ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, checklist, cachedAt: Date.now() }
-        setInitialLoading(false)
+        setBootError(error instanceof Error ? error.message : String(error))
+        setHeroLoading(false)
       })
     } else {
       // Have cached data — show it immediately, refresh in background if stale
-      const isFresh = Date.now() - cache.cachedAt < CACHE_TTL_MS
+      const isFresh =
+        cache.checklistLoaded &&
+        cache.recordsLoaded &&
+        Date.now() - cache.cachedAt < CACHE_TTL_MS
       if (!isFresh) {
         setRefreshing(true)
-        fetchPurchaseContextAction().then((ctxRes) => {
-          if (!active) return
-          if (ctxRes.ok) {
-            const newCtx = { role: ctxRes.data.role, today: ctxRes.data.today, perms: ctxRes.data.perms }
-            setCtx(newCtx)
-            setRecords(ctxRes.data.records as LedgerRecord[])
-            setSummary(ctxRes.data.summary)
-            setKpi(ctxRes.data.kpi)
-            purchaseCache = { ...purchaseCache!, ctx: newCtx, records: ctxRes.data.records as LedgerRecord[], summary: ctxRes.data.summary, kpi: ctxRes.data.kpi, cachedAt: Date.now() }
-            setChecklistRefreshKey(k => k + 1)
-          }
-          setRefreshing(false)
+        loadStages().finally(() => {
+          if (active) setRefreshing(false)
         })
       }
       // Fresh cache: nothing to do — cached state already applied at useState init
@@ -1041,38 +1101,27 @@ export default function PurchaseClient(props: Props) {
     return acc
   }, [])
 
-  // ── Loading skeleton — shell appears instantly ──
-  if (initialLoading) {
-    return (
-      <div className="flex flex-col h-dvh bg-gray-50">
-        <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-          <BackButton href="/purchase" />
-          <span className="text-base font-semibold text-gray-800">Purchase</span>
-          <div className="w-10" />
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-          {/* KPI skeleton */}
-          <div className="h-32 bg-white rounded-2xl animate-pulse" />
-          {/* Checklist skeleton */}
-          <div className="space-y-2">
-            <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
-            <div className="bg-white rounded-2xl p-4 space-y-3">
-              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-              <div className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-            </div>
-          </div>
-          {/* Records skeleton */}
-          <div className="space-y-2">
-            <div className="h-5 w-36 bg-gray-200 rounded animate-pulse" />
-            <div className="bg-white rounded-2xl p-4 space-y-3">
-              <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
-              <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+  async function retryRecords() {
+    setRecordsLoading(true)
+    setRecordsError(null)
+    const res = await fetchPurchaseRecordsAction()
+    if (res.ok) {
+      const freshRecords = res.data.records as LedgerRecord[]
+      setRecords(freshRecords)
+      setSummary(res.data.summary)
+      if (purchaseCache) {
+        purchaseCache = {
+          ...purchaseCache,
+          records: freshRecords,
+          summary: res.data.summary,
+          recordsLoaded: true,
+          cachedAt: Date.now(),
+        }
+      }
+    } else {
+      setRecordsError(res.error)
+    }
+    setRecordsLoading(false)
   }
 
   if (bootError && !ctx) {
@@ -1136,6 +1185,9 @@ export default function PurchaseClient(props: Props) {
       {/* ── Scrollable content ── */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
         {/* ── Hero KPI ── */}
+        {heroLoading && (
+          <div className="mx-4 mt-4 h-32 animate-pulse rounded-2xl bg-white" />
+        )}
         {kpi && ctx && (() => {
           const band = ratioBand(kpi.today.ratio)
           const theme = BAND_THEME[band]
@@ -1275,21 +1327,29 @@ export default function PurchaseClient(props: Props) {
             </button>
           </div>
           <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-            <ChecklistSection
-              showCosts={showCosts}
-              catalog={catalog}
-              catalogLoading={catalogLoading}
-              onRecordCreated={() => setChecklistRefreshKey((k) => k + 1)}
-              onItemCompleting={handleItemCompleting}
-              onItemCompleted={handleItemCompleted}
-              onItemCompleteFailed={handleItemCompleteFailed}
-              initialItems={checklistSeed}
-              refreshKey={checklistRefreshKey}
-              restoreItemRef={restoreChecklistRef}
-              triggerAddRef={triggerAddChecklistRef}
-              purchasedChecklistIds={purchasedChecklistIds}
-              updateItemsRef={updateChecklistRef}
-            />
+            {checklistLoading ? (
+              <div className="space-y-3 p-4">
+                <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+                <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+                <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
+              </div>
+            ) : (
+              <ChecklistSection
+                showCosts={showCosts}
+                catalog={catalog}
+                catalogLoading={catalogLoading}
+                onRecordCreated={() => setChecklistRefreshKey((k) => k + 1)}
+                onItemCompleting={handleItemCompleting}
+                onItemCompleted={handleItemCompleted}
+                onItemCompleteFailed={handleItemCompleteFailed}
+                initialItems={checklistSeed}
+                refreshKey={checklistRefreshKey}
+                restoreItemRef={restoreChecklistRef}
+                triggerAddRef={triggerAddChecklistRef}
+                purchasedChecklistIds={purchasedChecklistIds}
+                updateItemsRef={updateChecklistRef}
+              />
+            )}
           </div>
         </div>
 
@@ -1299,7 +1359,20 @@ export default function PurchaseClient(props: Props) {
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Purchase Records</h2>
             </div>
-            {todayRecords.length === 0 ? (
+            {recordsLoading ? (
+              <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+                <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+                <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
+              </div>
+            ) : recordsError ? (
+              <div className="rounded-2xl border border-red-100 bg-white px-4 py-6 text-center">
+                <div className="mb-3 text-sm text-red-500">{recordsError}</div>
+                <button type="button" onClick={retryRecords}
+                  className="rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white active:opacity-80">
+                  Retry records
+                </button>
+              </div>
+            ) : todayRecords.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 px-4 py-8 text-center text-sm text-gray-400">
                 No records for today
               </div>
@@ -1314,7 +1387,7 @@ export default function PurchaseClient(props: Props) {
         )}
 
         {/* ── Purchase History — owner/manager only ── */}
-        {showCosts && (
+        {showCosts && !recordsLoading && !recordsError && (
           <div className="mx-4 mt-5">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Purchase History</h2>

@@ -20,6 +20,8 @@
     "test:checklist": "npx tsx scripts/test-checklist.mjs",
     "test:purchase": "npx tsx scripts/test-purchase.mjs",
     "test:purchase-ledger": "npx tsx scripts/test-purchase-ledger.mjs",
+    "test:purchase-payables": "node --no-warnings --experimental-strip-types scripts/test-purchase-payables.mjs",
+    "test:purchase-loading": "node scripts/test-purchase-progressive-loading.mjs",
     "test:purchase-lifecycle": "npx tsx scripts/test-purchase-lifecycle.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "test:assets": "npx tsx scripts/test-assets.mjs",

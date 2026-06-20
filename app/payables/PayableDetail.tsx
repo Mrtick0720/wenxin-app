@@ -31,16 +31,14 @@ export default function PayableDetail({
   payable,
   canWrite,
   onClose,
-  onEdit,
-  onChanged,
+  onPaid,
 }: {
   payable: Payable
   canWrite: boolean
   onClose: () => void
-  onEdit: () => void
-  onChanged: () => void
+  onPaid: (id: number) => void
 }) {
-  const [paymentLabel, setPaymentLabel] = useState<'Mark Paid' | 'Record Partial Payment' | null>(null)
+  const [showPayment, setShowPayment] = useState(false)
   const st = statusConfig[payable.status] ?? statusConfig.outstanding
   const isPaid = payable.status === 'paid'
 
@@ -76,22 +74,10 @@ export default function PayableDetail({
 
         <div className="px-5 pt-4 space-y-2">
           {canWrite && !isPaid && (
-            <>
-              <button type="button" onClick={() => setPaymentLabel('Mark Paid')}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
-                style={{ background: '#22c55e' }}>
-                Mark Paid
-              </button>
-              <button type="button" onClick={() => setPaymentLabel('Record Partial Payment')}
-                className="w-full py-3 rounded-2xl text-sm font-semibold text-gray-700 bg-gray-100 active:bg-gray-200">
-                Record Partial Payment
-              </button>
-            </>
-          )}
-          {canWrite && (
-            <button type="button" onClick={onEdit}
-              className="w-full py-3 rounded-2xl text-sm font-semibold text-gray-600 bg-gray-50 active:bg-gray-100">
-              Edit
+            <button type="button" onClick={() => setShowPayment(true)}
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
+              style={{ background: '#22c55e' }}>
+              Mark Paid
             </button>
           )}
           {isPaid && (
@@ -102,13 +88,12 @@ export default function PayableDetail({
         </div>
       </div>
 
-      {paymentLabel && (
+      {showPayment && (
         <PaymentModal
           payableId={payable.id}
-          maxAmount={payable.balance}
-          label={paymentLabel}
-          onClose={() => setPaymentLabel(null)}
-          onPaid={() => { setPaymentLabel(null); onChanged(); onClose() }}
+          amount={payable.balance}
+          onClose={() => setShowPayment(false)}
+          onPaid={onPaid}
         />
       )}
     </div>

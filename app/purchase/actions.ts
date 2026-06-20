@@ -47,6 +47,13 @@ export type PurchaseContext = {
   kpi: PurchaseKpi
 }
 
+export type PurchaseHeroContext = {
+  role: StaffRole
+  today: string
+  perms: Perms
+  kpi: PurchaseKpi
+}
+
 /** Resolve created_by UUIDs → display names via admin (RLS-safe for all roles). */
 async function enteredByNames(ids: (string | null)[]): Promise<Map<string, string>> {
   const unique = [...new Set(ids.filter((x): x is string => !!x))]
@@ -113,6 +120,41 @@ export async function fetchPurchaseContextAction(): Promise<ActionResult<Purchas
       ok: true,
       data: { role: staff.role, today: businessToday(), perms: permsFor(staff.role), records, summary, kpi },
     }
+  } catch (error) {
+    return fail(error)
+  }
+}
+
+/** First bootstrap stage: enough data to render the page shell and hero card. */
+export async function fetchPurchaseHeroAction(): Promise<ActionResult<PurchaseHeroContext>> {
+  try {
+    const staff = await requireRole(...ROLES)
+    return {
+      ok: true,
+      data: {
+        role: staff.role,
+        today: businessToday(),
+        perms: permsFor(staff.role),
+        kpi: await computeKpi(staff.role),
+      },
+    }
+  } catch (error) {
+    return fail(error)
+  }
+}
+
+/** Final bootstrap stage: the larger ledger query and its summary. */
+export async function fetchPurchaseRecordsAction(): Promise<ActionResult<{
+  records: PurchaseRecord[]
+  summary: PurchaseSummary | null
+}>> {
+  try {
+    const staff = await requireRole(...ROLES)
+    const [records, summary] = await Promise.all([
+      svc.listRecords(staff.role, {}),
+      svc.getSummary(staff.role),
+    ])
+    return { ok: true, data: { records, summary } }
   } catch (error) {
     return fail(error)
   }

@@ -6,7 +6,6 @@ import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
 import { fetchPayablesAction, type Payable } from './actions'
 import PayableDetail from './PayableDetail'
-import PayableForm from './PayableForm'
 import { usePurchaseRealtime } from '../purchase/usePurchaseRealtime'
 import { todayLocalStr } from '@/lib/dateUtils'
 
@@ -34,8 +33,6 @@ export default function PayablesClient() {
   const [canWrite, setCanWrite] = useState(payablesCache?.canWrite ?? false)
   const [loading, setLoading] = useState(!payablesCache)
   const [selected, setSelected] = useState<Payable | null>(null)
-  const [editTarget, setEditTarget] = useState<Payable | undefined>(undefined)
-  const [showForm, setShowForm] = useState(false)
 
   const load = useCallback(async () => {
     const res = await fetchPayablesAction()
@@ -62,10 +59,14 @@ export default function PayablesClient() {
   const totalBalance = items.filter(p => p.status !== 'paid').reduce((s, p) => s + p.balance, 0)
   const dueTodayCount = items.filter(p => p.status !== 'paid' && p.due_date === today).length
 
-  function openEdit(item: Payable) {
+  function handlePaid(id: number) {
+    setItems((current) => {
+      const next = current.filter((item) => item.id !== id)
+      payablesCache = { items: next, canWrite }
+      return next
+    })
     setSelected(null)
-    setEditTarget(item)
-    setShowForm(true)
+    load().catch(() => {})
   }
 
   const rowBg = (i: number) => i % 2 === 1 ? '#f9fafb' : '#ffffff'
@@ -92,16 +93,7 @@ export default function PayablesClient() {
             <BackButton href="/" />
             <span className="font-semibold text-base">Payables</span>
           </div>
-          {canWrite && (
-            <button type="button" onClick={() => { setEditTarget(undefined); setShowForm(true) }}
-              aria-label="Add payable"
-              className="w-9 h-9 flex items-center justify-center rounded-full active:opacity-80"
-              style={{ background: '#f97316' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
-          )}
+          <div className="w-9" />
         </div>
 
         <div className="px-4 py-4 pb-28 space-y-4">
@@ -159,16 +151,7 @@ export default function PayablesClient() {
             payable={selected}
             canWrite={canWrite}
             onClose={() => setSelected(null)}
-            onEdit={() => openEdit(selected)}
-            onChanged={load}
-          />
-        )}
-
-        {showForm && (
-          <PayableForm
-            edit={editTarget}
-            onClose={() => { setShowForm(false); setEditTarget(undefined) }}
-            onSaved={load}
+            onPaid={handlePaid}
           />
         )}
       </main>
