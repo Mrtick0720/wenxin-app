@@ -62,7 +62,11 @@ export default async function RootLayout({
   const pendingCount = staff ? await getPendingTaskCount() : 0
 
   return (
-    <html lang="en" style={{ colorScheme: 'light', background: '#ffffff' }}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      style={{ colorScheme: 'light', background: '#ffffff' }}
+    >
       <head>
         {/* Force iOS PWA to never serve stale cached app shell */}
         <meta httpEquiv="Cache-Control" content="no-cache, no-store, must-revalidate" />

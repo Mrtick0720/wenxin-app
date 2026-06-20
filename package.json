@@ -22,6 +22,7 @@
     "test:purchase-ledger": "npx tsx scripts/test-purchase-ledger.mjs",
     "test:purchase-payables": "node --no-warnings --experimental-strip-types scripts/test-purchase-payables.mjs",
     "test:purchase-loading": "node scripts/test-purchase-progressive-loading.mjs",
+    "test:root-hydration": "node scripts/test-root-hydration.mjs",
     "test:purchase-lifecycle": "npx tsx scripts/test-purchase-lifecycle.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
     "test:assets": "npx tsx scripts/test-assets.mjs",
