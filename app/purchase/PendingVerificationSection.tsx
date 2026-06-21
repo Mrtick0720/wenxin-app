@@ -132,7 +132,7 @@ function VerificationSheet({ item, canVerify, onAccept, onReject, onCancel, onCl
                   className="w-full py-3 rounded-2xl border border-gray-200 text-sm font-medium text-gray-500 active:opacity-70 flex items-center justify-center gap-1.5"
                 >
                   <span style={{ fontSize: 15 }}>↩</span>
-                  {cancelling ? 'Returning…' : 'Return to Checklist'}
+                  {cancelling ? 'Returning…' : 'Return to To Buy'}
                 </button>
               </div>
             )}

@@ -59,7 +59,7 @@ const tabs: BottomTab[] = [
 ]
 
 export default function BottomNav({ pendingCount = 0, purchasePending = false }: { pendingCount?: number; purchasePending?: boolean }) {
-  const { reset, resetTo, canPop, currentPath } = useNavigation()
+  const { reset, resetTo, popToRoot, canPop, currentPath } = useNavigation()
   const router = useRouter()
   const pathname = usePathname()
 
@@ -68,8 +68,9 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
     const action = resolveBottomTabAction({ href, currentPath })
 
     if (action === 'home') {
-      reset()
-      if (pathname !== '/') router.replace('/')
+      if (canPop) {
+        popToRoot()
+      }
       return
     }
 

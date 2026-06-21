@@ -661,6 +661,8 @@ export default function PurchaseClient(props: Props) {
   }, [bootAttempt])
 
   const [showFilters, setShowFilters]     = useState(false)
+  const [showVerifyFilters, setShowVerifyFilters] = useState(false)
+  const [verifyFilters, setVerifyFilters] = useState({ category: '', supplier: '' })
   const [showBreakdown, setShowBreakdown] = useState(false)
   // ── Stage carousel (Checklist → Verify → Received), touch-driven like HeroCard ──
   const TAB_KEYS = ['checklist', 'verification', 'records'] as const
@@ -799,7 +801,10 @@ export default function PurchaseClient(props: Props) {
   }, [filters, ctx])
 
   // Silent background refresh — used by polling/visibility/reconnect so no "Refreshing…" shows
-  const backgroundRefresh = useCallback(() => refresh(filters, true), [refresh, filters])
+  const backgroundRefresh = useCallback(() => {
+    setChecklistRefreshKey(k => k + 1)
+    return refresh(filters, true)
+  }, [refresh, filters])
 
   // ── Cross-device sync: polling, visibility, reconnect ──
   usePurchaseSync(backgroundRefresh)
@@ -1282,6 +1287,26 @@ export default function PurchaseClient(props: Props) {
     .filter((r) => r.date === ctx?.today)
     .sort((a, b) => categoryOrderIndex(a.category) - categoryOrderIndex(b.category))
   const historyRecords = records.filter((r) => r.date !== ctx?.today)
+
+  // Unique supplier list for the Received filter (derived from all records)
+  const supplierOptions = ['All', ...Array.from(new Set(records.map(r => r.supplier).filter((s): s is string => !!s))).sort()]
+
+  // Verify tab filter derived data
+  type PendingRecord = { category: string; supplier?: string | null; total_price?: number | null }
+  const pendingRecords = pendingVerification as unknown as PendingRecord[]
+  const verifySupplierOptions = ['All', ...Array.from(new Set(pendingRecords.map(r => r.supplier).filter((s): s is string => !!s))).sort()]
+  const filteredPending = pendingRecords.filter(r =>
+    (!verifyFilters.category || r.category === verifyFilters.category) &&
+    (!verifyFilters.supplier || r.supplier === verifyFilters.supplier)
+  )
+  const filteredPendingTotal = filteredPending.reduce((sum, r) => sum + (r.total_price ?? 0), 0)
+
+  // Filtered today records (client-side, for display + total in Received tab)
+  const filteredTodayRecords = todayRecords.filter(r =>
+    (!filters.category || r.category === filters.category) &&
+    (!filters.supplier || r.supplier === filters.supplier)
+  )
+  const filteredTodayTotal = filteredTodayRecords.reduce((sum, r) => sum + (r.total_price ?? 0), 0)
   // Render-level dedup: the set of checklist_item_id values carried by purchase
   // records. ChecklistSection hides any checklist item whose id appears here, so
   // a purchased item never shows in both sections — even during the cross-device
@@ -1479,9 +1504,9 @@ export default function PurchaseClient(props: Props) {
         {/* ── Stage tabs: Checklist → Verify → Received ── */}
         <div className="mx-4 mt-4 flex gap-2">
           {([
-            { key: 'checklist', label: 'Checklist', count: checklistPendingCount },
-            { key: 'verification', label: 'Verify', count: pendingVerification.length },
-            { key: 'records', label: 'Received', count: todayRecords.length, locked: !showCosts },
+            { key: 'checklist',    label: 'To Buy',    count: checklistPendingCount,        activeBg: '#FF7A1A', inactiveBg: '#FFF3E8', activeText: '#FFFFFF', inactiveText: '#C2410C' },
+            { key: 'verification', label: 'To Verify', count: pendingVerification.length,   activeBg: '#2563EB', inactiveBg: '#EFF6FF', activeText: '#FFFFFF', inactiveText: '#1D4ED8' },
+            { key: 'records',      label: 'Received',  count: todayRecords.length, locked: !showCosts, activeBg: '#16A34A', inactiveBg: '#ECFDF5', activeText: '#FFFFFF', inactiveText: '#15803D' },
           ] as const).map((tab) => {
             const active = activeTab === tab.key
             const locked = 'locked' in tab && tab.locked
@@ -1492,8 +1517,8 @@ export default function PurchaseClient(props: Props) {
                 onClick={() => { if (!locked) goToTab(tab.key) }}
                 className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-3 transition-colors active:opacity-80"
                 style={{
-                  background: active ? '#f97316' : '#f3f4f6',
-                  color: active ? '#fff' : locked ? '#cbd5e1' : '#6b7280',
+                  background: active ? tab.activeBg : tab.inactiveBg,
+                  color: active ? tab.activeText : locked ? '#cbd5e1' : tab.inactiveText,
                 }}
               >
                 <span className="flex items-center gap-1 text-sm font-semibold leading-none">
@@ -1506,7 +1531,7 @@ export default function PurchaseClient(props: Props) {
                 </span>
                 <span
                   className="text-xl font-bold leading-none tabular-nums"
-                  style={{ color: active ? '#fff' : locked ? '#cbd5e1' : '#111827' }}
+                  style={{ color: active ? tab.activeText : locked ? '#cbd5e1' : tab.inactiveText }}
                 >
                   {locked ? '—' : tab.count}
                 </span>
@@ -1522,19 +1547,6 @@ export default function PurchaseClient(props: Props) {
             {/* Panel 0: Checklist */}
             <div ref={(el) => { panelRefs.current[0] = el }} style={{ width: `${pctPerSlide}%` }}>
         <div className="mx-4 mt-4">
-          <div className="flex items-center justify-end mb-2">
-            <button
-              type="button"
-              onClick={() => triggerAddChecklistRef.current?.()}
-              aria-label="Add checklist item"
-              className="w-9 h-9 flex items-center justify-center rounded-full active:opacity-80"
-              style={{ background: '#f97316' }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
-          </div>
           <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
             {checklistLoading ? (
               <div className="space-y-3 p-4">
@@ -1565,9 +1577,46 @@ export default function PurchaseClient(props: Props) {
 
             {/* Panel 1: Verify */}
             <div ref={(el) => { panelRefs.current[1] = el }} style={{ width: `${pctPerSlide}%` }}>
+          {showCosts && pendingVerification.length > 0 && (
+            <div className="mx-4 mt-4">
+              <button type="button" onClick={() => setShowVerifyFilters((o) => !o)}
+                className="flex items-center gap-1.5 text-xs text-gray-500 active:opacity-70">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="4" y1="6" x2="20" y2="6" /><circle cx="8" cy="6" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4" y1="12" x2="20" y2="12" /><circle cx="16" cy="12" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
+                  <line x1="4" y1="18" x2="20" y2="18" /><circle cx="10" cy="18" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
+                </svg>
+                {(verifyFilters.category || verifyFilters.supplier) && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />}
+              </button>
+              {showVerifyFilters && (
+                <div className="mt-2 p-3 bg-white rounded-xl border border-gray-100 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Picker label="Category" value={verifyFilters.category || 'All'} options={['All', ...PURCHASE_CATEGORIES]} onChange={(v) => setVerifyFilters((f) => ({ ...f, category: v === 'All' ? '' : v }))} />
+                    <Picker label="Supplier" value={verifyFilters.supplier || 'All'} options={verifySupplierOptions} onChange={(v) => setVerifyFilters((f) => ({ ...f, supplier: v === 'All' ? '' : v }))} />
+                  </div>
+                  <div className="flex items-center justify-between pt-1">
+                    <button type="button" onClick={() => setVerifyFilters({ category: '', supplier: '' })}
+                      className="text-xs text-gray-400 font-medium active:opacity-70">Reset</button>
+                    <button type="button" onClick={() => setShowVerifyFilters(false)}
+                      className="px-4 py-1.5 bg-orange-500 text-white text-xs font-semibold rounded-lg active:opacity-80">Apply</button>
+                  </div>
+                </div>
+              )}
+              {(verifyFilters.category || verifyFilters.supplier) && (
+                <div className="mt-2 flex items-center justify-between px-1">
+                  <span className="text-xs text-gray-400">
+                    {filteredPending.length} item{filteredPending.length !== 1 ? 's' : ''}
+                    {verifyFilters.supplier ? ` · ${verifyFilters.supplier}` : ''}
+                    {verifyFilters.category ? ` · ${verifyFilters.category}` : ''}
+                  </span>
+                  <span className="text-sm font-bold text-gray-900">RM {filteredPendingTotal.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          )}
           {pendingVerification.length > 0 ? (
             <PendingVerificationSection
-              items={pendingVerification as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
+              items={(verifyFilters.category || verifyFilters.supplier ? filteredPending : pendingRecords) as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
               canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen'}
               onAccepted={handleVerificationAccepted}
               onAcceptFailed={handleVerificationAcceptFailed}
@@ -1598,32 +1647,35 @@ export default function PurchaseClient(props: Props) {
           <div className="mx-4 mt-4">
             <button type="button" onClick={() => setShowFilters((o) => !o)}
               className="flex items-center gap-1.5 text-xs text-gray-500 active:opacity-70">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="20" y2="12" /><line x1="12" y1="18" x2="20" y2="18" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6" /><circle cx="8" cy="6" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
+                <line x1="4" y1="12" x2="20" y2="12" /><circle cx="16" cy="12" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
+                <line x1="4" y1="18" x2="20" y2="18" /><circle cx="10" cy="18" r="2" fill="white" stroke="currentColor" strokeWidth="2" />
               </svg>
-              Filters
-              {Object.values(filters).some(Boolean) && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />}
+              {Object.values(filters).some(Boolean) && <span className="w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />}
             </button>
             {showFilters && (
               <div className="mt-2 p-3 bg-white rounded-xl border border-gray-100 space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <Picker label="Category" value={filters.category || 'All'} options={['All', ...PURCHASE_CATEGORIES]} onChange={(v) => setFilters((f) => ({ ...f, category: v === 'All' ? '' : v }))} />
-                  <Picker label="Supplier" value={filters.supplier || 'All'} options={['All']} onChange={(v) => setFilters((f) => ({ ...f, supplier: v === 'All' ? '' : v }))} />
+                  <Picker label="Supplier" value={filters.supplier || 'All'} options={supplierOptions} onChange={(v) => setFilters((f) => ({ ...f, supplier: v === 'All' ? '' : v }))} />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">From</label>
-                    <input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">To</label>
-                    <input type="date" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
-                  </div>
+                <div className="flex items-center justify-between pt-1">
+                  <button type="button" onClick={() => { setFilters({ category: '', from: '', to: '', supplier: '', purchaser: '' }) }}
+                    className="text-xs text-gray-400 font-medium active:opacity-70">Reset</button>
+                  <button type="button" onClick={() => setShowFilters(false)}
+                    className="px-4 py-1.5 bg-orange-500 text-white text-xs font-semibold rounded-lg active:opacity-80">Apply</button>
                 </div>
-                <button type="button" onClick={() => { setFilters({ category: '', from: '', to: '', supplier: '', purchaser: '' }); refresh() }}
-                  className="text-xs text-orange-500 font-semibold active:opacity-70">Reset</button>
+              </div>
+            )}
+            {(filters.category || filters.supplier) && (
+              <div className="mt-2 flex items-center justify-between px-1">
+                <span className="text-xs text-gray-400">
+                  {filteredTodayRecords.length} item{filteredTodayRecords.length !== 1 ? 's' : ''}
+                  {filters.supplier ? ` · ${filters.supplier}` : ''}
+                  {filters.category ? ` · ${filters.category}` : ''}
+                </span>
+                <span className="text-sm font-bold text-gray-900">RM {filteredTodayTotal.toFixed(2)}</span>
               </div>
             )}
           </div>
@@ -1643,14 +1695,14 @@ export default function PurchaseClient(props: Props) {
                   Retry records
                 </button>
               </div>
-            ) : todayRecords.length === 0 ? (
+            ) : filteredTodayRecords.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 px-4 py-8 text-center text-sm text-gray-400">
-                No records for today
+                {todayRecords.length === 0 ? 'No records for today' : 'No records match the filter'}
               </div>
             ) : (
               <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-                {todayRecords.map((r, i) => (
-                  <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === todayRecords.length - 1} {...rowProps} />
+                {filteredTodayRecords.map((r, i) => (
+                  <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === filteredTodayRecords.length - 1} {...rowProps} />
                 ))}
               </div>
             )}
@@ -1781,6 +1833,27 @@ export default function PurchaseClient(props: Props) {
         {/* ── Bottom spacer — tall enough for expanded Category Breakdown to clear the nav bar ── */}
         <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }} />
       </div>
+
+      {/* ── Checklist FAB — fixed above bottom nav, only on Checklist tab ── */}
+      {activeTab === 'checklist' && typeof document !== 'undefined' && createPortal(
+        <button
+          type="button"
+          onClick={() => triggerAddChecklistRef.current?.()}
+          aria-label="Add item to buy"
+          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+          style={{
+            background: '#f97316',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>,
+        document.body
+      )}
 
       {/* ── Add sheet — portaled to body so it clears bottom nav ── */}
       {showAdd && typeof document !== 'undefined' && createPortal(

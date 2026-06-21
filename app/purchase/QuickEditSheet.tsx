@@ -21,6 +21,8 @@ type QuickRecord = {
   supplier?: string | null
   purchaser?: string | null
   receiver?: string | null
+  created_by_name?: string | null
+  verified_by_name?: string | null
   note?: string | null
   purchase_method?: string | null
   payment_status?: string | null
@@ -116,7 +118,12 @@ export default function QuickEditSheet({ record, showCosts, onClose, onOptimisti
         <div className="px-4 pt-5 pb-3 flex items-center justify-between flex-shrink-0 border-b border-gray-100">
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-base truncate">{record.name}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{record.category} · {fmtDate(record.date)}</div>
+            <div className="text-sm text-gray-400 mt-0.5">
+              {record.purchaser ? `Purchased by ${record.purchaser}` : ''}
+              {record.purchaser && (record.verified_by_name ?? record.receiver) ? ' · ' : ''}
+              {(record.verified_by_name ?? record.receiver) ? `Received by ${record.verified_by_name ?? record.receiver}` : ''}
+              {!record.purchaser && !record.verified_by_name && !record.receiver ? record.category : ''}
+            </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 text-2xl leading-none ml-3">×</button>
         </div>
@@ -197,7 +204,7 @@ export default function QuickEditSheet({ record, showCosts, onClose, onOptimisti
                 </div>
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Total</label>
-                  <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-900 font-semibold text-right" style={{ fontSize: 16 }}>
+                  <div className="w-full border border-gray-200 rounded-xl px-3 py-2.5 bg-gray-50 text-gray-900 font-semibold" style={{ fontSize: 16 }}>
                     {total > 0 ? rm(total) : '—'}
                   </div>
                 </div>

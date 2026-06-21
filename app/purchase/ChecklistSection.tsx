@@ -70,7 +70,7 @@ function ItemFormSheet({
   title, form, setForm, catalogItem, setCatalogItem,
   catalog, catalogLoading, saving, error,
   showCatalog, showCosts, planningOnly = false,
-  onSave, onClose,
+  onSave, onClose, onDelete,
 }: {
   title: string
   form: typeof emptyAddForm
@@ -86,6 +86,7 @@ function ItemFormSheet({
   planningOnly?: boolean
   onSave: () => void
   onClose: () => void
+  onDelete?: () => void
 }) {
   // Keyboard-aware height — keep sheet above the mobile keyboard
   const [kbHeight, setKbHeight] = useState(0)
@@ -235,7 +236,7 @@ function ItemFormSheet({
         </div>
 
         <div
-          className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-3"
+          className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-3 space-y-2"
         >
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose}
@@ -248,6 +249,12 @@ function ItemFormSheet({
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
+          {onDelete && (
+            <button type="button" onClick={onDelete}
+              className="w-full py-3 rounded-2xl text-sm font-semibold text-red-400 bg-red-50 active:opacity-80">
+              Delete
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -857,6 +864,7 @@ export default function ChecklistSection({
           showCosts={showCosts}
           onSave={handleEdit}
           onClose={() => setEditingItem(null)}
+          onDelete={() => { const it = editingItem; setEditingItem(null); requestDelete(it) }}
         />
       )}
 
