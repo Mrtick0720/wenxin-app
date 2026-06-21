@@ -344,7 +344,7 @@ function getKitchenDisplayName(
 
 function CheckRow({
   item, canComplete, showCosts,
-  onComplete, onUncomplete, onEdit, onDelete,
+  onComplete, onUncomplete, onEdit,
   catalog, catalogLoading,
 }: {
   item: ChecklistEntry
@@ -353,7 +353,6 @@ function CheckRow({
   onComplete: (item: ChecklistEntry) => void
   onUncomplete: (item: ChecklistEntry) => void
   onEdit: (item: ChecklistEntry) => void
-  onDelete: (item: ChecklistEntry) => void
   catalog: CatalogItem[]
   catalogLoading: boolean
 }) {
@@ -368,191 +367,85 @@ function CheckRow({
   const { name: displayNameKitchen, loading: catalogLoadingName } =
     getKitchenDisplayName(item, catalog, catalogLoading)
 
-  // Swipe state (same pattern as RecordRow; only active for pending owner/manager rows)
-  const [swiped, _setSwiped] = useState(false)
-  const swipedRef    = useRef(false)
-  const isSwipeGest  = useRef(false)
-  const touchStartX  = useRef(0)
-  const touchStartY  = useRef(0)
+  // Row swipe removed — it conflicted with the page-level stage carousel.
+  // Owner/manager: tap the circle to purchase (qty/price editable in the sheet),
+  // tap the row to edit; delete lives inside the purchase sheet. Kitchen: read-only.
 
-  function setSwiped(v: boolean) { swipedRef.current = v; _setSwiped(v) }
-
-  function onTouchStart(e: React.TouchEvent) {
-    touchStartX.current = e.touches[0].clientX
-    touchStartY.current = e.touches[0].clientY
-    isSwipeGest.current = false
-  }
-
-  function onTouchEnd(e: React.TouchEvent) {
-    const dx = touchStartX.current - e.changedTouches[0].clientX
-    const dy = Math.abs(touchStartY.current - e.changedTouches[0].clientY)
-    if (Math.abs(dx) > 40 && dy < 35) {
-      isSwipeGest.current = true
-      setSwiped(dx > 0)
-      setTimeout(() => { isSwipeGest.current = false }, 350)
-    }
-  }
-
-  function handleRowTap() {
-    if (isSwipeGest.current) return
-    if (swipedRef.current) { setSwiped(false); return }
-  }
-
-  const canSwipe = !done && showCosts
-  const ACTION_W = 96 // edit + delete buttons
-  const translate = canSwipe && swiped ? -ACTION_W : 0
-
-  // Kitchen: compact swipe row with Malay/English names, edit + delete actions, creator
+  // Kitchen: compact read-only row with Malay/English names
   if (!showCosts) {
-    const ACTION_W = 96 // edit + delete buttons
-    const canSwipe = !done
-
-    const translate = canSwipe && swiped ? -ACTION_W : 0
-
     return (
-      <div style={{ position: 'relative', overflow: 'hidden', borderBottom: '1px solid #f3f4f6', background: '#fff' }} className="last:border-b-0">
-        {/* Category color strip */}
+      <div style={{ position: 'relative', borderBottom: '1px solid #f3f4f6', background: '#fff' }} className="last:border-b-0">
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, zIndex: 2, pointerEvents: 'none' }} />
-        {/* Swipe action area */}
-        {canSwipe && (
-          <div style={{
-            position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W,
-            display: 'flex', alignItems: 'stretch', background: '#ef4444', zIndex: 0,
-          }}>
-            <button type="button"
-              onClick={() => { setSwiped(false); onEdit(item) }}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
-            </button>
-            <button type="button"
-              onClick={() => { setSwiped(false); onDelete(item) }}
-              style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #f87171' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-              </svg>
-            </button>
-          </div>
-        )}
-
-        {/* Sliding content */}
-        <div
-          style={{ transform: `translateX(${translate}px)`, transition: 'transform 0.22s ease', background: '#fff', position: 'relative', zIndex: 1, width: '100%' }}
-          onTouchStart={canSwipe ? onTouchStart : undefined}
-          onTouchEnd={canSwipe ? onTouchEnd : undefined}
-          onClick={canSwipe ? handleRowTap : undefined}
-        >
-          {/* Kitchen grid — 2-column: name | qty */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) auto',
-            alignItems: 'center',
-            minHeight: 56,
-            padding: '0 12px',
-            gap: 16,
-          }}>
-            {/* Col 0: Item name — flexible, truncates with ellipsis */}
-            <div className="min-w-0">
-              <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontSize: 14, color: done ? '#9ca3af' : catalogLoadingName ? '#d1d5db' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
-                {displayNameKitchen}
-              </div>
-              {planningDetails.length > 0 && (
-                <div className="mt-0.5 truncate text-[11px] text-gray-400">
-                  {planningDetails.join(' · ')}
-                </div>
-              )}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 1fr) auto',
+          alignItems: 'center',
+          minHeight: 56,
+          padding: '0 12px',
+          gap: 16,
+        }}>
+          <div className="min-w-0">
+            <div className="font-medium overflow-hidden text-ellipsis whitespace-nowrap" style={{ fontSize: 14, color: done ? '#9ca3af' : catalogLoadingName ? '#d1d5db' : '#111827', textDecoration: done ? 'line-through' : 'none' }}>
+              {displayNameKitchen}
             </div>
-            {/* Col 1: Qty + unit */}
-            <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
-              {qtyStr} {item.unit}
-            </span>
+            {planningDetails.length > 0 && (
+              <div className="mt-0.5 truncate text-[11px] text-gray-400">
+                {planningDetails.join(' · ')}
+              </div>
+            )}
           </div>
+          <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
+            {qtyStr} {item.unit}
+          </span>
         </div>
       </div>
     )
   }
 
-  // Owner/Manager: same 5-column grid as RecordRow, swipe reveals edit+delete for pending
+  // Owner/Manager: tap circle → purchase sheet; tap row → edit
   return (
-    <div style={{ position: 'relative', overflow: 'hidden', borderBottom: '1px solid #f3f4f6', background: '#fff' }} className="last:border-b-0">
-      {/* Category color strip — inner element avoids parent border-radius corner artifact */}
+    <div
+      style={{ position: 'relative', borderBottom: '1px solid #f3f4f6', background: '#fff' }}
+      className="last:border-b-0 active:bg-gray-50"
+      onClick={() => onEdit(item)}
+    >
+      {/* Category color strip */}
       <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, zIndex: 2, pointerEvents: 'none' }} />
-      {/* Swipe action area — only for pending items */}
-      {canSwipe && (
-        <div style={{
-          position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W,
-          display: 'flex', alignItems: 'stretch', background: '#ef4444', zIndex: 0,
-        }}>
-          <button type="button"
-            onClick={() => { setSwiped(false); onEdit(item) }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-            </svg>
-          </button>
-          <button type="button"
-            onClick={() => { setSwiped(false); onDelete(item) }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', borderLeft: '1px solid #f87171' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-              <path d="M10 11v6M14 11v6" />
-              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-            </svg>
-          </button>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '40px minmax(0, 2fr) minmax(0, 0.75fr) minmax(0, 1fr)',
+        alignItems: 'center',
+        minHeight: 56,
+        padding: '0 12px',
+        gap: 12,
+      }}>
+        {/* Col 0: Checkbox — stop propagation so tapping the circle purchases, not edits */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            done={done}
+            canAct={canComplete}
+            onClick={() => done ? onUncomplete(item) : onComplete(item)}
+          />
         </div>
-      )}
-
-      {/* Sliding content — sits above action area via z-index: 1 */}
-      <div
-        style={{ transform: `translateX(${translate}px)`, transition: 'transform 0.22s ease', background: '#fff', position: 'relative', zIndex: 1, width: '100%' }}
-        onTouchStart={canSwipe ? onTouchStart : undefined}
-        onTouchEnd={canSwipe ? onTouchEnd : undefined}
-        onClick={canSwipe ? handleRowTap : undefined}
-      >
-        {/* Checklist grid — fluid columns: name priority > qty > creator */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: '40px minmax(0, 2fr) minmax(0, 0.75fr) minmax(0, 1fr)',
-          alignItems: 'center',
-          minHeight: 56,
-          padding: '0 12px',
-          gap: 12,
-        }}>
-          {/* Col 0: Checkbox */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Checkbox
-              done={done}
-              canAct={canComplete}
-              onClick={() => done ? onUncomplete(item) : onComplete(item)}
-            />
+        {/* Col 1: Item name */}
+        <div className="min-w-0">
+          <div className="font-semibold text-gray-900 truncate" style={{ fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
+            {item.name}
           </div>
-          {/* Col 1: Item name — gets remaining space */}
-          <div className="min-w-0">
-            <div className="font-semibold text-gray-900 truncate" style={{ fontSize: 16, color: done ? '#9ca3af' : undefined, textDecoration: done ? 'line-through' : 'none' }}>
-              {item.name}
+          {planningDetails.length > 0 && (
+            <div className="mt-0.5 truncate text-[11px] font-normal text-gray-400">
+              {planningDetails.join(' · ')}
             </div>
-            {planningDetails.length > 0 && (
-              <div className="mt-0.5 truncate text-[11px] font-normal text-gray-400">
-                {planningDetails.join(' · ')}
-              </div>
-            )}
-          </div>
-          {/* Col 2: Qty + unit — fixed width, left-aligned, nowrap */}
-          <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
-            {qtyStr} {item.unit}
-          </span>
-          {/* Col 3: Creator name — fixed width, left-aligned, truncated */}
-          <span className="font-medium text-gray-500 truncate text-left" style={{ fontSize: 13 }}>
-            {item.created_by_name || '—'}
-          </span>
+          )}
         </div>
+        {/* Col 2: Qty + unit */}
+        <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
+          {qtyStr} {item.unit}
+        </span>
+        {/* Col 3: Creator name */}
+        <span className="font-medium text-gray-500 truncate text-left" style={{ fontSize: 13 }}>
+          {item.created_by_name || '—'}
+        </span>
       </div>
     </div>
   )
@@ -911,7 +804,6 @@ export default function ChecklistSection({
               onComplete={item => { setCompletingItem(item) }}
               onUncomplete={handleUncomplete}
               onEdit={openEdit}
-              onDelete={requestDelete}
               catalog={catalog}
               catalogLoading={catalogLoading}
             />
@@ -977,10 +869,11 @@ export default function ChecklistSection({
           initialQuantity={completingItem.quantity}
           initialUnitPrice={null}
           initialSupplier={completingItem.supplier ?? ''}
-          quantityEditable={false}
+          quantityEditable={true}
           showSupplier={true}
           onSave={handleCompleteSave}
           onClose={() => setCompletingItem(null)}
+          onDelete={() => { const it = completingItem; setCompletingItem(null); requestDelete(it) }}
         />
       )}
 
