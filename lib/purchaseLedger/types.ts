@@ -32,6 +32,13 @@ export type PurchaseRecord = {
   purchased_by_name: string | null
   created_at: string | null
   checklist_item_id?: number | null
+  // ── Verification workflow ──
+  verified_by_name: string | null
+  verified_at: string | null
+  received_quantity: number | null
+  rejected_by_name: string | null
+  rejected_at: string | null
+  rejection_reason: string | null
 }
 
 /** The record as served to staff (kitchen) — cost columns are absent. */

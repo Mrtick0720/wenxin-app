@@ -182,6 +182,16 @@ export async function fetchRecordsAction(
   }
 }
 
+export async function fetchPendingVerificationAction(): Promise<ActionResult<PurchaseRecord[]>> {
+  try {
+    await requireRole(...ROLES)
+    const data = await svc.listPendingVerification()
+    return { ok: true, data }
+  } catch (error) {
+    return fail(error)
+  }
+}
+
 export async function fetchSummaryAction(): Promise<ActionResult<PurchaseSummary | null>> {
   try {
     const staff = await requireRole(...ROLES)

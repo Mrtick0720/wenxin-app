@@ -15,8 +15,8 @@ const HIDDEN_ROUTES = new Set([
   '/access-denied',
 ])
 
-export default function GlobalBottomNav({ pendingCount }: { pendingCount: number }) {
+export default function GlobalBottomNav({ pendingCount, purchasePending }: { pendingCount: number; purchasePending?: boolean }) {
   const pathname = usePathname()
   if (pathname && HIDDEN_ROUTES.has(pathname)) return null
-  return <BottomNav pendingCount={pendingCount} />
+  return <BottomNav pendingCount={pendingCount} purchasePending={purchasePending} />
 }

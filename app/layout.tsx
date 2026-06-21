@@ -22,6 +22,19 @@ async function getPendingTaskCount(): Promise<number> {
   }
 }
 
+async function getPurchasePending(): Promise<boolean> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const [checklistRes, verifyRes] = await Promise.all([
+      supabase.from('purchase_checklist').select('id').eq('status', 'pending').limit(1),
+      supabase.from('purchase_items').select('id').eq('status', 'pending_verification').limit(1),
+    ])
+    return (checklistRes.data?.length ?? 0) > 0 || (verifyRes.data?.length ?? 0) > 0
+  } catch {
+    return false
+  }
+}
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -60,6 +73,7 @@ export default async function RootLayout({
   // Degrade to logged-out; proxy + SessionHeartbeat recover on the next request.
   const staff = await getCurrentStaff().catch(() => null)
   const pendingCount = staff ? await getPendingTaskCount() : 0
+  const purchasePending = staff ? await getPurchasePending() : false
 
   return (
     <html
@@ -80,7 +94,7 @@ export default async function RootLayout({
           <SessionHeartbeat />
           <NavigationProvider>
             {children}
-            {staff && <GlobalBottomNav pendingCount={pendingCount} />}
+            {staff && <GlobalBottomNav pendingCount={pendingCount} purchasePending={purchasePending} />}
           </NavigationProvider>
         </StaffProvider>
       </body>

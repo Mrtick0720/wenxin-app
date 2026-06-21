@@ -28,6 +28,7 @@ import {
   getRecordById,
   insertRecord,
   queryRecords,
+  queryPendingVerification,
   updateRecordRow,
 } from './repository'
 import { sortCategories } from './categories'
@@ -145,7 +146,7 @@ export async function createRecord(
     note: input.remarks?.trim() || null,
     created_by: staffUserId,
     created_by_name: staffName,
-    status: 'pending',
+    status: 'verified',
   }
 
   if (withCosts) {
@@ -207,6 +208,11 @@ export async function updateRecord(
   // Staff: date/costs/supplier are intentionally not patched.
 
   return updateRecordRow(id, patch, withCosts)
+}
+
+/** Pending verification records — readable by all roles with purchase access. */
+export async function listPendingVerification(): Promise<PurchaseRecord[]> {
+  return queryPendingVerification()
 }
 
 export async function deleteRecord(role: StaffRole, id: number): Promise<void> {

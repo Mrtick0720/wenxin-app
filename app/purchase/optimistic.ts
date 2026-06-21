@@ -69,13 +69,19 @@ export function createOptimisticPurchaseRecord({
     note: item.note,
     purchase_method: 'Supplier Delivery',
     payment_status: 'unpaid',
-    status: 'pending',
+    status: 'pending_verification',
     created_by: null,
     created_by_name: null,
     purchased_by_user_id: null,
     purchased_by_name: null,
     created_at: new Date().toISOString(),
     checklist_item_id: item.id,
+    verified_by_name: null,
+    verified_at: null,
+    received_quantity: null,
+    rejected_by_name: null,
+    rejected_at: null,
+    rejection_reason: null,
   }
 }
 
@@ -118,12 +124,18 @@ export function createOptimisticFromForm(
     note: form.remarks,
     purchase_method: 'Supplier Delivery',
     payment_status: 'unpaid',
-    status: 'pending',
+    status: 'verified',
     created_by: null,
     created_by_name: null,
     purchased_by_user_id: null,
     purchased_by_name: null,
     created_at: new Date().toISOString(),
+    verified_by_name: null,
+    verified_at: null,
+    received_quantity: null,
+    rejected_by_name: null,
+    rejected_at: null,
+    rejection_reason: null,
   }
 }
 

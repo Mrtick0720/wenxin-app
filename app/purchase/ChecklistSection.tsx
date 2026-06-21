@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
-import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
+import { PURCHASE_CATEGORIES, categoryColor, categoryOrderIndex } from '@/lib/purchaseLedger/categories'
 import CatalogCombobox from './CatalogCombobox'
 import NumericEditorSheet from './NumericEditorSheet'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
@@ -717,8 +717,11 @@ export default function ChecklistSection({
     const qty = parseFloat(addForm.quantity)
     if (!addForm.name.trim()) { setAddError('Item name is required.'); return }
     if (!qty || qty <= 0) { setAddError('Quantity must be greater than zero.'); return }
-    setAddSaving(true); setAddError(null)
-    const res = await addChecklistItemAction({
+    setAddError(null)
+
+    const tempId = -(Date.now())
+    const optimistic: ChecklistEntry = {
+      id: tempId,
       name: addForm.name,
       specification: addForm.specification || null,
       supplier: addForm.supplier || null,
@@ -726,11 +729,32 @@ export default function ChecklistSection({
       unit: addForm.unit,
       quantity: qty,
       note: addForm.note || null,
-    })
-    setAddSaving(false)
-    if (!res.ok) { setAddError(res.error); return }
-    setItems(prev => [res.data, ...prev])
+      status: 'pending',
+      purchase_record_id: null,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+      created_by: null,
+      created_by_name: null,
+    }
+    setItems(prev => [optimistic, ...prev])
     setAddForm(emptyAddForm); setAddCatalogItem(null); setShowAdd(false)
+
+    const res = await addChecklistItemAction({
+      name: optimistic.name,
+      specification: optimistic.specification,
+      supplier: optimistic.supplier,
+      category: optimistic.category,
+      unit: optimistic.unit,
+      quantity: qty,
+      note: optimistic.note,
+    })
+    if (!res.ok) {
+      setItems(prev => prev.filter(i => i.id !== tempId))
+      setAddForm({ name: optimistic.name, specification: optimistic.specification ?? '', supplier: optimistic.supplier ?? '', category: optimistic.category, unit: optimistic.unit, quantity: String(qty), unit_price: '', note: optimistic.note ?? '' })
+      setAddError(res.error); setShowAdd(true)
+      return
+    }
+    setItems(prev => prev.map(i => i.id === tempId ? res.data : i))
   }
 
   // ── Edit ───────────────────────────────────────────────────────────────────
@@ -754,8 +778,11 @@ export default function ChecklistSection({
     const qty = parseFloat(editForm.quantity)
     if (!editForm.name.trim()) { setEditError('Item name is required.'); return }
     if (!qty || qty <= 0) { setEditError('Quantity must be greater than zero.'); return }
-    setEditSaving(true); setEditError(null)
-    const res = await editChecklistItemAction(editingItem.id, {
+    setEditError(null)
+
+    const original = editingItem
+    const optimistic: ChecklistEntry = {
+      ...original,
       name: editForm.name,
       specification: editForm.specification || null,
       supplier: editForm.supplier || null,
@@ -763,11 +790,25 @@ export default function ChecklistSection({
       unit: editForm.unit,
       quantity: qty,
       note: editForm.note || null,
-    })
-    setEditSaving(false)
-    if (!res.ok) { setEditError(res.error); return }
-    setItems(prev => prev.map(i => i.id === editingItem.id ? res.data : i))
+    }
+    setItems(prev => prev.map(i => i.id === original.id ? optimistic : i))
     setEditingItem(null)
+
+    const res = await editChecklistItemAction(original.id, {
+      name: optimistic.name,
+      specification: optimistic.specification,
+      supplier: optimistic.supplier,
+      category: optimistic.category,
+      unit: optimistic.unit,
+      quantity: qty,
+      note: optimistic.note,
+    })
+    if (!res.ok) {
+      setItems(prev => prev.map(i => i.id === original.id ? original : i))
+      setEditingItem(original); setEditError(res.error)
+      return
+    }
+    setItems(prev => prev.map(i => i.id === original.id ? res.data : i))
   }
 
   // ── Delete (with confirmation) ────────────────────────────────────────────
@@ -843,11 +884,13 @@ export default function ChecklistSection({
   // own checklist row hasn't yet been refetched with status='done'. This closes
   // the cross-device dual-display window. Temp optimistic items (id < 0) are
   // never matched since records carry only real positive checklist ids.
-  const pending = items.filter(i =>
-    i.status === 'pending' &&
-    i.purchase_record_id === null &&
-    !(purchasedChecklistIds?.has(i.id) ?? false)
-  )
+  const pending = items
+    .filter(i =>
+      i.status === 'pending' &&
+      i.purchase_record_id === null &&
+      !(purchasedChecklistIds?.has(i.id) ?? false)
+    )
+    .sort((a, b) => categoryOrderIndex(a.category) - categoryOrderIndex(b.category))
 
   return (
     <div>

@@ -322,18 +322,20 @@ export async function completeChecklistItemAction(
       remarks: item.note ?? null,
     })
 
-    // Set back-reference + purchaser audit fields so remote clients can reconcile
-    // during the race window between this INSERT and the checklist UPDATE below.
-    // Also copy created_by_name from the checklist item to the purchase record.
-    await supabase
+    // Override status to pending_verification and set audit fields.
+    // (createRecord sets status='verified' for manual entries; checklist
+    // completions enter the verification workflow instead.)
+    const { error: updateErr2 } = await supabase
       .from('purchase_items')
       .update({
+        status: 'pending_verification',
         checklist_item_id: item.id,
         created_by_name: item.created_by_name ?? staff.displayName,
         purchased_by_user_id: staff.id,
         purchased_by_name: staff.displayName,
       })
       .eq('id', record.id)
+    if (updateErr2) throw updateErr2
 
     // Mark checklist item done
     const { error: updateErr } = await supabase
@@ -347,7 +349,10 @@ export async function completeChecklistItemAction(
 
     if (updateErr) throw updateErr
 
-    return { ok: true, data: { purchaseRecordId: record.id, record } }
+    // Return the record with the updated status — svc.createRecord() returns the
+    // INSERT result ('verified') but we immediately UPDATE to 'pending_verification'.
+    const updatedRecord = { ...record, status: 'pending_verification' as const, checklist_item_id: item.id }
+    return { ok: true, data: { purchaseRecordId: record.id, record: updatedRecord } }
   } catch (error) {
     return fail(error)
   }

@@ -6,6 +6,7 @@ import type { StaffRole } from '@/lib/auth/types'
 import {
   PURCHASE_CATEGORIES,
   categoryColor,
+  categoryOrderIndex,
 } from '@/lib/purchaseLedger/categories'
 import type { PurchaseSummary, PurchaseKpi, RatioPeriod, PurchaseRecord } from '@/lib/purchaseLedger/types'
 import BackButton from '../components/BackButton'
@@ -17,6 +18,7 @@ import {
   fetchSummaryAction,
   fetchKpiAction,
   fetchCatalogAction,
+  fetchPendingVerificationAction,
   createRecordAction,
   updateRecordAction,
   deleteRecordAction,
@@ -28,6 +30,7 @@ import CatalogCombobox from './CatalogCombobox'
 import QuickEditSheet from './QuickEditSheet'
 import NumericEditorSheet from './NumericEditorSheet'
 import ChecklistSection from './ChecklistSection'
+import PendingVerificationSection from './PendingVerificationSection'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
 import {
   applyRecordToKpi,
@@ -69,6 +72,15 @@ export type LedgerRecord = {
   checklist_item_id?: number | null
   purchase_method?: string | null
   payment_status?: string | null
+  created_by_name?: string | null
+  purchased_by_user_id?: string | null
+  purchased_by_name?: string | null
+  verified_by_name?: string | null
+  verified_at?: string | null
+  received_quantity?: number | null
+  rejected_by_name?: string | null
+  rejected_at?: string | null
+  rejection_reason?: string | null
 }
 
 type Perms = { canViewCosts: boolean; canDelete: boolean; canExport: boolean }
@@ -510,6 +522,8 @@ export default function PurchaseClient(props: Props) {
   const [records, setRecords]   = useState<LedgerRecord[]>(props.initialRecords ?? initCache?.records ?? [])
   const [summary, setSummary]   = useState<PurchaseSummary | null>(props.initialSummary ?? initCache?.summary ?? null)
   const [kpi, setKpi]           = useState<PurchaseKpi | null>(props.initialKpi ?? initCache?.kpi ?? null)
+  const [pendingVerification, setPendingVerification] = useState<LedgerRecord[]>([])
+  const [pendingVerificationLoaded, setPendingVerificationLoaded] = useState(false)
 
   const [heroLoading, setHeroLoading] = useState(!hasInitial && !initCache)
   const [checklistLoading, setChecklistLoading] = useState(
@@ -578,9 +592,12 @@ export default function PurchaseClient(props: Props) {
       }
       setHeroLoading(false)
 
-      // Stage 2: reveal the checklist without waiting for purchase history.
+      // Stage 2: reveal the checklist + pending verification without waiting for history.
       setChecklistLoading(!cache?.checklistLoaded)
-      const checkRes = await fetchChecklistAction()
+      const [checkRes, pendingVerRes] = await Promise.all([
+        fetchChecklistAction(),
+        fetchPendingVerificationAction(),
+      ])
       if (!active) return
       if (checkRes.ok) {
         setChecklistSeed(checkRes.data)
@@ -591,6 +608,8 @@ export default function PurchaseClient(props: Props) {
           cachedAt: Date.now(),
         }
       }
+      if (pendingVerRes.ok) setPendingVerification(pendingVerRes.data as LedgerRecord[])
+      setPendingVerificationLoaded(true) // always mark loaded so section renders even on fetch error
       setChecklistLoading(false)
 
       // Stage 3: load the larger records/history query last.
@@ -682,11 +701,12 @@ export default function PurchaseClient(props: Props) {
     // This makes the cross-device sync atomic: both sections update together
     // in one React render, eliminating the dual-display window that would occur
     // if checklist was fetched sequentially after records.
-    const [recRes, sumRes, kpiRes, checkRes] = await Promise.all([
+    const [recRes, sumRes, kpiRes, checkRes, pendingRes] = await Promise.all([
       fetchRecordsAction(activeFilters),
       fetchSummaryAction(),
       fetchKpiAction(),
       fetchChecklistAction(),
+      fetchPendingVerificationAction(),
     ])
     if (recRes.ok) {
       // Filter out records with in-flight optimistic mutations so background
@@ -709,6 +729,15 @@ export default function PurchaseClient(props: Props) {
       const freshRecords = recRes.ok ? (recRes.data as LedgerRecord[]) : records
       updateChecklistRef.current?.(reconcileChecklist(checkRes.data, freshRecords))
     }
+    if (pendingRes.ok) setPendingVerification(prev => {
+      const serverData = pendingRes.data as LedgerRecord[]
+      const serverIds = new Set(serverData.map(r => r.id))
+      // Keep items that are NOT yet in the server response (optimistic or in-flight).
+      // This prevents a background poll from wiping an item that was just added
+      // but hasn't been committed to DB yet (or the UPDATE is still in progress).
+      const localOnly = prev.filter(r => !serverIds.has(r.id))
+      return [...localOnly, ...serverData]
+    })
     if (!silent) setRefreshing(false)
   }, [filters, ctx])
 
@@ -969,8 +998,8 @@ export default function PurchaseClient(props: Props) {
   }
 
   // ── Checklist completion callbacks ──
+  // Completed checklist items go to Pending Verification, NOT directly to records.
   function handleItemCompleting(item: ChecklistEntry, completion: { unit_price: number; supplier: string | null }): number {
-    // Return a temporary optimistic ID so the parent can reconcile later
     const tempId = nextTempRecordId.current--
     const optimistic = createOptimisticPurchaseRecord({
       item,
@@ -981,40 +1010,68 @@ export default function PurchaseClient(props: Props) {
     })
     const mutationId = nextClientMutationId()
     setMutationId(optimistic, mutationId)
-    setRecords((prev) => prependOptimisticRecord(prev, optimistic, mutationId))
-    setSummary((prev) => prev ? applyRecordToSummary(prev, optimistic, 1, ctx!.today) : prev)
-    setKpi((prev) => prev ? applyRecordToKpi(prev, optimistic, 1, ctx!.today) : prev)
+    console.log('[PV] handleItemCompleting', item.name, 'tempId=', tempId)
+    setPendingVerification((prev) => {
+      const next = prependOptimisticRecord(prev, optimistic as LedgerRecord, mutationId)
+      console.log('[PV] after optimistic add, pendingVerification.length=', next.length)
+      return next
+    })
     return tempId
   }
 
   function handleItemCompleted(record: PurchaseRecord, optimisticId?: number) {
-    // Replace the optimistic temp record with the server record
+    console.log('[PV] handleItemCompleted', record.name, 'optimisticId=', optimisticId, 'status=', record.status)
     if (optimisticId !== undefined) {
-      setRecords((prev) => reconcileOptimisticRecord(prev, optimisticId, record as LedgerRecord))
-      // Refresh KPI for server-consistent cost ratio after purchase completion (BUG #6)
-      refreshKpiAsync()
+      setPendingVerification((prev) => reconcileOptimisticRecord(prev, optimisticId, record as LedgerRecord))
     } else {
-      // No optimistic ID — just add to list (dedup by id)
-      setRecords((prev) => {
+      setPendingVerification((prev) => {
         if (prev.some((r) => r.id === record.id)) return prev
         return [record as LedgerRecord, ...prev]
       })
-      setSummary((prev) => prev ? applyRecordToSummary(prev, record as LedgerRecord, 1, ctx!.today) : prev)
-      setKpi((prev) => prev ? applyRecordToKpi(prev, record as LedgerRecord, 1, ctx!.today) : prev)
-      refreshKpiAsync()
     }
   }
 
   function handleItemCompleteFailed(optimisticId?: number) {
+    console.log('[PV] handleItemCompleteFailed optimisticId=', optimisticId)
     if (optimisticId !== undefined) {
-      // Find and remove the optimistic record
-      const record = records.find((r) => r.id === optimisticId)
-      setRecords((prev) => removeOptimisticRecord(prev, optimisticId))
-      if (record) {
-        setSummary((prev) => prev ? applyRecordToSummary(prev, record, -1, ctx!.today) : prev)
-        setKpi((prev) => prev ? applyRecordToKpi(prev, record, -1, ctx!.today) : prev)
-      }
+      setPendingVerification((prev) => removeOptimisticRecord(prev, optimisticId))
     }
+  }
+
+  // ── Verification accept/reject callbacks ──
+  function handleVerificationAccepted(record: PurchaseRecord) {
+    setPendingVerification((prev) => prev.filter((r) => r.id !== record.id))
+    const ledger = record as LedgerRecord
+    setRecords((prev) => {
+      if (prev.some((r) => r.id === ledger.id)) return prev
+      return [ledger, ...prev]
+    })
+    setSummary((prev) => prev ? applyRecordToSummary(prev, ledger, 1, ctx!.today) : prev)
+    setKpi((prev) => prev ? applyRecordToKpi(prev, ledger, 1, ctx!.today) : prev)
+  }
+
+  function handleVerificationRejected(id: number) {
+    setPendingVerification((prev) => prev.filter((r) => r.id !== id))
+    // Server-side restores the checklist item; trigger a checklist refresh
+    setChecklistRefreshKey((k) => k + 1)
+  }
+
+  function handleVerificationAcceptFailed(_id: number) {
+    // Card stays visible — user can retry
+  }
+
+  function handleVerificationRejectFailed(_id: number) {
+    // Sheet is closed — user can re-open via Reject button
+  }
+
+  function handleVerificationCancelled(id: number) {
+    // Remove from pendingVerification; server already restored the checklist item
+    setPendingVerification((prev) => prev.filter((r) => r.id !== id))
+    setChecklistRefreshKey((k) => k + 1)
+  }
+
+  function handleVerificationCancelFailed(_id: number) {
+    // Item stays in pendingVerification — user can retry
   }
 
   // ── Uncheck: move record back to checklist ──
@@ -1084,14 +1141,18 @@ export default function PurchaseClient(props: Props) {
   }
 
   // ── Derived data ──
-  const todayRecords = records.filter((r) => r.date === ctx?.today)
+  const todayRecords = records
+    .filter((r) => r.date === ctx?.today)
+    .sort((a, b) => categoryOrderIndex(a.category) - categoryOrderIndex(b.category))
   const historyRecords = records.filter((r) => r.date !== ctx?.today)
   // Render-level dedup: the set of checklist_item_id values carried by purchase
   // records. ChecklistSection hides any checklist item whose id appears here, so
   // a purchased item never shows in both sections — even during the cross-device
   // race window before the checklist row's own status flips to 'done'.
   const purchasedChecklistIds = new Set(
-    records.map((r) => r.checklist_item_id).filter((id): id is number => id != null),
+    [...records, ...pendingVerification]
+      .map((r) => r.checklist_item_id)
+      .filter((id): id is number => id != null),
   )
   const historyGroups = groupHistory(historyRecords, ctx?.today ?? '')
   const categoryTotals = todayRecords.reduce<{ category: string; total: number }[]>((acc, r) => {
@@ -1353,6 +1414,20 @@ export default function PurchaseClient(props: Props) {
           </div>
         </div>
 
+        {/* ── Pending Verification ── */}
+        {pendingVerificationLoaded && (
+          <PendingVerificationSection
+            items={pendingVerification as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
+            canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen'}
+            onAccepted={handleVerificationAccepted}
+            onAcceptFailed={handleVerificationAcceptFailed}
+            onRejected={handleVerificationRejected}
+            onRejectFailed={handleVerificationRejectFailed}
+            onCancelled={handleVerificationCancelled}
+            onCancelFailed={handleVerificationCancelFailed}
+          />
+        )}
+
         {/* ── Purchase Records (today) — owner/manager only ── */}
         {showCosts && (
           <div className="mx-4 mt-5">
@@ -1391,20 +1466,6 @@ export default function PurchaseClient(props: Props) {
           <div className="mx-4 mt-5">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Purchase History</h2>
-              {historyGroups.length > 0 && ctx?.perms.canExport && (
-                <a
-                  href="/api/purchase/export"
-                  download
-                  className="flex items-center gap-1.5 text-xs font-semibold text-orange-600 active:opacity-70"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                    <polyline points="7 10 12 15 17 10"/>
-                    <line x1="12" y1="15" x2="12" y2="3"/>
-                  </svg>
-                  Export CSV
-                </a>
-              )}
             </div>
             {historyGroups.length === 0 ? (
               <div className="bg-white rounded-2xl border border-gray-100 px-4 py-6 text-center text-sm text-gray-400">
@@ -1420,7 +1481,28 @@ export default function PurchaseClient(props: Props) {
                       <span className="text-sm font-semibold text-gray-700">{month.monthLabel}</span>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-gray-400 tabular-nums">{rm(month.total)}</span>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                        {ctx?.perms.canExport && (() => {
+                          const [y, m] = month.monthKey.split('-').map(Number)
+                          const lastDay = new Date(y, m, 0).getDate()
+                          const from = `${month.monthKey}-01`
+                          const to = `${month.monthKey}-${String(lastDay).padStart(2, '0')}`
+                          return (
+                            <a
+                              href={`/api/purchase/export?from=${from}&to=${to}`}
+                              download
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-2 text-gray-400 active:opacity-70"
+                              aria-label={`Export ${month.monthLabel}`}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                              </svg>
+                            </a>
+                          )
+                        })()}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
                           style={{ transform: expandedMonths.has(month.monthKey) ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
                           <polyline points="6 9 12 15 18 9" />
                         </svg>
@@ -1433,7 +1515,24 @@ export default function PurchaseClient(props: Props) {
                           className="w-full flex items-center justify-between px-4 py-2 active:opacity-70"
                           style={{ borderTop: '1px solid #f3f4f6' }}>
                           <span className="text-xs font-medium text-gray-500">{day.label}</span>
-                          <span className="text-xs text-gray-400 tabular-nums">{rm(day.total)}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-400 tabular-nums">{rm(day.total)}</span>
+                            {ctx?.perms.canExport && (
+                              <a
+                                href={`/api/purchase/export?from=${day.date}&to=${day.date}`}
+                                download
+                                onClick={(e) => e.stopPropagation()}
+                                className="p-2 text-gray-400 active:opacity-70"
+                                aria-label={`Export ${day.label}`}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                  <polyline points="7 10 12 15 17 10"/>
+                                  <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                              </a>
+                            )}
+                          </div>
                         </button>
                         {expandedDays.has(day.date) && day.items.map((r, i) => (
                           <RecordRow key={r.id} item={r} isFirst={i === 0} isLast={i === day.items.length - 1} {...rowProps} />

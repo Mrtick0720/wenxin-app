@@ -20,7 +20,6 @@ type Order = {
   ready_by?: string | null
   fulfillment_type?: string | null
   delivery_or_pickup_time?: string | null
-  pack_time?: string | null
   // legacy fallbacks
   items?: string | null
   menu_type?: string | null
@@ -34,27 +33,21 @@ function formatDateFull(dateStr: string) {
   return `${DAYS[d.getDay()]}, ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`
 }
 
-// "13:30" / "13:30:00" → "1:30 PM"
+// "13:30" / "13:30:00" → "13:30" (24-hour format)
 function fmtTime(t: string | null | undefined): string {
   if (!t) return ''
   const parts = t.split(':')
-  let h = parseInt(parts[0], 10)
-  const m = parts[1] ?? '00'
-  if (Number.isNaN(h)) return ''
-  const ap = h >= 12 ? 'PM' : 'AM'
-  h = h % 12
-  if (h === 0) h = 12
-  return `${h}:${m} ${ap}`
+  const h = parts[0].padStart(2, '0')
+  const m = (parts[1] ?? '00').padStart(2, '0')
+  if (Number.isNaN(parseInt(h, 10))) return ''
+  return `${h}:${m}`
 }
 
 function nowUpdatedStr(): string {
   const dt = new Date()
-  let h = dt.getHours()
-  const m = dt.getMinutes()
-  const ap = h >= 12 ? 'PM' : 'AM'
-  h = h % 12
-  if (h === 0) h = 12
-  return `Updated ${h}:${m < 10 ? '0' + m : m} ${ap}`
+  const h = String(dt.getHours()).padStart(2, '0')
+  const m = String(dt.getMinutes()).padStart(2, '0')
+  return `Updated ${h}:${m}`
 }
 
 // ---- inline icons (no external font dependency) ----
@@ -66,6 +59,7 @@ const ico = (path: React.ReactNode, size = 14) => (
 const ClockIcon = (s?: number) => ico(<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>, s)
 const TruckIcon = (s?: number) => ico(<><path d="M3 17V6h11v11" /><path d="M14 9h4l3 3v5h-7" /><circle cx="7.5" cy="17.5" r="1.5" /><circle cx="17.5" cy="17.5" r="1.5" /></>, s)
 const StoreIcon = (s?: number) => ico(<><path d="M4 9h16l-1-5H5L4 9Z" /><path d="M5 9v11h14V9" /><path d="M10 20v-5h4v5" /></>, s)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const PackageIcon = (s?: number) => ico(<><path d="M12 3 4 7v10l8 4 8-4V7l-8-4Z" /><path d="M4 7l8 4 8-4" /><path d="M12 11v10" /></>, s)
 const RefreshIcon = (s?: number) => ico(<><path d="M21 12a9 9 0 1 1-3-6.7" /><path d="M21 4v5h-5" /></>, s)
 const ChevronIcon = (s?: number) => ico(<path d="M6 9l6 6 6-6" />, s)
@@ -85,7 +79,6 @@ type Group = {
   ready_by: string | null
   fulfillment_type: string | null
   delivery_or_pickup_time: string | null
-  pack_time: string | null
   rows: Order[]
 }
 
@@ -136,10 +129,10 @@ export default function ProductionPage() {
   const groups = (() => {
     const map = new Map<string, Group>()
     for (const o of orders) {
-      const key = [o.ready_by ?? '', o.fulfillment_type ?? '', o.delivery_or_pickup_time ?? '', o.pack_time ?? ''].join('|')
+      const key = [o.ready_by ?? '', o.fulfillment_type ?? '', o.delivery_or_pickup_time ?? ''].join('|')
       let g = map.get(key)
       if (!g) {
-        g = { key, ready_by: o.ready_by ?? null, fulfillment_type: o.fulfillment_type ?? null, delivery_or_pickup_time: o.delivery_or_pickup_time ?? null, pack_time: o.pack_time ?? null, rows: [] }
+        g = { key, ready_by: o.ready_by ?? null, fulfillment_type: o.fulfillment_type ?? null, delivery_or_pickup_time: o.delivery_or_pickup_time ?? null, rows: [] }
         map.set(key, g)
       }
       g.rows.push(o)
@@ -299,24 +292,15 @@ export default function ProductionPage() {
                     <span className="text-[27px] font-medium" style={{ color: theme.time }}>{g.ready_by ? fmtTime(g.ready_by) : '—'}</span>
                   </div>
                 </div>
-                {(g.delivery_or_pickup_time || g.pack_time || g.fulfillment_type) && (
+                {(g.delivery_or_pickup_time || g.fulfillment_type) && (
                   <>
                     <div style={{ width: 1, background: theme.divider, margin: '8px 0' }} />
-                    <div className="flex flex-col justify-center flex-1 gap-1.5" style={{ padding: '9px 12px' }}>
-                      {(g.fulfillment_type || g.delivery_or_pickup_time) && (
-                        <div className="flex items-center gap-1.5">
-                          <span style={{ color: theme.infoIcon }}>{isPickup ? StoreIcon(14) : TruckIcon(14)}</span>
-                          <span className="text-[13px] capitalize" style={{ color: theme.infoText }}>{g.fulfillment_type || 'Delivery'}</span>
-                          {g.delivery_or_pickup_time && <span className="text-[13px] font-medium" style={{ color: theme.infoTime }}>{fmtTime(g.delivery_or_pickup_time)}</span>}
-                        </div>
-                      )}
-                      {g.pack_time && (
-                        <div className="flex items-center gap-1.5">
-                          <span style={{ color: theme.infoIcon }}>{PackageIcon(14)}</span>
-                          <span className="text-[13px]" style={{ color: theme.infoText }}>Pack</span>
-                          <span className="text-[13px] font-medium" style={{ color: theme.infoTime }}>{fmtTime(g.pack_time)}</span>
-                        </div>
-                      )}
+                    <div className="flex flex-col justify-center flex-1" style={{ padding: '9px 12px' }}>
+                      <div className="flex items-center gap-1.5">
+                        <span style={{ color: theme.infoIcon }}>{isPickup ? StoreIcon(14) : TruckIcon(14)}</span>
+                        <span className="text-[13px] capitalize" style={{ color: theme.infoText }}>{g.fulfillment_type || 'Delivery'}</span>
+                        {g.delivery_or_pickup_time && <span className="text-[13px] font-medium" style={{ color: theme.infoTime }}>{fmtTime(g.delivery_or_pickup_time)}</span>}
+                      </div>
                     </div>
                   </>
                 )}

@@ -9,7 +9,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { PurchaseFilters, PurchaseRecord } from './types'
 
 const BASE_COLUMNS =
-  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, purchase_method, payment_status, status, created_by, created_by_name, purchased_by_user_id, purchased_by_name, created_at, checklist_item_id'
+  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, purchase_method, payment_status, status, created_by, created_by_name, purchased_by_user_id, purchased_by_name, created_at, checklist_item_id, verified_by_name, verified_at, received_quantity, rejected_by_name, rejected_at, rejection_reason'
 const COST_COLUMNS = 'unit_price, total_price, supplier'
 const FULL_COLUMNS = `${BASE_COLUMNS}, ${COST_COLUMNS}`
 
@@ -25,6 +25,9 @@ export async function queryRecords(opts: {
 }): Promise<PurchaseRecord[]> {
   const supabase = await createServerSupabaseClient()
   let q = supabase.from('purchase_items').select(columns(opts.withCosts))
+
+  // Only verified records appear in the ledger / history / summary / export
+  q = q.eq('status', 'verified')
 
   if (opts.from) q = q.gte('date', opts.from)
   if (opts.to) q = q.lte('date', opts.to)
@@ -90,6 +93,19 @@ export async function updateRecordRow(
     .single()
   if (error) throw error
   return data as unknown as PurchaseRecord
+}
+
+/** Fetch all records awaiting kitchen verification. */
+export async function queryPendingVerification(): Promise<PurchaseRecord[]> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('purchase_items')
+    .select(columns(true))
+    .eq('status', 'pending_verification')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  return (data ?? []) as unknown as PurchaseRecord[]
 }
 
 export async function deleteRecordRow(id: number): Promise<void> {

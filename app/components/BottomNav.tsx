@@ -58,7 +58,7 @@ const tabs: BottomTab[] = [
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
-export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number }) {
+export default function BottomNav({ pendingCount = 0, purchasePending = false }: { pendingCount?: number; purchasePending?: boolean }) {
   const { reset, resetTo, canPop, currentPath } = useNavigation()
   const router = useRouter()
   const pathname = usePathname()
@@ -96,15 +96,20 @@ export default function BottomNav({ pendingCount = 0 }: { pendingCount?: number 
         return (
           <a key={label} href={href} onClick={e => handleTap(e, href)}
             className="flex-1 flex flex-col items-center justify-center relative py-1">
-            <Icon active={active} />
+            <div className="relative inline-flex">
+              <Icon active={active} />
+              {href === '/purchase' && purchasePending && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+              {badge && pendingCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 px-0.5 flex items-center justify-center">
+                  {pendingCount}
+                </span>
+              )}
+            </div>
             <span className={`text-xs mt-0.5 ${active ? 'text-orange-500 font-medium' : 'text-gray-400'}`}>
               {label}
             </span>
-            {badge && pendingCount > 0 && (
-              <span className="absolute top-0 right-1 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">
-                {pendingCount}
-              </span>
-            )}
           </a>
         )
       })}
