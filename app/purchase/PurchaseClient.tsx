@@ -47,6 +47,7 @@ import {
 } from './optimistic'
 import { usePurchaseSync } from './usePurchaseSync'
 import { useChecklistRealtime } from './useChecklistRealtime'
+import { usePurchaseRealtime } from './usePurchaseRealtime'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
 const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
@@ -747,8 +748,10 @@ export default function PurchaseClient(props: Props) {
   // ── Cross-device sync: polling, visibility, reconnect ──
   usePurchaseSync(backgroundRefresh)
 
-  // ── Realtime subscription — refreshes checklist when any device changes it ──
+  // ── Realtime subscriptions ──
   useChecklistRealtime(() => setChecklistRefreshKey(k => k + 1))
+  // purchase_items changes (from any device) → refresh pending verification + records
+  usePurchaseRealtime(backgroundRefresh)
 
   // ── Pull-to-refresh touch handlers ──
   const startY = useRef(0)
