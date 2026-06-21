@@ -11,7 +11,6 @@ const sql = await readFile(fileURLToPath(migrationUrl), 'utf8')
 
 assert.match(sql, /UPDATE\s+public\.purchase_catalog/i)
 assert.match(sql, /name_ms\s*=\s*'Arak Shaoxing Huadiao'/)
-assert.match(sql, /name_en\s*=\s*'Shaoxing Huadiao Wine'/)
 assert.match(sql, /WHERE\s+name_zh\s*=\s*'绍兴花雕酒'/i)
 assert.doesNotMatch(sql, /INSERT\s+INTO\s+public\.purchase_catalog/i)
 

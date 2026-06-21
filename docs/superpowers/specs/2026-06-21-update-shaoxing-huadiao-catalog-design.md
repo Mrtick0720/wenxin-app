@@ -9,9 +9,11 @@ Update the existing `绍兴花雕酒` purchase catalog entry so the dropdown use
 Match the active catalog row whose Chinese name is exactly `绍兴花雕酒`, then set:
 
 - `name_ms`: `Arak Shaoxing Huadiao`
-- `name_en`: `Shaoxing Huadiao Wine`
 - `category`: remain `Grocery`
 - `unit`: remain `bottle`
+
+The deployed catalog table does not contain a `name_en` column, and the app's
+catalog dropdown reads Chinese and Malay names only.
 
 ## Implementation
 
@@ -24,6 +26,6 @@ The migration will be idempotent: rerunning it leaves the row in the same desire
 Check that the migration:
 
 1. targets only the exact Chinese catalog name;
-2. contains the approved Malay and English names;
+2. contains the approved Malay name;
 3. does not insert a second catalog row;
 4. passes the project type check after being added.
