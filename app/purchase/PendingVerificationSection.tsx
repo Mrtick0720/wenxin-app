@@ -278,16 +278,7 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
   if (items.length === 0) return null
 
   return (
-    <div className="mx-4 mt-5">
-      <div className="flex items-center gap-2 mb-2">
-        <h2 className="text-base font-bold text-gray-900">Pending Verification</h2>
-        <span
-          className="text-xs font-semibold text-white rounded-full px-1.5 py-0.5 leading-none"
-          style={{ background: '#3b82f6' }}
-        >
-          {items.length}
-        </span>
-      </div>
+    <div className="mx-4 mt-4">
       <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
         {items.map((item, i) => (
           <PendingRow

@@ -662,7 +662,63 @@ export default function PurchaseClient(props: Props) {
 
   const [showFilters, setShowFilters]     = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  // ── Stage carousel (Checklist → Verify → Received), touch-driven like HeroCard ──
+  const TAB_KEYS = ['checklist', 'verification', 'records'] as const
+  type TabKey = (typeof TAB_KEYS)[number]
+  const SLIDE_COUNT = 3
+  const pctPerSlide = 100 / SLIDE_COUNT
+  const [tabIndex, setTabIndex] = useState(0)
+  const activeTab: TabKey = TAB_KEYS[tabIndex]
+  const [carHeight, setCarHeight] = useState<number | undefined>(undefined)
+  const carContainerRef = useRef<HTMLDivElement>(null)
+  const carTrackRef = useRef<HTMLDivElement>(null)
+  const panelRefs = useRef<(HTMLDivElement | null)[]>([])
+  const carWidth = useRef(0)
+  const carTouchX = useRef(0)
+  const carTouchY = useRef(0)
+  const carTracking = useRef(false)
+  const carAxis = useRef<'h' | 'v' | null>(null)
+  const carAnimId = useRef(0)
+  const carAnimating = useRef(false)
+  const tabIndexRef = useRef(0)
+  tabIndexRef.current = tabIndex
+  // showCosts is async (depends on ctx); mirror into a ref so the once-bound native
+  // touch listeners always know the latest swipe upper bound (kitchen can't reach Received).
+  const showCostsRef = useRef(false)
+
+  const goToIndex = (next: number) => {
+    if (carAnimating.current || next === tabIndexRef.current || next < 0 || next >= SLIDE_COUNT) return
+    const el = carTrackRef.current
+    if (!el) return
+    el.style.transition = 'transform 0.3s cubic-bezier(0.3,0,0.1,1)'
+    el.style.transform = `translateX(${-(next * pctPerSlide)}%)`
+    carAnimating.current = true
+    setTabIndex(next); tabIndexRef.current = next
+    carAnimId.current++
+    const id = carAnimId.current
+    setTimeout(() => {
+      if (id !== carAnimId.current) return
+      el.style.transition = ''
+      carAnimating.current = false
+    }, 320)
+  }
+  const goToTab = (key: TabKey) => goToIndex(TAB_KEYS.indexOf(key))
+
   const [filters, setFilters] = useState({ category: '', from: '', to: '', supplier: '', purchaser: '' })
+
+  // Pending verification is near-realtime and is NOT part of purchaseCache, so the
+  // fresh-cache boot path skips it entirely. Always fetch it on mount so the section
+  // shows up regardless of whether loadStages() ran.
+  useEffect(() => {
+    let active = true
+    fetchPendingVerificationAction()
+      .then((res) => {
+        if (!active) return
+        if (res.ok) setPendingVerification(res.data as LedgerRecord[])
+      })
+      .finally(() => { if (active) setPendingVerificationLoaded(true) })
+    return () => { active = false }
+  }, [])
 
   const [catalog, setCatalog]               = useState<CatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
@@ -806,6 +862,84 @@ export default function PurchaseClient(props: Props) {
   }, [])
 
   const showCosts = ctx?.perms.canViewCosts ?? false
+  showCostsRef.current = showCosts
+
+  // ── Carousel: native touch listeners (passive:false so a classified horizontal
+  // swipe can preventDefault and claim the gesture from the vertical scroller —
+  // mirrors HeroCard / PullToRefresh). ──
+  useEffect(() => {
+    const el = carContainerRef.current
+    if (!el) return
+    const ELASTIC = 0.35
+    const onStart = (e: TouchEvent) => {
+      carTouchX.current = e.touches[0].clientX
+      carTouchY.current = e.touches[0].clientY
+      carTracking.current = true
+      carAxis.current = null
+      carWidth.current = el.offsetWidth
+    }
+    const onMove = (e: TouchEvent) => {
+      if (!carTracking.current || carAnimating.current) return
+      const dx = e.touches[0].clientX - carTouchX.current
+      const dy = e.touches[0].clientY - carTouchY.current
+      if (!carAxis.current && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+        carAxis.current = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      }
+      if (carAxis.current !== 'h') return
+      e.preventDefault()
+      const track = carTrackRef.current
+      const cw = carWidth.current
+      if (!track || cw <= 0) return
+      const idx = tabIndexRef.current
+      const maxIdx = (showCostsRef.current ? 3 : 2) - 1
+      const basePx = -(idx * cw)
+      let offset = basePx + dx
+      const maxPx = 0
+      const minPx = -(maxIdx * cw)
+      if (offset > maxPx) offset = maxPx + (offset - maxPx) * ELASTIC
+      else if (offset < minPx) offset = minPx + (offset - minPx) * ELASTIC
+      track.style.transition = 'none'
+      track.style.transform = `translateX(${Math.round(offset)}px)`
+    }
+    const onEnd = (e: TouchEvent) => {
+      if (!carTracking.current) { return }
+      const wasH = carAxis.current === 'h'
+      carTracking.current = false
+      if (!wasH) return
+      const idx = tabIndexRef.current
+      const dx = e.changedTouches[0].clientX - carTouchX.current
+      const threshold = 50
+      const maxIdx = (showCostsRef.current ? 3 : 2) - 1
+      const track = carTrackRef.current
+      if (!track) return
+      if (idx > 0 && dx > threshold) goToIndex(idx - 1)
+      else if (idx < maxIdx && dx < -threshold) goToIndex(idx + 1)
+      else {
+        track.style.transition = 'transform 0.25s ease-out'
+        track.style.transform = `translateX(${-(idx * pctPerSlide)}%)`
+        carAnimId.current++
+        const id = carAnimId.current
+        setTimeout(() => { if (id === carAnimId.current) track.style.transition = '' }, 260)
+      }
+    }
+    el.addEventListener('touchstart', onStart, { passive: true })
+    el.addEventListener('touchmove', onMove, { passive: false })
+    el.addEventListener('touchend', onEnd, { passive: true })
+    return () => {
+      el.removeEventListener('touchstart', onStart)
+      el.removeEventListener('touchmove', onMove)
+      el.removeEventListener('touchend', onEnd)
+    }
+    // Listeners read live values via refs — bind once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Carousel height tracks the active panel's natural height so shorter tabs
+  // don't leave empty space below (panels off-screen are clipped horizontally).
+  useEffect(() => {
+    const panel = panelRefs.current[tabIndex]
+    if (panel) setCarHeight(panel.offsetHeight)
+  })
 
   // ── Open add sheet ──
   function openAdd() {
@@ -1158,6 +1292,9 @@ export default function PurchaseClient(props: Props) {
       .filter((id): id is number => id != null),
   )
   const historyGroups = groupHistory(historyRecords, ctx?.today ?? '')
+  const checklistPendingCount = (checklistSeed ?? []).filter(
+    (i) => i.status === 'pending' && !purchasedChecklistIds.has(i.id),
+  ).length
   const categoryTotals = todayRecords.reduce<{ category: string; total: number }[]>((acc, r) => {
     const existing = acc.find((a) => a.category === r.category)
     if (existing) existing.total += r.total_price ?? 0
@@ -1248,6 +1385,7 @@ export default function PurchaseClient(props: Props) {
 
       {/* ── Scrollable content ── */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
+
         {/* ── Hero KPI ── */}
         {heroLoading && (
           <div className="mx-4 mt-4 h-32 animate-pulse rounded-2xl bg-white" />
@@ -1338,46 +1476,53 @@ export default function PurchaseClient(props: Props) {
           )
         })()}
 
-        {/* ── Filters ── */}
-        {showCosts && (
-          <div className="mx-4 mt-4">
-            <button type="button" onClick={() => setShowFilters((o) => !o)}
-              className="flex items-center gap-1.5 text-xs text-gray-500 active:opacity-70">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="20" y2="12" /><line x1="12" y1="18" x2="20" y2="18" />
-              </svg>
-              Filters
-              {Object.values(filters).some(Boolean) && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />}
-            </button>
-            {showFilters && (
-              <div className="mt-2 p-3 bg-white rounded-xl border border-gray-100 space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <Picker label="Category" value={filters.category || 'All'} options={['All', ...PURCHASE_CATEGORIES]} onChange={(v) => setFilters((f) => ({ ...f, category: v === 'All' ? '' : v }))} />
-                  <Picker label="Supplier" value={filters.supplier || 'All'} options={['All']} onChange={(v) => setFilters((f) => ({ ...f, supplier: v === 'All' ? '' : v }))} />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">From</label>
-                    <input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-400 mb-1 block">To</label>
-                    <input type="date" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
-                  </div>
-                </div>
-                <button type="button" onClick={() => { setFilters({ category: '', from: '', to: '', supplier: '', purchaser: '' }); refresh() }}
-                  className="text-xs text-orange-500 font-semibold active:opacity-70">Reset</button>
-              </div>
-            )}
-          </div>
-        )}
+        {/* ── Stage tabs: Checklist → Verify → Received ── */}
+        <div className="mx-4 mt-4 flex gap-2">
+          {([
+            { key: 'checklist', label: 'Checklist', count: checklistPendingCount },
+            { key: 'verification', label: 'Verify', count: pendingVerification.length },
+            { key: 'records', label: 'Received', count: todayRecords.length, locked: !showCosts },
+          ] as const).map((tab) => {
+            const active = activeTab === tab.key
+            const locked = 'locked' in tab && tab.locked
+            return (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => { if (!locked) goToTab(tab.key) }}
+                className="flex-1 flex flex-col items-center justify-center gap-0.5 rounded-2xl py-3 transition-colors active:opacity-80"
+                style={{
+                  background: active ? '#f97316' : '#f3f4f6',
+                  color: active ? '#fff' : locked ? '#cbd5e1' : '#6b7280',
+                }}
+              >
+                <span className="flex items-center gap-1 text-sm font-semibold leading-none">
+                  {tab.label}
+                  {locked && (
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  )}
+                </span>
+                <span
+                  className="text-xl font-bold leading-none tabular-nums"
+                  style={{ color: active ? '#fff' : locked ? '#cbd5e1' : '#111827' }}
+                >
+                  {locked ? '—' : tab.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
 
-        {/* ── Today's Purchase Checklist ── */}
-        <div className="mx-4 mt-5">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-base font-bold text-gray-900">Purchase Checklist</h2>
+        {/* ── Stage carousel: Checklist | Verify | Received ── */}
+        <div ref={carContainerRef} style={{ overflowX: 'clip', overflowY: 'visible', height: carHeight, transition: 'height 0.3s cubic-bezier(0.3,0,0.1,1)' }}>
+          <div ref={carTrackRef} className="flex items-start" style={{ width: '300%', transform: `translateX(${-(tabIndex * pctPerSlide)}%)`, willChange: 'transform' }}>
+
+            {/* Panel 0: Checklist */}
+            <div ref={(el) => { panelRefs.current[0] = el }} style={{ width: `${pctPerSlide}%` }}>
+        <div className="mx-4 mt-4">
+          <div className="flex items-center justify-end mb-2">
             <button
               type="button"
               onClick={() => triggerAddChecklistRef.current?.()}
@@ -1416,27 +1561,75 @@ export default function PurchaseClient(props: Props) {
             )}
           </div>
         </div>
-
-        {/* ── Pending Verification ── */}
-        {pendingVerificationLoaded && (
-          <PendingVerificationSection
-            items={pendingVerification as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
-            canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen'}
-            onAccepted={handleVerificationAccepted}
-            onAcceptFailed={handleVerificationAcceptFailed}
-            onRejected={handleVerificationRejected}
-            onRejectFailed={handleVerificationRejectFailed}
-            onCancelled={handleVerificationCancelled}
-            onCancelFailed={handleVerificationCancelFailed}
-          />
-        )}
-
-        {/* ── Purchase Records (today) — owner/manager only ── */}
-        {showCosts && (
-          <div className="mx-4 mt-5">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-base font-bold text-gray-900">Purchase Records</h2>
             </div>
+
+            {/* Panel 1: Verify */}
+            <div ref={(el) => { panelRefs.current[1] = el }} style={{ width: `${pctPerSlide}%` }}>
+          {pendingVerification.length > 0 ? (
+            <PendingVerificationSection
+              items={pendingVerification as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
+              canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen'}
+              onAccepted={handleVerificationAccepted}
+              onAcceptFailed={handleVerificationAcceptFailed}
+              onRejected={handleVerificationRejected}
+              onRejectFailed={handleVerificationRejectFailed}
+              onCancelled={handleVerificationCancelled}
+              onCancelFailed={handleVerificationCancelFailed}
+            />
+          ) : (
+            <div className="mx-4 mt-4 bg-white rounded-2xl border border-gray-100 px-4 py-10 text-center text-sm text-gray-400">
+              No items awaiting verification
+            </div>
+          )}
+            </div>
+
+            {/* Panel 2: Received (owner/manager only; kitchen sees a lock) */}
+            <div ref={(el) => { panelRefs.current[2] = el }} style={{ width: `${pctPerSlide}%` }}>
+          {!showCosts ? (
+            <div className="mx-4 mt-4 bg-white rounded-2xl border border-gray-100 px-4 py-12 flex flex-col items-center gap-2 text-sm text-gray-400">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+              No access
+            </div>
+          ) : (
+          <>
+          {/* Filters */}
+          <div className="mx-4 mt-4">
+            <button type="button" onClick={() => setShowFilters((o) => !o)}
+              className="flex items-center gap-1.5 text-xs text-gray-500 active:opacity-70">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="20" y2="12" /><line x1="12" y1="18" x2="20" y2="18" />
+              </svg>
+              Filters
+              {Object.values(filters).some(Boolean) && <span className="ml-1 w-1.5 h-1.5 rounded-full bg-orange-500 inline-block" />}
+            </button>
+            {showFilters && (
+              <div className="mt-2 p-3 bg-white rounded-xl border border-gray-100 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <Picker label="Category" value={filters.category || 'All'} options={['All', ...PURCHASE_CATEGORIES]} onChange={(v) => setFilters((f) => ({ ...f, category: v === 'All' ? '' : v }))} />
+                  <Picker label="Supplier" value={filters.supplier || 'All'} options={['All']} onChange={(v) => setFilters((f) => ({ ...f, supplier: v === 'All' ? '' : v }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">From</label>
+                    <input type="date" value={filters.from} onChange={(e) => setFilters((f) => ({ ...f, from: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-400 mb-1 block">To</label>
+                    <input type="date" value={filters.to} onChange={(e) => setFilters((f) => ({ ...f, to: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400" />
+                  </div>
+                </div>
+                <button type="button" onClick={() => { setFilters({ category: '', from: '', to: '', supplier: '', purchaser: '' }); refresh() }}
+                  className="text-xs text-orange-500 font-semibold active:opacity-70">Reset</button>
+              </div>
+            )}
+          </div>
+
+          {/* Today's received */}
+          <div className="mx-4 mt-4">
             {recordsLoading ? (
               <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
                 <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
@@ -1462,10 +1655,9 @@ export default function PurchaseClient(props: Props) {
               </div>
             )}
           </div>
-        )}
 
-        {/* ── Purchase History — owner/manager only ── */}
-        {showCosts && !recordsLoading && !recordsError && (
+          {/* ── Purchase History ── */}
+          {!recordsLoading && !recordsError && (
           <div className="mx-4 mt-5">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Purchase History</h2>
@@ -1548,8 +1740,8 @@ export default function PurchaseClient(props: Props) {
             )}
           </div>
         )}
-        {/* ── Category Breakdown ── */}
-        {showCosts && categoryTotals.length > 0 && (
+          {/* ── Category Breakdown ── */}
+          {categoryTotals.length > 0 && (
           <div ref={breakdownRef} className="mx-4 mt-5 mb-6">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-base font-bold text-gray-900">Category Breakdown</h2>
@@ -1579,7 +1771,12 @@ export default function PurchaseClient(props: Props) {
               </div>
             )}
           </div>
-        )}
+          )}
+          </>
+          )}
+            </div>
+          </div>
+        </div>
 
         {/* ── Bottom spacer — tall enough for expanded Category Breakdown to clear the nav bar ── */}
         <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }} />
