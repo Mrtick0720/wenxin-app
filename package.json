@@ -22,6 +22,7 @@
     "test:purchase-ledger": "npx tsx scripts/test-purchase-ledger.mjs",
     "test:purchase-payables": "node --no-warnings --experimental-strip-types scripts/test-purchase-payables.mjs",
     "test:purchase-loading": "node scripts/test-purchase-progressive-loading.mjs",
+    "test:purchase-catalog-search": "npx tsx scripts/test-purchase-catalog-search.ts",
     "test:root-hydration": "node scripts/test-root-hydration.mjs",
     "test:purchase-lifecycle": "npx tsx scripts/test-purchase-lifecycle.mjs",
     "test:inventory": "npx tsx scripts/test-inventory.mjs",
@@ -37,6 +38,7 @@
     "framer-motion": "^12.40.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.7",
+    "pinyin-pro": "^3.28.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-pull-to-refresh": "^2.0.1"
@@ -51,6 +53,7 @@
     "eslint-config-next": "16.2.7",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
   }
 }
