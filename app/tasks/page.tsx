@@ -40,6 +40,12 @@ export default function TasksPage() {
   const staff = useStaff()
   const router = useRouter()
   const [tasks, setTasks] = useState<Task[]>([])
+  const [fabReady, setFabReady] = useState(false)
+
+  useEffect(() => {
+    const t = setTimeout(() => setFabReady(true), 320)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     if (!staff) {
@@ -116,7 +122,7 @@ export default function TasksPage() {
         </div>
       </div>
     </main>
-      {typeof document !== 'undefined' && createPortal(
+      {fabReady && typeof document !== 'undefined' && createPortal(
         <button
           onClick={() => router.push('/tasks/new')}
           aria-label="New task"
