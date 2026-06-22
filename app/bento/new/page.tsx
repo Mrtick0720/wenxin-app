@@ -1,12 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { getMondayOfWeek } from '@/lib/dateUtils'
-import { fetchWeeklyMenuAction } from '../weekly-menu/actions'
 
 const AREAS = ['Likas', 'Luyang', 'Lintas', 'Karamunsing']
 
@@ -23,11 +20,9 @@ const PAYMENT_METHODS = [
   { value: 'other',         label: 'Other' },
 ]
 
-type DayVariant = { code: string; name: string; dish: string | null; dish_en: string | null }
 type OrderItem = { variant: string; quantity: number }
-type Combo = { main: string; veg: string; staple: string; qty: number }
-
-const comboLetter = (i: number) => String.fromCharCode(65 + i)
+type Component = { id: number; name: string; description: string | null; is_active: boolean }
+type CustomItem = { protein_id: number | null; vegetable_id: number | null; staple_id: number | null; qty: number }
 
 type CustomerOpt = {
   id: number
@@ -107,85 +102,30 @@ export default function NewBentoOrder() {
       .then(({ data }) => setCustomers((data ?? []) as CustomerOpt[]))
   }, [])
 
-  // Weekly-plan variants for the chosen date (empty ⇒ no plan ⇒ custom mode)
-  const [dayVariants, setDayVariants] = useState<DayVariant[]>([])
-  const [menuLoading, setMenuLoading] = useState(false)
+  // Components
+  const [proteins, setProteins] = useState<Component[]>([])
+  const [vegetables, setVegetables] = useState<Component[]>([])
+  const [staples, setStaples] = useState<Component[]>([])
+
+  // Order items
   const [orderItems, setOrderItems] = useState<OrderItem[]>([{ variant: '', quantity: 1 }])
-  // Custom mode: a list of bento combinations (A, B, C…), each a 3-compartment
-  // box with its own quantity. Tap a combo to expand and edit its compartments.
-  const [combos, setCombos] = useState<Combo[]>([{ main: '', veg: '', staple: '', qty: 1 }])
-  const [editingCombo, setEditingCombo] = useState<number | null>(null)
+  const [customItems, setCustomItems] = useState<CustomItem[]>([])
   const [areaOpen, setAreaOpen] = useState(false)
 
-  const published = dayVariants.length > 0
   const isDelivery = form.fulfillment_type === 'delivery'
 
-  // Load the published weekly menu for the selected date + realtime subscription.
+  // Load component lists
   useEffect(() => {
-    if (!form.delivery_date) { setDayVariants([]); return }
-    let active = true
-    setMenuLoading(true)
-    const ws = getMondayOfWeek(form.delivery_date)
-    const dow = dowFromDate(form.delivery_date)
-
-    function applyMenu(data: Awaited<ReturnType<typeof fetchWeeklyMenuAction>>) {
-      if (!active) return
-      if (data.ok) {
-        const seen = new Map<string, DayVariant>()
-        for (const it of data.data.filter(i => i.day_of_week === dow)) {
-          const code = it.variant_code ?? String(it.variant_id)
-          if (!seen.has(code)) {
-            seen.set(code, { code, name: it.variant_name ?? code, dish: it.dish_name ?? it.custom_name ?? null, dish_en: it.dish_description ?? null })
-          }
-        }
-        setDayVariants([...seen.values()])
-      } else {
-        setDayVariants([])
-      }
-      setMenuLoading(false)
-    }
-
-    // Initial fetch (server action — does auth check)
-    fetchWeeklyMenuAction(ws).then(applyMenu)
-
-    // Realtime: silent client-side refresh — no server roundtrip, no loading state
-    const channel = supabase
-      .channel('weekly-menu-realtime')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'bento_weekly_menu_assignments', filter: `week_start=eq.${ws}` },
-        async () => {
-          const { data } = await supabase
-            .from('bento_weekly_menu_assignments')
-            .select('*, bento_menu_variants(code, name), bento_proteins(name, description), bento_vegetables(name, description), bento_staples(name, description)')
-            .eq('week_start', ws).eq('day_of_week', dow).order('variant_id')
-          if (!active || !data) return
-          const seen = new Map<string, DayVariant>()
-          for (const r of data as Record<string, unknown>[]) {
-            const v = r.bento_menu_variants as Record<string, unknown> | null
-            const protein = r.bento_proteins as Record<string, unknown> | null
-            const vegetable = r.bento_vegetables as Record<string, unknown> | null
-            const staple = r.bento_staples as Record<string, unknown> | null
-            const code = (v?.code as string) ?? String(r.variant_id)
-            if (!seen.has(code)) {
-              const parts = [protein?.name, vegetable?.name, staple?.name].filter(Boolean)
-              const descrParts = [protein?.description, vegetable?.description, staple?.description].filter(Boolean)
-              seen.set(code, {
-                code, name: (v?.name as string) ?? code,
-                dish: parts.length > 0 ? parts.join(' + ') : null,
-                dish_en: descrParts.length > 0 ? descrParts.join(' + ') : null,
-              })
-            }
-          }
-          setDayVariants([...seen.values()])
-        }
-      )
-      .subscribe()
-
-    return () => {
-      active = false
-      supabase.removeChannel(channel)
-    }
-  }, [form.delivery_date])
+    Promise.all([
+      supabase.from('bento_proteins').select('id,name,description,is_active').eq('is_active', true).order('name'),
+      supabase.from('bento_vegetables').select('id,name,description,is_active').eq('is_active', true).order('name'),
+      supabase.from('bento_staples').select('id,name,description,is_active').eq('is_active', true).order('name'),
+    ]).then(([p, v, s]) => {
+      setProteins((p.data || []) as Component[])
+      setVegetables((v.data || []) as Component[])
+      setStaples((s.data || []) as Component[])
+    })
+  }, [])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value } = e.target
@@ -212,43 +152,55 @@ export default function NewBentoOrder() {
     setOrderItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(1, it.quantity + delta) } : it))
   }
 
-  // Custom combos
-  function addCombo() { setCombos(prev => { setEditingCombo(prev.length); return [...prev, { main: '', veg: '', staple: '', qty: 1 }] }) }
-  function removeCombo(idx: number) {
-    setCombos(prev => {
-      const next = prev.filter((_, i) => i !== idx)
-      return next.length ? next : [{ main: '', veg: '', staple: '', qty: 1 }]
-    })
-    setEditingCombo(null)
+  function addCustom() { setCustomItems(prev => [...prev, { protein_id: null, vegetable_id: null, staple_id: null, qty: 1 }]) }
+  function removeCustom(idx: number) { setCustomItems(prev => prev.filter((_, i) => i !== idx)) }
+  function setCustomField(idx: number, field: keyof CustomItem, value: number | null) {
+    setCustomItems(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c))
   }
-  function setComboField(idx: number, field: keyof Combo, value: string) {
-    setCombos(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c))
-  }
-  function adjustComboQty(idx: number, delta: number) {
-    setCombos(prev => prev.map((c, i) => i === idx ? { ...c, qty: Math.max(1, c.qty + delta) } : c))
+  function adjustCustomQty(idx: number, delta: number) {
+    setCustomItems(prev => prev.map((c, i) => i === idx ? { ...c, qty: Math.max(1, c.qty + delta) } : c))
   }
 
-  const totalQty = published ? orderItems.reduce((s, i) => s + i.quantity, 0) : combos.reduce((s, c) => s + c.qty, 0)
+  const totalQty = orderItems.filter(i => i.variant).reduce((s, i) => s + i.quantity, 0) + customItems.reduce((s, c) => s + c.qty, 0)
   const unitPrice = parseFloat(form.unit_price) || 0
   const total = unitPrice * totalQty
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.customer_name.trim()) { setError('Customer name is required.'); return }
-    if (published && !orderItems.every(i => i.variant)) { setError('Please choose a menu for each item.'); return }
-    if (!published && !combos.every(c => c.main.trim())) { setError('Please name the main dish for each bento.'); return }
     if (!form.unit_price || unitPrice <= 0) { setError('Unit price is required.'); return }
 
-    const variantName = (code: string) => dayVariants.find(v => v.code === code)?.name ?? code
-    const comboText = (c: Combo) => {
-      const sides = [c.veg.trim(), c.staple.trim()].filter(Boolean).join(' / ')
-      return `${c.main.trim()}${sides ? ` (${sides})` : ''} x${c.qty}`
+    const activeOrderItems = orderItems.filter(i => i.variant)
+    const activeCustomItems = customItems.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
+    if (activeOrderItems.length === 0 && activeCustomItems.length === 0) {
+      setError('Please add at least one menu item.'); return
     }
-    const itemsText = published
-      ? orderItems.map(i => `${variantName(i.variant)} x${i.quantity}`).join(', ')
-      : combos.map((c, i) => `${comboLetter(i)}. ${comboText(c)}`).join('; ')
-    const menuType = published ? (orderItems[0]?.variant ?? '') : 'custom'
-    const firstCombo = combos[0]
+
+    // Build items text from both variant and custom items
+    const parts: string[] = []
+
+    // Variant items
+    for (const item of activeOrderItems) {
+      parts.push(`${item.variant === 'light' ? 'Light' : 'Flavorful'} x${item.quantity}`)
+    }
+
+    // Custom items
+    for (const c of activeCustomItems) {
+      const protein = proteins.find(p => p.id === c.protein_id)
+      const veg = vegetables.find(v => v.id === c.vegetable_id)
+      const staple = staples.find(s => s.id === c.staple_id)
+      const label = [protein?.description || protein?.name, veg?.description || veg?.name, staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom'
+      parts.push(`${label} x${c.qty}`)
+    }
+
+    const itemsText = parts.join(', ')
+    const menuType = activeOrderItems.length > 0 ? activeOrderItems[0].variant : 'custom'
+
+    // Compartments from first custom item (for kitchen view)
+    const firstCustom = activeCustomItems[0]
+    const firstProtein = firstCustom ? proteins.find(p => p.id === firstCustom.protein_id) : null
+    const firstVeg = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
+    const firstStaple = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
 
     setLoading(true)
     setError(null)
@@ -263,30 +215,26 @@ export default function NewBentoOrder() {
         delivery_or_pickup_time: form.order_time || null,
         menu_type:               menuType,
         items:                   itemsText,
-        // Custom bento: full multi-combo breakdown lives in `items`; the first
-        // combo's compartments are mirrored here for the single-box kitchen view.
         bento_items:             null,
-        compartment_a:           published ? null : (firstCombo?.main || null),
-        compartment_b:           published ? null : (firstCombo?.veg || null),
-        compartment_c:           published ? null : (firstCombo?.staple || null),
+        compartment_a:           firstProtein?.description || firstProtein?.name || null,
+        compartment_b:           firstVeg?.description || firstVeg?.name || null,
+        compartment_c:           firstStaple?.description || firstStaple?.name || null,
         ready_by:                form.ready_by || null,
         note:                    form.note,
         amount:                  total,
         quantity:                totalQty,
         paid:                    form.payment_status === 'paid',
         status:                  'pending',
-        // Payment
         payment_status:          form.payment_status,
         payment_method:          form.payment_method || null,
         amount_paid:             parseFloat(form.amount_paid) || 0,
-        payment_note:            form.payment_note,
+        payment_note:            form.payment_note || '',
       })
       if (err) {
         setError(err.message || 'Failed to create order.')
         setLoading(false)
         return
       }
-      // Member deduction: count this manual order against the member's package.
       if (selectedCustomer && isMemberOpt(selectedCustomer) && deductPackage) {
         const nextUsed = Math.min(selectedCustomer.total_portions, selectedCustomer.used_portions + totalQty)
         await supabase.from('bento_customers').update({ used_portions: nextUsed }).eq('id', selectedCustomer.id)
@@ -488,89 +436,92 @@ export default function NewBentoOrder() {
           </>
         )}
 
-        {/* ── Meal selection: weekly plan variants OR custom ABC ── */}
+        {/* ── Meal selection ── */}
         <div className="pt-2 border-t border-gray-200">
-          <div className="flex items-center justify-between mb-3 mt-3">
-            <label className="text-sm text-gray-600 font-medium">
-              {published ? 'Items *' : 'Custom Bento *'}
-            </label>
-            {!menuLoading && (
-              <button type="button" onClick={published ? addItem : addCombo}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xl leading-none active:opacity-70"
-                style={{ background: '#f97316' }} aria-label={published ? 'Add item' : 'Add bento'}>+</button>
-            )}
+          <label className="text-sm text-gray-600 mb-2 block font-medium">Menu *</label>
+
+          {/* Variant buttons */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">Meal plan</span>
+            <button type="button" onClick={addItem}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+              style={{ background: '#f97316' }} aria-label="Add item">+</button>
+          </div>
+          <div className="space-y-2 mb-4">
+            {orderItems.map((item, idx) => (
+              <div key={idx} className="bg-white rounded-xl px-3 pt-2 pb-2.5 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Meal #{idx + 1}</span>
+                  <button type="button" onClick={() => removeItem(idx)}
+                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5" aria-label="Remove item">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  {[
+                    { code: 'light', label: 'Light', color: '#3B82F6' },
+                    { code: 'flavorful', label: 'Flavorful', color: '#F97316' },
+                  ].map(v => (
+                    <button key={v.code} type="button" onClick={() => setItemVariant(idx, v.code)}
+                      style={item.variant === v.code ? { background: v.color, borderColor: v.color } : undefined}
+                      className={`py-2 rounded-lg text-xs font-medium border transition-colors ${
+                        item.variant === v.code ? 'text-white' : 'bg-white text-gray-600 border-gray-200'
+                      }`}>{v.label}</button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-400">Qty</span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => adjustQty(idx, -1)}
+                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200">−</button>
+                    <span className="text-xs font-semibold w-5 text-center tabular-nums">{item.quantity}</span>
+                    <button type="button" onClick={() => adjustQty(idx, 1)}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+                      style={{ background: '#f97316' }}>+</button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
-          {menuLoading ? (
-            <div className="h-20 rounded-2xl bg-white animate-pulse" />
-          ) : published ? (
-            <>
-              <p className="text-[11px] text-gray-400 mb-1.5">Weekly menu is published for this day — choose from the menu.</p>
-              <div className="space-y-2">
-                {orderItems.map((item, idx) => (
-                  <div key={idx} className="bg-white rounded-xl px-2.5 pt-2 pb-2.5 shadow-sm">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Item #{idx + 1}</span>
-                      {orderItems.length > 1 && (
-                        <button type="button" onClick={() => removeItem(idx)}
-                          className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5" aria-label="Remove item">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                    <div className="mb-2 grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(dayVariants.length, 3)}, minmax(0, 1fr))` }}>
-                      {dayVariants.map(v => (
-                        <button key={v.code} type="button" onClick={() => setItemVariant(idx, v.code)}
-                          className={`py-1 px-0.5 rounded-lg text-[11px] border transition-colors leading-tight ${
-                            item.variant === v.code ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'
-                          }`}>
-                          <span className={`block font-medium truncate`}>{v.dish_en || v.dish || v.name}</span>
-                          {v.dish_en && v.dish && <span className={`block text-[9px] mt-0.5 truncate ${item.variant === v.code ? 'text-orange-100' : 'text-gray-400'}`}>{v.dish}</span>}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-gray-400">Qty</span>
-                      <div className="flex items-center gap-1.5">
-                        <button type="button" onClick={() => adjustQty(idx, -1)}
-                          className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200">−</button>
-                        <span className="text-xs font-semibold w-5 text-center tabular-nums">{item.quantity}</span>
-                        <button type="button" onClick={() => adjustQty(idx, 1)}
-                          className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
-                          style={{ background: '#f97316' }}>+</button>
-                      </div>
-                    </div>
+          {/* Custom build */}
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-gray-400">Custom</span>
+            <button type="button" onClick={addCustom}
+              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+              style={{ background: '#9ca3af' }} aria-label="Add custom">+</button>
+          </div>
+          <div className="space-y-2">
+            {customItems.map((c, idx) => (
+              <div key={idx} className="bg-white rounded-xl px-3 pt-2 pb-2.5 shadow-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Custom #{idx + 1}</span>
+                  <button type="button" onClick={() => removeCustom(idx)}
+                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5" aria-label="Remove item">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                <ComponentSelect label="Protein" items={proteins} value={c.protein_id} onChange={val => setCustomField(idx, 'protein_id', val)} />
+                <ComponentSelect label="Vegetable" items={vegetables} value={c.vegetable_id} onChange={val => setCustomField(idx, 'vegetable_id', val)} />
+                <ComponentSelect label="Staple" items={staples} value={c.staple_id} onChange={val => setCustomField(idx, 'staple_id', val)} />
+                <div className="flex items-center gap-2 mt-2">
+                  <span className="text-[11px] text-gray-400">Qty</span>
+                  <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={() => adjustCustomQty(idx, -1)}
+                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200">−</button>
+                    <span className="text-xs font-semibold w-5 text-center tabular-nums">{c.qty}</span>
+                    <button type="button" onClick={() => adjustCustomQty(idx, 1)}
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+                      style={{ background: '#f97316' }}>+</button>
                   </div>
-                ))}
+                </div>
               </div>
-            </>
-          ) : (
-            <>
-              <p className="text-xs text-gray-400 mb-2">No weekly menu for this day — build custom bentos. Tap a bento to edit its 3 compartments; add more with +.</p>
-              <div className="space-y-2">
-                {combos.map((c, idx) => (
-                  <div key={idx} className="bg-white rounded-2xl shadow-sm flex items-center gap-3 px-3 py-3">
-                    <button type="button" onClick={() => setEditingCombo(idx)}
-                      className="flex items-center gap-3 flex-1 min-w-0 text-left">
-                      <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-md text-xs font-bold text-white" style={{ background: '#f97316' }}>{comboLetter(idx)}</span>
-                      <span className={`flex-1 min-w-0 truncate text-sm ${c.main.trim() ? 'text-gray-800 font-medium' : 'text-gray-400'}`}>
-                        {c.main.trim() || 'Tap to set main dish'}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <button type="button" onClick={() => adjustComboQty(idx, -1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 text-base leading-none active:bg-gray-200">−</button>
-                      <span className="text-sm font-semibold w-5 text-center tabular-nums">{c.qty}</span>
-                      <button type="button" onClick={() => adjustComboQty(idx, 1)}
-                        className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 text-base leading-none active:bg-gray-200">+</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+            ))}
+          </div>
         </div>
 
         {/* ── Ready by (kitchen) ── */}
@@ -682,52 +633,25 @@ export default function NewBentoOrder() {
         )}
       </form>
 
-      {/* ── Combo edit sheet ── */}
-      {editingCombo !== null && combos[editingCombo] && createPortal(
-        (() => {
-          const ec = editingCombo
-          const c = combos[ec]
-          const fields = [
-            { field: 'main' as const,   label: 'Meat / main dish',  placeholder: 'e.g. Salted egg yolk chicken' },
-            { field: 'veg' as const,    label: 'Vegetable / side',  placeholder: 'e.g. Greens, fruit platter' },
-            { field: 'staple' as const, label: 'Staple',            placeholder: 'e.g. Rice, noodles, dumpling' },
-          ]
-          return (
-            <div className="fixed inset-0 flex flex-col justify-end" style={{ zIndex: 2147483647, background: 'rgba(0,0,0,0.4)' }}
-              onClick={() => setEditingCombo(null)}>
-              <div className="bg-white rounded-t-3xl px-4 pt-5" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 20px)' }}
-                onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="font-semibold text-base text-gray-900">Bento {comboLetter(ec)}</span>
-                  <button type="button" onClick={() => setEditingCombo(null)} className="text-gray-400 text-2xl leading-none active:opacity-70">×</button>
-                </div>
+    </div>
+  )
+}
 
-                <div className="space-y-3">
-                  {fields.map(f => (
-                    <div key={f.field}>
-                      <label className="text-xs text-gray-500 mb-1 block">{f.label}</label>
-                      <input type="text" placeholder={f.placeholder}
-                        value={c[f.field]} onChange={e => setComboField(ec, f.field, e.target.value)}
-                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-orange-400"
-                        style={{ fontSize: 16 }} autoFocus={f.field === 'main'} />
-                    </div>
-                  ))}
-                </div>
-
-                <button type="button" onClick={() => setEditingCombo(null)}
-                  className="w-full mt-4 py-3 rounded-2xl text-sm font-semibold text-white active:opacity-80" style={{ background: '#f97316' }}>
-                  Done
-                </button>
-                <button type="button" onClick={() => removeCombo(ec)}
-                  className="w-full mt-2 py-3 rounded-2xl text-sm font-semibold text-red-400 bg-red-50 active:opacity-80">
-                  Delete
-                </button>
-              </div>
-            </div>
-          )
-        })(),
-        document.body
-      )}
+// ── Inline component select ──
+function ComponentSelect({ label, items, value, onChange }: {
+  label: string; items: Component[]; value: number | null; onChange: (id: number | null) => void
+}) {
+  return (
+    <div className="flex items-center gap-2 mb-1.5">
+      <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">{label}</span>
+      <select
+        value={value ?? ''}
+        onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
+        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-400 bg-white text-gray-700"
+      >
+        <option value="">Select…</option>
+        {items.map(c => <option key={c.id} value={c.id}>{c.description || c.name}{c.description ? ` — ${c.name}` : ''}</option>)}
+      </select>
     </div>
   )
 }
