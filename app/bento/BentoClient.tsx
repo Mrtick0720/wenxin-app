@@ -589,7 +589,7 @@ export default function BentoClient({
                 <img src="/weekly-menu.webp" alt="" aria-hidden width={158} height={158} className="object-contain" />
                 <span className="text-sm font-semibold text-gray-800 mt-3">Weekly Menu</span>
               </button>
-              <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)}
+              <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage initialDate={selectedDate} /></Suspense>)}
                 className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-5 px-3"
                 style={{ transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1)', WebkitTapHighlightColor: 'transparent' }}
                 onPointerDown={e => (e.currentTarget.style.transform = 'scale(0.93)')}
@@ -632,7 +632,7 @@ export default function BentoClient({
                 <div className="text-xs text-gray-400">Subscriptions</div>
               </div>
             </button>}
-            {canOpenProduction && <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
+            {canOpenProduction && <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage initialDate={selectedDate} /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z"/><path d="M12 8v4l3 3"/>
               </svg>

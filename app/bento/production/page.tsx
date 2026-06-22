@@ -72,10 +72,10 @@ function defaultProductionDate(): string {
   return today
 }
 
-export default function ProductionPage() {
+export default function ProductionPage({ initialDate }: { initialDate?: string } = {}) {
   const staff = useStaff()
   const today = todayLocalStr()
-  const [selectedDate, setSelectedDate] = useState(defaultProductionDate)
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? defaultProductionDate)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [showDatePicker, setShowDatePicker] = useState(false)
