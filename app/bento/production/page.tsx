@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
@@ -103,9 +103,14 @@ export default function ProductionPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
 
+  const roleRef = useRef(staff?.role)
+  roleRef.current = staff?.role
+  const selectedDateRef = useRef(selectedDate)
+  selectedDateRef.current = selectedDate
+
   const loadData = useCallback(async (date: string) => {
     setLoading(true)
-    const source = staff?.role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
+    const source = roleRef.current === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const { data } = await supabase
       .from(source)
       .select('*')
@@ -116,25 +121,26 @@ export default function ProductionPage() {
     setOrders((data || []) as Order[])
     setUpdatedAt(nowUpdatedStr())
     setLoading(false)
-  }, [staff?.role])
+  }, []) // stable — reads role via ref
 
+  // Initial load whenever date changes
   useEffect(() => {
     loadData(selectedDate)
+  }, [loadData, selectedDate])
 
-    // Always subscribe to bento_orders (the base table) — views are not replication targets
-    const channelName = `production-${selectedDate}`
+  // Single long-lived realtime channel + custom event listener
+  useEffect(() => {
     const channel = supabase
-      .channel(channelName)
+      .channel('production-orders')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'bento_orders' },
-        () => { loadData(selectedDate) }
+        () => { loadData(selectedDateRef.current) }
       )
       .subscribe()
 
-    // Also listen for in-app edit/new events (covers kitchen role where realtime RLS may block)
     function onOrderUpdated(e: Event) {
       const date = (e as CustomEvent<{ date?: string }>).detail?.date
-      if (!date || date === selectedDate) loadData(selectedDate)
+      if (!date || date === selectedDateRef.current) loadData(selectedDateRef.current)
     }
     window.addEventListener('bento-order-updated', onOrderUpdated)
 
@@ -142,7 +148,7 @@ export default function ProductionPage() {
       supabase.removeChannel(channel)
       window.removeEventListener('bento-order-updated', onOrderUpdated)
     }
-  }, [loadData, selectedDate])
+  }, [loadData]) // runs once on mount
 
   const bentoName = (o: Order) => {
     const raw = o.bento_items?.trim()
