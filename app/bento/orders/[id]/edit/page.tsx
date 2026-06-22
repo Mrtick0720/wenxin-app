@@ -640,7 +640,7 @@ function ComponentSelect({ label, items, value, onChange, groupable = false }: {
       </button>
       {open && (
         <div className="fixed inset-0 z-[500] flex flex-col" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setOpen(false)}>
-          <div className="mt-auto bg-white rounded-t-2xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="mt-auto bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '45vh' }} onClick={e => e.stopPropagation()}>
             <div className="px-4 pt-4 pb-2 border-b border-gray-100">
               <div className="text-sm font-semibold text-gray-700 mb-2">{label}</div>
               <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
