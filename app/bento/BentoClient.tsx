@@ -542,7 +542,6 @@ export default function BentoClient({
             <BackButton href="/" />
             <span className="font-semibold text-base tracking-wide">XIN BENTO</span>
           </div>
-          {!isKitchen && <button onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder /></Suspense>)} className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New order">+</button>}
         </div>
 
         <div ref={datepickerAreaRef} className="bg-white px-4 pt-4 pb-3" style={{ flexShrink: 0 }}>
@@ -826,6 +825,26 @@ export default function BentoClient({
           </div>
         </div>,
         document.body,
+      )}
+
+      {/* FAB — fixed above bottom nav, visible on main page and detail panel for owner/manager */}
+      {!isKitchen && typeof document !== 'undefined' && createPortal(
+        <button
+          onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder /></Suspense>)}
+          aria-label="New order"
+          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+          style={{
+            background: '#f97316',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>,
+        document.body
       )}
     </div>
   )
