@@ -808,7 +808,7 @@ function ComponentSelect({ label, items, value, onChange, groupable = false }: {
                 placeholder="Search…"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400" />
             </div>
-            <div className="overflow-y-auto flex-1">
+            <div className="overflow-y-auto flex-1" style={{ WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
               <button type="button" onClick={() => { onChange(null); setOpen(false); setSearch('') }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-400 border-b border-gray-50">
                 — None
