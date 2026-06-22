@@ -13,6 +13,7 @@ import { getCustomerCalendarStatus, getDeliveredDates } from '@/lib/customerCale
 import { todayLocalStr } from '@/lib/dateUtils'
 import { getCustomerDetailInitialState } from '@/lib/customerDetailState'
 import { splitCustomerMeals } from '@/lib/customerOrderHistory'
+import { archivePeriodAction, fetchPeriodsAction, type SubscriptionPeriod } from '../periodsActions'
 import MealRow from './MealRow'
 
 const loadEditCustomerPage = () => import('@/app/bento/customers/[id]/edit/page')
@@ -36,6 +37,7 @@ type Customer = {
   used_portions: number
   note: string
   active: boolean
+  package_mode?: string // 'scheduled' (default) | 'balance'
 }
 
 type Order = {
@@ -117,6 +119,32 @@ export default function CustomerDetailPage({
   const [saving, setSaving] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [updatingDate, setUpdatingDate] = useState<string | null>(null)
+  // Period archive / renew
+  const [periods, setPeriods] = useState<SubscriptionPeriod[]>([])
+  const [archiving, setArchiving] = useState(false)
+  const [archStart, setArchStart] = useState(todayLocalStr())
+  const [archTotal, setArchTotal] = useState('')
+
+  useEffect(() => {
+    if (!id) return
+    fetchPeriodsAction(Number(id)).then(res => { if (res.ok) setPeriods(res.data) })
+  }, [id])
+
+  async function doArchive(renew: boolean) {
+    if (!id) return
+    setSaving(true)
+    const res = await archivePeriodAction(Number(id), {
+      renew,
+      newStartDate: archStart,
+      newTotalPortions: renew ? (parseInt(archTotal) || customer?.total_portions || 0) : undefined,
+    })
+    setSaving(false)
+    if (!res.ok) return
+    setArchiving(false)
+    const pr = await fetchPeriodsAction(Number(id))
+    if (pr.ok) setPeriods(pr.data)
+    await loadData()
+  }
   const [scheduleError, setScheduleError] = useState('')
 
   async function loadData() {
@@ -173,7 +201,9 @@ export default function CustomerDetailPage({
     setSubscriptionDays(fetchedDays)
     setHolidays(fetchedHolidays)
 
-    if (!subDaysRes.error && cust.start_date && cust.total_portions > 0) {
+    // Balance-mode packages have no projected daily schedule — orders are
+    // ad-hoc and just deduct the quota. Skip schedule generation entirely.
+    if (cust.package_mode !== 'balance' && !subDaysRes.error && cust.start_date && cust.total_portions > 0) {
       try {
         const defaultMenu = getDefaultMenuType(cust.menu_preference)
         const plan = buildSubscriptionPlan({
@@ -250,16 +280,37 @@ export default function CustomerDetailPage({
               }
             }
           } else {
-            const insertedOrder = await supabase.from('bento_orders').insert(orderRow).select('id').single()
-            if (insertedOrder.error) {
-              setScheduleError(insertedOrder.error.message || 'Failed to create new order.')
-              return
-            }
-            if (insertedOrder.data?.id && day.id) {
-              const { error: linkError } = await supabase.from('bento_subscription_days').update({ order_id: insertedOrder.data.id }).eq('id', day.id)
-              if (linkError) {
-                setScheduleError(linkError.message || 'Failed to link new order to subscription day.')
+            // Idempotency guard (root-cause fix for the historical
+            // 6-orders-per-day duplication): `nextOrders` is a snapshot taken
+            // once at the top of loadData, so two concurrent/repeated
+            // reconciliation passes (a double-invoked effect, or fast re-entry)
+            // would both see no existing order and each insert one. Re-check the
+            // DB live right before inserting so a duplicate can never be created.
+            const { data: liveDup } = await supabase
+              .from('bento_orders')
+              .select('id')
+              .eq('date', day.date)
+              .ilike('customer_name', cust.name)
+              .neq('status', 'canceled')
+              .limit(1)
+
+            if (liveDup && liveDup.length > 0) {
+              await supabase.from('bento_orders').update(orderRow).eq('id', liveDup[0].id)
+              if (day.id) {
+                await supabase.from('bento_subscription_days').update({ order_id: liveDup[0].id }).eq('id', day.id)
+              }
+            } else {
+              const insertedOrder = await supabase.from('bento_orders').insert(orderRow).select('id').single()
+              if (insertedOrder.error) {
+                setScheduleError(insertedOrder.error.message || 'Failed to create new order.')
                 return
+              }
+              if (insertedOrder.data?.id && day.id) {
+                const { error: linkError } = await supabase.from('bento_subscription_days').update({ order_id: insertedOrder.data.id }).eq('id', day.id)
+                if (linkError) {
+                  setScheduleError(linkError.message || 'Failed to link new order to subscription day.')
+                  return
+                }
               }
             }
           }
@@ -385,6 +436,25 @@ export default function CustomerDetailPage({
   const skippedCount = subscriptionDays.filter(day => day.status === 'skipped').length
   const { scheduled, history } = splitCustomerMeals(orders, subscriptionDays, today, deliveredDateSet)
 
+  // Balance mode: no projected schedule — the calendar marks only real order
+  // days (green if delivered/today, orange if a future order exists).
+  const isBalance = customer.package_mode === 'balance'
+  const isPostpaid = customer.package_mode === 'postpaid'
+  // Postpaid (corporate/account): no quota — track the unpaid running tab.
+  const outstanding = orders
+    .filter(o => o.status !== 'canceled' && o.paid === false)
+    .reduce((s, o) => s + (o.amount || 0), 0)
+  const unpaidCount = orders.filter(o => o.status !== 'canceled' && o.paid === false).length
+  // Balance + postpaid both mark the calendar from real order days only.
+  const orderDrivenCalendar = isBalance || isPostpaid
+  const balanceStatusByDate = new Map<string, 'delivered' | 'pending'>()
+  if (orderDrivenCalendar) {
+    for (const o of orders) {
+      if (o.status === 'canceled') continue
+      balanceStatusByDate.set(o.date, o.date <= today ? 'delivered' : 'pending')
+    }
+  }
+
   // Calendar rendering
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
   const firstDay = new Date(calYear, calMonth, 1).getDay()
@@ -427,8 +497,8 @@ export default function CustomerDetailPage({
               <div className="text-lg font-bold text-gray-900">{customer.name}</div>
               {customer.phone && <div className="text-sm text-gray-400 mt-0.5">📞 {customer.phone}</div>}
             </div>
-            <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: colors.bg, color: colors.color }}>
-              {customer.subscription_type.charAt(0).toUpperCase() + customer.subscription_type.slice(1)}
+            <span className="text-xs px-2.5 py-1 rounded-full font-medium" style={{ background: customer.active ? '#fff7ed' : '#f3f4f6', color: customer.active ? '#f97316' : '#9ca3af' }}>
+              {customer.active ? 'Active' : 'Completed'}
             </span>
           </div>
           <div className="space-y-1.5 text-sm">
@@ -482,27 +552,110 @@ export default function CustomerDetailPage({
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-              {customer.start_date && (
-                <div className="bg-gray-50 rounded-xl px-3 py-2">
-                  <div className="text-gray-400 mb-0.5">Start</div>
-                  <div className="font-medium text-gray-700">{formatDate(customer.start_date)}</div>
+            {isBalance ? (
+              <div className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-600">
+                🎫 Balance package — meals deducted per order, no fixed schedule.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  {customer.start_date && (
+                    <div className="bg-gray-50 rounded-xl px-3 py-2">
+                      <div className="text-gray-400 mb-0.5">Start</div>
+                      <div className="font-medium text-gray-700">{formatDate(customer.start_date)}</div>
+                    </div>
+                  )}
+                  {endDateStr && (
+                    <div className="bg-gray-50 rounded-xl px-3 py-2">
+                      <div className="text-gray-400 mb-0.5">Est. End</div>
+                      <div className={`font-medium ${new Date(endDateStr) < new Date() ? 'text-red-500' : 'text-gray-700'}`}>{formatDate(endDateStr)}</div>
+                    </div>
+                  )}
                 </div>
-              )}
-              {endDateStr && (
-                <div className="bg-gray-50 rounded-xl px-3 py-2">
-                  <div className="text-gray-400 mb-0.5">Est. End</div>
-                  <div className={`font-medium ${new Date(endDateStr) < new Date() ? 'text-red-500' : 'text-gray-700'}`}>{formatDate(endDateStr)}</div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="bg-green-50 rounded-xl px-3 py-2 text-green-600">
+                    {scheduledCount} scheduled
+                  </div>
+                  <div className="bg-red-50 rounded-xl px-3 py-2 text-red-500">
+                    {skippedCount} skipped
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Period archive / renew */}
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              {!archiving ? (
+                <button type="button"
+                  onClick={() => { setArchTotal(String(customer.total_portions)); setArchStart(todayLocalStr()); setArchiving(true) }}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">
+                  Complete this package…
+                </button>
+              ) : (
+                <div className="space-y-2.5">
+                  <div className="text-xs text-gray-500">
+                    Archive the current package ({customer.used_portions}/{customer.total_portions} used) into history, then renew or close.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[11px] text-gray-400 mb-1 block">New start date</label>
+                      <input type="date" value={archStart} onChange={e => setArchStart(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-gray-400 mb-1 block">New total portions</label>
+                      <input type="number" min="0" value={archTotal} onChange={e => setArchTotal(e.target.value)}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={saving} onClick={() => doArchive(true)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white active:opacity-80" style={{ background: '#f97316' }}>
+                      {saving ? '…' : 'Archive & renew'}
+                    </button>
+                    <button type="button" disabled={saving} onClick={() => doArchive(false)}
+                      className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-600 bg-gray-100 active:opacity-80">
+                      Archive & close
+                    </button>
+                  </div>
+                  <button type="button" onClick={() => setArchiving(false)} className="w-full text-xs text-gray-400 py-1">Cancel</button>
                 </div>
               )}
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div className="bg-green-50 rounded-xl px-3 py-2 text-green-600">
-                {scheduledCount} scheduled
+          </div>
+        )}
+
+        {/* Postpaid (corporate/account) — outstanding running tab */}
+        {isPostpaid && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <span>🏢</span>
+              <span className="text-sm font-semibold text-gray-700">Postpaid Account</span>
+            </div>
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="text-2xl font-bold" style={{ color: outstanding > 0 ? '#dc2626' : '#16a34a' }}>RM {outstanding.toFixed(2)}</div>
+                <div className="text-xs text-gray-400 mt-0.5">Outstanding</div>
               </div>
-              <div className="bg-red-50 rounded-xl px-3 py-2 text-red-500">
-                {skippedCount} skipped
-              </div>
+              <div className="text-xs text-gray-400">{unpaidCount} unpaid order{unpaidCount === 1 ? '' : 's'}</div>
+            </div>
+            <div className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-600">
+              No quota — billed per order, pays later. New orders default to Unpaid.
+            </div>
+          </div>
+        )}
+
+        {/* Past packages (period history) */}
+        {periods.length > 0 && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <div className="text-sm font-semibold text-gray-700 mb-2">Past packages ({periods.length})</div>
+            <div className="space-y-1.5">
+              {periods.map(p => (
+                <div key={p.id} className="flex items-center justify-between text-xs bg-gray-50 rounded-xl px-3 py-2">
+                  <span className="text-gray-500">#{p.period_no} · {p.start_date ? formatDate(p.start_date) : '—'} → {p.end_date ? formatDate(p.end_date) : '—'}</span>
+                  <span className="font-medium text-gray-700">{p.used_portions}/{p.total_portions} meals</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -519,7 +672,7 @@ export default function CustomerDetailPage({
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">‹</button>
             <div className="text-center">
               <div className="text-sm font-semibold text-gray-800">{MONTHS[calMonth]} {calYear}</div>
-              {endDateStr && <div className="text-[11px] text-gray-400">Ends {formatDate(endDateStr)}</div>}
+              {!orderDrivenCalendar && endDateStr && <div className="text-[11px] text-gray-400">Ends {formatDate(endDateStr)}</div>}
             </div>
             <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(y => y + 1) } else setCalMonth(m => m + 1) }}
               className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-lg">›</button>
@@ -538,7 +691,9 @@ export default function CustomerDetailPage({
               const isHoliday = !!planDay?.holiday_name
               const isSelected = dateStr === selectedDate
               const isToday = dateStr === today
-              const status = planDay
+              const status = orderDrivenCalendar
+                ? (balanceStatusByDate.get(dateStr) ?? null)
+                : planDay
                 ? getCustomerCalendarStatus({
                     date: dateStr,
                     dayStatus: planDay.status,

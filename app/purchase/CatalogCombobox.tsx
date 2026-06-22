@@ -1,7 +1,12 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { filterCatalogItems, type CatalogItem } from '@/lib/purchaseLedger/catalog'
+import { useStaff } from '@/app/components/StaffProvider'
+import {
+  filterCatalogItems,
+  resolveCatalogDisplayName,
+  type CatalogItem,
+} from '@/lib/purchaseLedger/catalog'
 
 type Props = {
   items: CatalogItem[]
@@ -22,6 +27,8 @@ export default function CatalogCombobox({
   loading,
   error,
 }: Props) {
+  const staff = useStaff()
+  const latinOnly = staff?.role === 'kitchen'
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [inputFocused, setInputFocused] = useState(false)
@@ -51,6 +58,9 @@ export default function CatalogCombobox({
   }, [open])
 
   const filteredItems = filterCatalogItems(items, query)
+  const searchPlaceholder = latinOnly ? 'Search item…' : '中文 / Malay…'
+  const displayName = (item: CatalogItem) =>
+    resolveCatalogDisplayName(item.name_zh, items, latinOnly ? 'latin' : 'default')
 
   // Do NOT auto-focus the search input on open — it triggers the Android
   // keyboard instantly, hiding the item list. The input only gains focus
@@ -77,12 +87,18 @@ export default function CatalogCombobox({
       >
         <div className="flex-1 min-w-0 text-left">
           {selectedItem ? (
-            <>
-              <div className="text-gray-900 truncate">{selectedItem.name_zh}</div>
-              {selectedItem.name_ms && (
+            latinOnly ? (
+              <div className="text-gray-900 font-semibold truncate">
+                {displayName(selectedItem)}
+              </div>
+            ) : (
+              <>
+                <div className="text-gray-900 truncate">{selectedItem.name_zh}</div>
+                {selectedItem.name_ms && (
                 <div className="text-gray-400 text-xs truncate leading-tight">{selectedItem.name_ms}</div>
-              )}
-            </>
+                )}
+              </>
+            )
           ) : error ? (
             <span className="text-red-500 text-xs break-all">{error}</span>
           ) : loading ? (
@@ -128,7 +144,7 @@ export default function CatalogCombobox({
                   ref={inputRef}
                   className="w-full border border-orange-400 rounded-xl px-3 py-2.5 outline-none"
                   style={{ fontSize: 16 }}
-                  placeholder="中文 / Malay…"
+                  placeholder={searchPlaceholder}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onBlur={() => { if (!query) setInputFocused(false) }}
@@ -144,7 +160,7 @@ export default function CatalogCombobox({
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-left text-gray-400 bg-white"
                   style={{ fontSize: 16 }}
                 >
-                  {query || '🔍 中文 / Malay…'}
+                  {query || `🔍 ${searchPlaceholder}`}
                 </button>
               )}
             </div>
@@ -176,9 +192,9 @@ export default function CatalogCombobox({
                           className="font-medium truncate"
                           style={{ fontSize: 16, color: active ? '#f97316' : '#111827' }}
                         >
-                          {item.name_zh}
+                          {displayName(item)}
                         </div>
-                        {item.name_ms && (
+                        {!latinOnly && item.name_ms && (
                           <div className="text-gray-400 text-xs truncate mt-0.5">{item.name_ms}</div>
                         )}
                       </div>

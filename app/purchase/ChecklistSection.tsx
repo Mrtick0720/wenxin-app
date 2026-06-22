@@ -6,7 +6,10 @@ import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { PURCHASE_CATEGORIES, categoryColor, categoryOrderIndex } from '@/lib/purchaseLedger/categories'
 import CatalogCombobox from './CatalogCombobox'
 import NumericEditorSheet from './NumericEditorSheet'
-import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
+import {
+  resolveCatalogDisplayName,
+  type CatalogItem,
+} from '@/lib/purchaseLedger/catalog'
 import {
   fetchChecklistAction,
   addChecklistItemAction,
@@ -310,9 +313,6 @@ function Checkbox({
 // ── Kitchen display name helper ──────────────────────────────────────────────
 // Resolves the best translated name for kitchen staff.
 
-const NORM = (v?: string | null): string =>
-  (v ?? '').trim().toLowerCase().normalize('NFC')
-
 function getKitchenDisplayName(
   item: ChecklistEntry,
   catalog: CatalogItem[],
@@ -324,29 +324,16 @@ function getKitchenDisplayName(
   }
   // Catalog is empty (failed to load or not yet fetched).
   if (catalog.length === 0) {
-    return { name: item.name || 'Unknown item', loading: false }
+    return { name: 'Unknown item', loading: false }
   }
 
-  const target = NORM(item.name)
-  const match = catalog.find(
-    c => NORM(c.name_zh) === target ||
-         NORM(c.name_ms) === target,
-  )
-  if (!match) {
+  const name = resolveCatalogDisplayName(item.name, catalog, 'latin')
+  if (name === 'Unknown item') {
     if (typeof window !== 'undefined') {
       console.warn('[kitchen-name] no catalog match for', item.id, item.name)
     }
-    return { name: item.name || 'Unknown item', loading: false }
   }
-
-  const translated = match.name_ms
-  if (!translated) {
-    if (typeof window !== 'undefined') {
-      console.warn('[kitchen-name] no ms/en translation for', item.id, item.name)
-    }
-    return { name: item.name || 'Unknown item', loading: false }
-  }
-  return { name: translated, loading: false }
+  return { name, loading: false }
 }
 
 function CheckRow({
@@ -478,6 +465,7 @@ export default function ChecklistSection({
   triggerAddRef,
   purchasedChecklistIds,
   updateItemsRef,
+  onItemsChange,
 }: {
   showCosts: boolean
   catalog: CatalogItem[]
@@ -492,9 +480,14 @@ export default function ChecklistSection({
   triggerAddRef?: React.MutableRefObject<(() => void) | null>
   purchasedChecklistIds?: Set<number>
   updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
+  onItemsChange?: (items: ChecklistEntry[]) => void
 }) {
   const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
   const [loading, setLoading] = useState(!initialItems)
+
+  // Report the live list up so the parent's "To Buy" count stays in sync with
+  // adds/completes/deletes that happen inside this component.
+  useEffect(() => { onItemsChange?.(items) }, [items, onItemsChange])
 
   // Add sheet
   const [showAdd, setShowAdd] = useState(false)

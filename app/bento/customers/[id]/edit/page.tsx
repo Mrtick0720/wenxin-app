@@ -16,11 +16,6 @@ const DELIVERY_FREQUENCIES = [
   { value: 'weekdays', label: 'Weekdays' },
 ]
 
-const SUB_TYPE_LABELS: Record<string, string> = {
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  school: 'School / Custom',
-}
 
 // Read-only subscription accounting snapshot — shown for reference, never edited here.
 type SubscriptionMeta = {
@@ -43,6 +38,7 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
   const [form, setForm] = useState({
     name: '', phone: '', delivery_method: 'pickup', delivery_frequency: 'weekdays',
     delivery_address: '', area: '', menu_preference: '', taste_notes: '', note: '',
+    start_date: '', total_portions: '', package_mode: 'scheduled',
   })
   // Read-only: subscription accounting (never sent in the update payload).
   const [meta, setMeta] = useState<SubscriptionMeta | null>(null)
@@ -60,6 +56,9 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
           menu_preference: data.menu_preference ?? '',
           taste_notes: data.taste_notes ?? '',
           note: data.note ?? '',
+          start_date: data.start_date ?? '',
+          total_portions: String(data.total_portions ?? ''),
+          package_mode: data.package_mode ?? 'scheduled',
         })
         setMeta({
           subscription_type: data.subscription_type ?? 'monthly',
@@ -81,9 +80,9 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
     setSaving(true)
     setError(null)
     try {
-      // Only contact/delivery fields are updated. Subscription accounting
-      // (subscription_type, start_date, total_portions, used_portions, active)
-      // is intentionally omitted so it can never change from profile editing.
+      // Contact/delivery fields + subscription start date & total portions
+      // (editable so the schedule can be set/corrected). used_portions and
+      // subscription_type stay managed from the customer detail page.
       const { error: updateError } = await supabase.from('bento_customers').update({
         name: form.name.trim(),
         phone: form.phone,
@@ -93,6 +92,9 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
         area: form.area,
         menu_preference: form.menu_preference,
         taste_notes: form.taste_notes,
+        start_date: form.start_date || null,
+        total_portions: parseInt(String(form.total_portions)) || 0,
+        package_mode: form.package_mode,
         note: form.note,
       }).eq('id', id)
       if (updateError) {
@@ -205,6 +207,36 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
         </div>
 
         <div>
+          <label className="text-xs text-gray-500 mb-1 block">Package Mode</label>
+          <div className="flex gap-2">
+            {[
+              { value: 'scheduled', label: '📅 Daily' },
+              { value: 'balance', label: '🎫 Balance' },
+              { value: 'postpaid', label: '🏢 Postpaid' },
+            ].map(m => (
+              <button key={m.value} type="button" onClick={() => set('package_mode', m.value)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.package_mode === m.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Start Date</label>
+            <input type="date" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
+              value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Total Portions</label>
+            <input type="number" min="0" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
+              placeholder="e.g. 30" value={form.total_portions} onChange={e => set('total_portions', e.target.value)} />
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-400 -mt-2">Changing these regenerates the delivery schedule.</p>
+
+        <div>
           <label className="text-xs text-gray-500 mb-1 block">Notes</label>
           <textarea className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400 resize-none" style={{ fontSize: 16 }}
             rows={3} placeholder="Any other notes..." value={form.note} onChange={e => set('note', e.target.value)} />
@@ -216,16 +248,8 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Subscription (read-only)</div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <div className="text-xs text-gray-400 mb-0.5">Subscription Type</div>
-                <div className="text-sm font-medium text-gray-700">{SUB_TYPE_LABELS[meta.subscription_type] ?? meta.subscription_type}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Subscription Status</div>
-                <div className={`text-sm font-medium ${meta.active ? 'text-green-600' : 'text-gray-400'}`}>{meta.active ? 'Active' : 'Inactive'}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-400 mb-0.5">Total Portions</div>
-                <div className="text-sm font-medium text-gray-700">{meta.total_portions}</div>
+                <div className="text-xs text-gray-400 mb-0.5">Status</div>
+                <div className={`text-sm font-medium ${meta.active ? 'text-green-600' : 'text-gray-400'}`}>{meta.active ? 'Active' : 'Completed'}</div>
               </div>
               <div>
                 <div className="text-xs text-gray-400 mb-0.5">Used Portions</div>
@@ -235,12 +259,6 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
                 <div className="text-xs text-gray-400 mb-0.5">Remaining Portions</div>
                 <div className="text-sm font-medium text-gray-700">{remaining}</div>
               </div>
-              {meta.start_date && (
-                <div>
-                  <div className="text-xs text-gray-400 mb-0.5">Start Date</div>
-                  <div className="text-sm font-medium text-gray-700">{meta.start_date}</div>
-                </div>
-              )}
             </div>
           </div>
         )}

@@ -107,7 +107,20 @@ export default function ProductionPage() {
     setLoading(false)
   }, [staff?.role])
 
-  useEffect(() => { loadData(selectedDate) }, [loadData, selectedDate])
+  useEffect(() => {
+    loadData(selectedDate)
+
+    // Realtime on bento_orders (view won't fire events)
+    const channel = supabase
+      .channel('production-realtime')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'bento_orders' },
+        () => { loadData(selectedDate) }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [loadData, selectedDate, staff?.role])
 
   const bentoName = (o: Order) => (o.bento_items?.trim() || o.items?.trim() || o.menu_type || 'Bento')
 
@@ -310,31 +323,36 @@ export default function ProductionPage() {
               {g.rows.map((o, ri) => {
                 const done = o.status === 'completed'
                 const last = gi === groups.length - 1 && ri === g.rows.length - 1
+                const seq = groups.slice(0, gi).reduce((s, gg) => s + gg.rows.length, 0) + ri + 1
+                const seqLabel = String.fromCharCode(64 + seq) // 1→A, 2→B …
                 return (
                   <div key={o.id} className="rounded-[10px] overflow-hidden"
                     style={{ background: '#1e293b', border: `1px solid ${done ? '#14532d' : '#334155'}`, opacity: done ? 0.55 : 1, marginBottom: last ? 4 : ri === g.rows.length - 1 ? 11 : 5 }}>
                     <div style={{ padding: '10px 11px' }}>
                       <div className="flex items-baseline justify-between gap-1.5 mb-1.5">
-                        <span className="text-[14px] font-medium leading-tight flex-1" style={{ color: '#f1f5f9' }}>{bentoName(o)}</span>
+                        <span className="flex items-baseline gap-1.5 flex-1 min-w-0">
+                          <span className="text-[17px] font-bold flex-shrink-0 w-5 text-center" style={{ color: '#f97316' }}>{seqLabel}</span>
+                          <span className="text-[17px] font-semibold leading-tight" style={{ color: '#f1f5f9' }}>{o.compartment_a?.trim() || bentoName(o)}</span>
+                        </span>
                         <span className="text-[21px] font-medium whitespace-nowrap flex-shrink-0" style={{ color: '#f97316' }}>×{o.quantity ?? 1}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 flex flex-col gap-1">
                           {o.compartment_a && (
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-medium rounded-[4px] flex-shrink-0" style={{ background: '#431407', color: '#fb923c', padding: '1px 6px' }}>A</span>
+                              <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Meat">🍗</span>
                               <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{o.compartment_a}</span>
                             </div>
                           )}
                           {o.compartment_b && (
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-medium rounded-[4px] flex-shrink-0" style={{ background: '#14532d', color: '#4ade80', padding: '1px 6px' }}>B</span>
+                              <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Vegetable">🥬</span>
                               <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{o.compartment_b}</span>
                             </div>
                           )}
                           {o.compartment_c && (
                             <div className="flex items-center gap-1.5">
-                              <span className="text-[11px] font-medium rounded-[4px] flex-shrink-0" style={{ background: '#1e3a5f', color: '#60a5fa', padding: '1px 6px' }}>C</span>
+                              <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Rice">🍚</span>
                               <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{o.compartment_c}</span>
                             </div>
                           )}

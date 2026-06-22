@@ -3,7 +3,7 @@
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as svc from '@/lib/purchaseLedger/service'
-import type { ActionResult, PurchaseRecord } from '@/lib/purchaseLedger/types'
+import type { ActionResult, PurchaseRecord, PurchaseSummary } from '@/lib/purchaseLedger/types'
 
 export type ChecklistEntry = {
   id: number
@@ -46,6 +46,61 @@ function fail(error: unknown): ActionResult<never> {
         : String(error)
   console.error('[checklist action]', message, error)
   return { ok: false, error: message }
+}
+
+export type PurchaseContentData = {
+  checklist: ChecklistEntry[]
+  pending: PurchaseRecord[]
+  records: PurchaseRecord[]
+  summary: PurchaseSummary | null
+}
+
+/**
+ * Combined content fetch for the Purchase page boot: checklist + pending
+ * verification + records + summary in a SINGLE round-trip with ONE auth check.
+ * Replaces three separate server actions (each with its own requireRole), so
+ * page entry no longer pays 3× auth + 3× HTTP overhead. The hero KPI stays
+ * separate (slowest, fetched after this resolves).
+ */
+export async function fetchPurchaseContentAction(): Promise<ActionResult<PurchaseContentData>> {
+  try {
+    const staff = await requireRole(...ROLES)
+    const supabase = await createServerSupabaseClient()
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10)
+
+    const [pendingChecklistRes, doneChecklistRes, pending, records, summary] = await Promise.all([
+      supabase
+        .from('purchase_checklist')
+        .select(SELECT_COLS)
+        .eq('status', 'pending')
+        .order('id', { ascending: false }),
+      supabase
+        .from('purchase_checklist')
+        .select(SELECT_COLS)
+        .eq('status', 'done')
+        .gte('created_at', sevenDaysAgo)
+        .order('completed_at', { ascending: false })
+        .limit(30),
+      svc.listPendingVerification(),
+      svc.listRecords(staff.role, {}),
+      svc.getSummary(staff.role),
+    ])
+
+    if (pendingChecklistRes.error) throw pendingChecklistRes.error
+    if (doneChecklistRes.error) throw doneChecklistRes.error
+
+    const checklist = [
+      ...(pendingChecklistRes.data ?? []),
+      ...(doneChecklistRes.data ?? []),
+    ] as ChecklistEntry[]
+
+    return { ok: true, data: { checklist, pending, records, summary } }
+  } catch (error) {
+    return fail(error)
+  }
 }
 
 /** Fetch all checklist items: all pending + last 7 days of completed. */

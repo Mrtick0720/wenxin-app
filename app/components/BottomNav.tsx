@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useNavigation } from './NavigationStack'
 import { getPageElement } from '@/app/lib/stackPages'
 import { resolveBottomTabAction } from '@/lib/bottomTabNavigation'
+import { useState, useEffect } from 'react'
 
 const HomeIcon = ({ active }: { active: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={active ? '#f97316' : '#9ca3af'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -62,15 +63,22 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
   const { reset, resetTo, popToRoot, canPop, currentPath } = useNavigation()
   const router = useRouter()
   const pathname = usePathname()
+  const [forceHomeActive, setForceHomeActive] = useState(false)
+
+  // Clear force highlight once pathname catches up
+  useEffect(() => {
+    if (pathname === '/') setForceHomeActive(false)
+  }, [pathname])
 
   const handleTap = (e: React.MouseEvent, href: string) => {
     e.preventDefault()
     const action = resolveBottomTabAction({ href, currentPath })
+    setForceHomeActive(false)
 
     if (action === 'home') {
-      if (canPop) {
-        popToRoot()
-      }
+      if (canPop) popToRoot()
+      setForceHomeActive(true)
+      router.push('/')
       return
     }
 
@@ -92,7 +100,7 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-[300]">
       {tabs.map(({ href, label, Icon, badge }) => {
         const active = href === '/'
-          ? activePath === '/'
+          ? activePath === '/' || forceHomeActive
           : activePath === href || activePath.startsWith(`${href}/`)
         return (
           <a key={label} href={href} onClick={e => handleTap(e, href)}

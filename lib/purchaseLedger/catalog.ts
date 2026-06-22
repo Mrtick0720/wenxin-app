@@ -8,6 +8,8 @@ export type CatalogItem = {
   unit: string
 }
 
+export type CatalogDisplayMode = 'default' | 'latin'
+
 export function normalizeCatalogSearch(value: string | null | undefined): string {
   return (value ?? '')
     .trim()
@@ -15,6 +17,23 @@ export function normalizeCatalogSearch(value: string | null | undefined): string
     .normalize('NFC')
     .replace(/\s+/g, '')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
+}
+
+export function resolveCatalogDisplayName(
+  storedName: string,
+  catalog: CatalogItem[],
+  mode: CatalogDisplayMode,
+): string {
+  if (mode === 'default') return storedName
+
+  const target = normalizeCatalogSearch(storedName)
+  const match = catalog.find(
+    (item) =>
+      normalizeCatalogSearch(item.name_zh) === target ||
+      normalizeCatalogSearch(item.name_ms) === target,
+  )
+
+  return match?.name_ms?.trim() || 'Unknown item'
 }
 
 const HAN_QUERY = /\p{Script=Han}/u

@@ -2,24 +2,17 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
+import {
+  groupUnpaidOrdersByCustomerAndDate,
+  type DailyBill,
+  type UnpaidOrder,
+} from './dailyBills'
 
-type Order = {
-  id: number
-  customer_name: string
-  phone: string
-  address: string
-  area: string
-  menu_type: string
-  items: string
-  note: string
-  amount: number
-  paid: boolean
-  status: string
-  date: string
-}
+const Z_MAX = 2147483647
 
 const MENU_TYPE_LABELS: Record<string, string> = {
   standard: 'Standard',
@@ -30,27 +23,39 @@ const MENU_TYPE_LABELS: Record<string, string> = {
   '素食': 'Vegetarian',
 }
 
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr + 'T00:00:00')
-  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]
-  return `${month} ${d.getDate()}`
+function formatDate(dateStr: string, includeYear = false) {
+  const date = new Date(`${dateStr}T00:00:00`)
+  const formatted = date.toLocaleDateString('en-MY', {
+    day: 'numeric',
+    month: 'short',
+    ...(includeYear ? { year: 'numeric' } : {}),
+  })
+  return formatted
+}
+
+function money(amount: number): string {
+  return `RM ${amount.toFixed(2)}`
 }
 
 export default function UnpaidPage() {
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<UnpaidOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState<number | null>(null)
+  const [payingBillKey, setPayingBillKey] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(null)
+  const [selectedBill, setSelectedBill] = useState<DailyBill | null>(null)
 
   const loadUnpaid = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
+    const { data, error: loadError } = await supabase
       .from('bento_orders')
-      .select('*')
+      .select('id, customer_name, phone, address, area, menu_type, items, note, amount, quantity, paid, status, date')
       .eq('paid', false)
       .neq('status', 'canceled')
       .order('date', { ascending: false })
-    setOrders(data || [])
+
+    if (loadError) setError(loadError.message || 'Failed to load unpaid bills.')
+    setOrders((data ?? []) as UnpaidOrder[])
     setLoading(false)
   }, [])
 
@@ -58,114 +63,248 @@ export default function UnpaidPage() {
     loadUnpaid()
   }, [loadUnpaid])
 
-  async function markPaid(order: Order): Promise<boolean> {
-    setUpdating(order.id)
+  const customerGroups = useMemo(
+    () => groupUnpaidOrdersByCustomerAndDate(orders),
+    [orders],
+  )
+  const selectedCustomer = customerGroups.find(
+    (customer) => customer.key === selectedCustomerKey,
+  ) ?? null
+  const total = customerGroups.reduce((sum, customer) => sum + customer.total, 0)
+
+  useEffect(() => {
+    if (selectedCustomerKey && !selectedCustomer) setSelectedCustomerKey(null)
+  }, [selectedCustomer, selectedCustomerKey])
+
+  async function markBillPaid(bill: DailyBill) {
+    setPayingBillKey(bill.key)
     setError(null)
+
     try {
-      const { error: updateError } = await supabase.from('bento_orders').update({ paid: true }).eq('id', order.id)
-      if (updateError) {
-        setError(updateError.message || 'Failed to mark as paid.')
-        setUpdating(null)
-        return false
+      const results = await Promise.all(
+        bill.orders.map((order) =>
+          supabase
+            .from('bento_orders')
+            .update({
+              paid: true,
+              payment_status: 'paid',
+              amount_paid: Number(order.amount || 0),
+            })
+            .eq('id', order.id),
+        ),
+      )
+      const failed = results.find((result) => result.error)
+      if (failed?.error) {
+        setError(failed.error.message || 'Failed to mark this bill as paid.')
+        setPayingBillKey(null)
+        return
       }
-      setOrders(prev => prev.filter(o => o.id !== order.id))
-      setUpdating(null)
-      return true
+
+      const paidIds = new Set(bill.orderIds)
+      setOrders((current) => current.filter((order) => !paidIds.has(order.id)))
+      setSelectedBill(null)
     } catch {
       setError('Network error. Please check your connection.')
-      setUpdating(null)
-      return false
+    } finally {
+      setPayingBillKey(null)
     }
   }
 
-  const total = orders.reduce((sum, o) => sum + o.amount, 0)
-
-  const grouped = orders.reduce<Record<string, Order[]>>((acc, o) => {
-    const key = o.customer_name
-    if (!acc[key]) acc[key] = []
-    acc[key].push(o)
-    return acc
-  }, {})
+  function goBack() {
+    setSelectedCustomerKey(null)
+    setError(null)
+  }
 
   return (
-    <main className="min-h-screen bg-gray-50 w-full mx-auto">
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
+    <main className="h-dvh min-h-0 bg-gray-50 w-full flex flex-col overflow-hidden">
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b flex-shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <BackButton href="/bento" />
-          <span className="font-semibold text-base">Unpaid Orders</span>
+          {selectedCustomer ? (
+            <button
+              type="button"
+              onClick={goBack}
+              aria-label="Back to unpaid customers"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 text-gray-600 active:opacity-70"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6" />
+              </svg>
+            </button>
+          ) : (
+            <BackButton href="/bento" />
+          )}
+          <div>
+            <div className="font-semibold text-base">
+              {selectedCustomer?.customerName ?? 'Unpaid Orders'}
+            </div>
+            {selectedCustomer && (
+              <div className="text-xs text-gray-400">
+                {selectedCustomer.bills.length} unpaid bill{selectedCustomer.bills.length === 1 ? '' : 's'}
+              </div>
+            )}
+          </div>
         </div>
-        {orders.length > 0 && (
-          <span className="text-sm text-red-500 font-semibold">RM {total.toFixed(1)}</span>
+        {(selectedCustomer ? selectedCustomer.total : total) > 0 && (
+          <span className="text-sm text-red-500 font-semibold">
+            {money(selectedCustomer?.total ?? total)}
+          </span>
         )}
       </div>
 
-      <div className="px-4 py-4 pb-8 space-y-4">
+      <div
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 space-y-3"
+        style={{
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)',
+        }}
+      >
         {error && (
-          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{error}</span>
+          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+            {error}
           </div>
         )}
+
         {loading && <div className="text-center text-gray-400 py-8">Loading...</div>}
 
-        {!loading && orders.length === 0 && (
+        {!loading && customerGroups.length === 0 && (
           <div className="text-center text-gray-400 py-12">
             <div className="text-4xl mb-3">🎉</div>
-            <div className="font-medium text-gray-500">All orders are paid</div>
+            <div className="font-medium text-gray-500">All bills are paid</div>
           </div>
         )}
 
-        {!loading && Object.entries(grouped).map(([name, customerOrders]) => {
-          const customerTotal = customerOrders.reduce((s, o) => s + o.amount, 0)
-          return (
-            <div key={name} className="bg-white rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-orange-50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-semibold text-gray-900">{name}</span>
-                  <span className="text-xs text-gray-400">{customerOrders[0].phone}</span>
+        {!loading && !selectedCustomer && customerGroups.map((customer) => (
+          <button
+            key={customer.key}
+            type="button"
+            onClick={() => { setSelectedCustomerKey(customer.key); setError(null) }}
+            className="w-full bg-white rounded-2xl shadow-sm px-4 py-4 text-left active:opacity-75"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="font-semibold text-gray-900 truncate">{customer.customerName}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {customer.bills.length} unpaid bill{customer.bills.length === 1 ? '' : 's'}
+                  {customer.phone ? ` · ${customer.phone}` : ''}
                 </div>
-                <span className="text-sm font-semibold text-orange-600">RM {customerTotal.toFixed(1)}</span>
               </div>
-
-              <div className="divide-y divide-gray-50">
-                {customerOrders.map(order => (
-                  <div key={order.id} className="px-4 py-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-gray-400">{formatDate(order.date)}</span>
-                      <div className="flex items-center gap-2">
-                        {order.menu_type && (
-                          <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{MENU_TYPE_LABELS[order.menu_type] || order.menu_type}</span>
-                        )}
-                        <span className="text-sm font-medium text-gray-900">RM {order.amount}</span>
-                      </div>
-                    </div>
-                    <div className="text-sm text-gray-600">📦 {order.items}</div>
-                    {order.note && <div className="text-xs text-orange-500 mt-0.5">📝 {order.note}</div>}
-                  </div>
-                ))}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className="text-sm font-semibold text-orange-600">{money(customer.total)}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </div>
+            </div>
+          </button>
+        ))}
 
-              <div className="px-4 pb-4 pt-2">
+        {!loading && selectedCustomer?.bills.map((bill) => (
+          <button
+            key={bill.key}
+            type="button"
+            onClick={() => { setSelectedBill(bill); setError(null) }}
+            className="w-full bg-white rounded-2xl shadow-sm px-4 py-4 text-left active:opacity-75"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-gray-900">{formatDate(bill.date, true)}</div>
+                <div className="text-xs text-gray-400 mt-1">
+                  {bill.orderCount} order{bill.orderCount === 1 ? '' : 's'} · tap to view bill
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-orange-600">{money(bill.total)}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {selectedBill && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 flex flex-col justify-end"
+          style={{ zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => { if (!payingBillKey) setSelectedBill(null) }}
+        >
+          <div
+            className="bg-white rounded-t-3xl flex flex-col"
+            style={{
+              maxHeight: '88vh',
+              paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 20px)',
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-4 pt-5 pb-3 border-b border-gray-100 flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold text-lg text-gray-900">{selectedBill.customerName}</div>
+                <div className="text-sm text-gray-400 mt-0.5">{formatDate(selectedBill.date, true)}</div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="text-lg font-bold text-orange-600">{money(selectedBill.total)}</div>
                 <button
-                  onClick={async () => {
-                    setError(null)
-                    for (const o of customerOrders) {
-                      const ok = await markPaid(o)
-                      if (!ok) break
-                    }
-                  }}
-                  disabled={customerOrders.some(o => updating === o.id)}
-                  className="w-full py-2.5 rounded-xl text-sm font-medium bg-green-500 text-white"
+                  type="button"
+                  aria-label="Close bill detail"
+                  disabled={Boolean(payingBillKey)}
+                  onClick={() => setSelectedBill(null)}
+                  className="text-gray-400 text-2xl leading-none active:opacity-70"
                 >
-                  ✓ Mark All Paid RM {customerTotal.toFixed(1)}
+                  ×
                 </button>
               </div>
             </div>
-          )
-        })}
-      </div>
+
+            <div className="px-4 py-2 overflow-y-auto min-h-0">
+              {selectedBill.orders.map((order) => (
+                <div key={order.id} className="py-3 border-b border-gray-100 last:border-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm text-gray-800">
+                        {order.items || 'Bento order'}
+                        {(order.quantity ?? 0) > 1 ? ` ×${order.quantity}` : ''}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {order.menu_type && (
+                          <span className="text-[11px] bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">
+                            {MENU_TYPE_LABELS[order.menu_type] || order.menu_type}
+                          </span>
+                        )}
+                        {order.note && <span className="text-xs text-orange-500 truncate">{order.note}</span>}
+                      </div>
+                    </div>
+                    <span className="text-sm font-semibold text-gray-900 flex-shrink-0">
+                      {money(Number(order.amount || 0))}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {error && (
+              <div className="mx-4 mt-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+                {error}
+              </div>
+            )}
+
+            <div className="px-4 pt-3">
+              <button
+                type="button"
+                onClick={() => markBillPaid(selectedBill)}
+                disabled={payingBillKey === selectedBill.key}
+                className="w-full py-3 rounded-2xl text-sm font-semibold text-white active:opacity-85"
+                style={{ background: payingBillKey === selectedBill.key ? '#9ca3af' : '#22c55e' }}
+              >
+                {payingBillKey === selectedBill.key
+                  ? 'Updating…'
+                  : `✓ Mark All Paid ${money(selectedBill.total)}`}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </main>
   )
 }

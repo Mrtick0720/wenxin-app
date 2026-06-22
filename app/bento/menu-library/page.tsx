@@ -116,7 +116,10 @@ export default function MenuLibraryPage() {
                 <div className="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">
                   {variantItems.map(item => (
                     <div key={item.id} className="flex items-center px-4 py-3">
-                      <span className="text-sm text-gray-800 flex-1">{item.dish_name}</span>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm text-gray-800">{item.description || item.dish_name}</span>
+                        {item.description && <div className="text-[11px] text-gray-400 mt-0.5 truncate">{item.dish_name}</div>}
+                      </div>
                       {canEdit && (
                         <button type="button" onClick={() => deleteItem(item.id)}
                           className="text-gray-300 active:text-red-500 p-1">

@@ -12,11 +12,7 @@ const DAYS_SHORT = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
 function isDefaultOpen(dayIndex: number) { return dayIndex < 5 }
 
-const VARIANT_MOCK: Record<string, string[]> = {
-  light:      ['Sliced Chicken', 'Stir-fried Greens', 'White Rice'],
-  flavorful:  ['Beef Brisket',   'Braised Tofu',      'White Rice'],
-  vegetarian: ['Fried Egg',      'Mixed Vegetables',  'Brown Rice'],
-}
+const VARIANT_PLACEHOLDER = ['Protein', 'Vegetable', 'Staple']
 
 const VARIANT_COLORS: Record<string, string> = {
   light:      '#3B82F6',
@@ -48,11 +44,12 @@ function getDateNum(weekStart: string, dayIndex: number): number {
 }
 
 type Variant  = { id: number; code: string; name: string }
-type Component = { id: number; name: string; is_active: boolean }
+type Component = { id: number; name: string; description: string | null; is_active: boolean }
 type Assignment = {
   id?: number; week_start: string; day_of_week: number; variant_id: number
   protein_id: number | null; vegetable_id: number | null; staple_id: number | null
   protein_name?: string | null; vegetable_name?: string | null; staple_name?: string | null
+  protein_descr?: string | null; vegetable_descr?: string | null; staple_descr?: string | null
 }
 
 export default function WeeklyMenuPage() {
@@ -68,6 +65,8 @@ export default function WeeklyMenuPage() {
   const [proteins, setProteins]               = useState<Component[]>([])
   const [vegetables, setVegetables]           = useState<Component[]>([])
   const [staples, setStaples]                 = useState<Component[]>([])
+  // protein name → variant_code (e.g. "虾仁烩豆腐" → "light")
+  const [proteinVariant, setProteinVariant]   = useState<Record<string, string>>({})
   const [assignments, setAssignments]         = useState<Assignment[]>([])
   const [dayAvailability, setDayAvailability] = useState<Record<string, boolean>>({})
   const [loading, setLoading]                 = useState(true)
@@ -77,25 +76,26 @@ export default function WeeklyMenuPage() {
   useEffect(() => {
     Promise.all([
       supabase.from('bento_menu_variants').select('id,code,name').eq('is_active', true).order('display_order'),
-      supabase.from('bento_proteins').select('id,name,is_active').eq('is_active', true).order('name'),
-      supabase.from('bento_vegetables').select('id,name,is_active').eq('is_active', true).order('name'),
-      supabase.from('bento_staples').select('id,name,is_active').eq('is_active', true).order('name'),
-    ]).then(([v, p, veg, s]) => {
+      supabase.from('bento_proteins').select('id,name,description,is_active').eq('is_active', true).order('name'),
+      supabase.from('bento_vegetables').select('id,name,description,is_active').eq('is_active', true).order('name'),
+      supabase.from('bento_staples').select('id,name,description,is_active').eq('is_active', true).order('name'),
+      supabase.from('bento_menu_library').select('dish_name, bento_menu_variants!inner(code)'),
+    ]).then(([v, p, veg, s, lib]) => {
       setVariants((v.data || []) as Variant[])
       setProteins((p.data || []) as Component[])
       setVegetables((veg.data || []) as Component[])
       setStaples((s.data || []) as Component[])
+      // Build protein name → variant_code map
+      const pv: Record<string, string> = {}
+      for (const r of (lib.data || []) as unknown as { dish_name: string; bento_menu_variants: { code: string } }[]) {
+        if (r.bento_menu_variants?.code) pv[r.dish_name] = r.bento_menu_variants.code
+      }
+      setProteinVariant(pv)
     })
   }, [])
 
-  const loadWeek = useCallback(async (ws: string) => {
-    setLoading(true)
-    const { data } = await supabase
-      .from('bento_weekly_menu_assignments')
-      .select('*, bento_proteins(name), bento_vegetables(name), bento_staples(name)')
-      .eq('week_start', ws)
-      .order('day_of_week')
-    setAssignments(((data || []) as Record<string, unknown>[]).map(r => {
+  const mapAssignments = (data: Record<string, unknown>[] | null): Assignment[] =>
+    ((data || []) as Record<string, unknown>[]).map(r => {
       const p = r.bento_proteins   as Record<string, unknown> | null
       const v = r.bento_vegetables as Record<string, unknown> | null
       const s = r.bento_staples    as Record<string, unknown> | null
@@ -108,8 +108,20 @@ export default function WeeklyMenuPage() {
         protein_name:   p?.name as string | undefined,
         vegetable_name: v?.name as string | undefined,
         staple_name:    s?.name as string | undefined,
+        protein_descr:   (p?.description as string) ?? null,
+        vegetable_descr: (v?.description as string) ?? null,
+        staple_descr:    (s?.description as string) ?? null,
       }
-    }))
+    }) as Assignment[]
+
+  const loadWeek = useCallback(async (ws: string) => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('bento_weekly_menu_assignments')
+      .select('*, bento_proteins(name,description), bento_vegetables(name,description), bento_staples(name,description)')
+      .eq('week_start', ws)
+      .order('day_of_week')
+    setAssignments(mapAssignments(data))
     setLoading(false)
   }, [])
 
@@ -129,6 +141,24 @@ export default function WeeklyMenuPage() {
   useEffect(() => {
     loadWeek(weekStart)
     loadAvailability(weekStart)
+
+    // Realtime: silent refresh — no loading spinner, only updates changed cards
+    const channel = supabase
+      .channel('weekly-menu-editor')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'bento_weekly_menu_assignments', filter: `week_start=eq.${weekStart}` },
+        async () => {
+          const { data } = await supabase
+            .from('bento_weekly_menu_assignments')
+            .select('*, bento_proteins(name,description), bento_vegetables(name,description), bento_staples(name,description)')
+            .eq('week_start', weekStart)
+            .order('day_of_week')
+          setAssignments(mapAssignments(data))
+        }
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [loadWeek, loadAvailability, weekStart])
 
   useEffect(() => {
@@ -241,6 +271,7 @@ export default function WeeklyMenuPage() {
           dayIndex={openVariant.dayIndex}
           weekStart={weekStart}
           proteins={proteins} vegetables={vegetables} staples={staples}
+          proteinVariant={proteinVariant}
           assignments={assignments}
           onClose={() => setOpenVariant(null)}
           onSaved={() => { setOpenVariant(null); loadWeek(weekStart) }}
@@ -482,10 +513,12 @@ function VariantCard({
   onEdit: () => void
 }) {
   const configured = !!(assignment?.protein_id && assignment?.vegetable_id && assignment?.staple_id)
-  const mock = VARIANT_MOCK[variant.code] ?? ['Protein', 'Vegetable', 'Staple']
   const items = configured
     ? [assignment!.protein_name, assignment!.vegetable_name, assignment!.staple_name]
-    : mock
+    : null
+  const descrs = configured
+    ? [assignment!.protein_descr, assignment!.vegetable_descr, assignment!.staple_descr]
+    : null
 
   return (
     <div
@@ -502,19 +535,28 @@ function VariantCard({
             {canEdit && <span className="text-gray-300 text-xl leading-none">›</span>}
           </div>
           <div className="space-y-1.5">
-            {items.map((val, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <span className={`text-sm font-bold flex-shrink-0 ${configured ? 'text-orange-400' : 'text-gray-300'}`}>
-                  {configured ? '✓' : '—'}
-                </span>
-                <span
-                  className="text-[15px] leading-snug truncate"
-                  style={{ color: configured ? '#374151' : '#64748B' }}
-                >
-                  {val}
-                </span>
-              </div>
-            ))}
+            {items ? items.map((val, idx) => {
+              const descr = descrs?.[idx]
+              const dotColor = VARIANT_COLORS[variant.code] ?? '#d1d5db'
+              return (
+                <div key={idx}>
+                  <div className="flex items-center gap-2">
+                    <span className="flex-shrink-0" style={{ width: 6, height: 6, borderRadius: '50%', background: configured ? dotColor : '#d1d5db' }} />
+                    <span
+                      className="text-[15px] leading-snug truncate"
+                      style={{ color: configured ? '#374151' : '#64748B' }}
+                    >
+                      {descr || val}
+                    </span>
+                  </div>
+                  {descr && (
+                    <div className="text-[11px] text-gray-400 truncate ml-6">{val}</div>
+                  )}
+                </div>
+              )
+            }) : (
+              <div className="text-[13px] text-gray-300 py-2">Tap to configure</div>
+            )}
           </div>
         </div>
 
@@ -553,12 +595,17 @@ function VariantCard({
 type DraftRow = { protein_id: number | null; vegetable_id: number | null; staple_id: number | null }
 
 function VariantEditorSheet({
-  variant, dayName, dayIndex, weekStart, proteins, vegetables, staples, assignments, onClose, onSaved,
+  variant, dayName, dayIndex, weekStart, proteins, vegetables, staples, proteinVariant, assignments, onClose, onSaved,
 }: {
   variant: Variant; dayName: string; dayIndex: number; weekStart: string
   proteins: Component[]; vegetables: Component[]; staples: Component[]
+  proteinVariant: Record<string, string>
   assignments: Assignment[]; onClose: () => void; onSaved: () => void
 }) {
+  // Filter proteins to this variant: light → only light proteins, flavorful → only flavorful
+  const filteredProteins = proteins.filter(p =>
+    !proteinVariant[p.name] || proteinVariant[p.name] === variant.code
+  )
   const existing = assignments.find(x => x.day_of_week === dayIndex && x.variant_id === variant.id)
   const [draft, setDraft] = useState<DraftRow>({
     protein_id:   existing?.protein_id   ?? null,
@@ -623,7 +670,7 @@ function VariantEditorSheet({
           {error && (
             <div className="px-3 py-2 mb-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
           )}
-          <ComponentSelect label="Protein"   items={proteins}   value={draft.protein_id}   onChange={val => setDraft(d => ({ ...d, protein_id:   val }))} />
+          <ComponentSelect label="Protein"   items={filteredProteins}   value={draft.protein_id}   onChange={val => setDraft(d => ({ ...d, protein_id:   val }))} />
           <ComponentSelect label="Vegetable" items={vegetables} value={draft.vegetable_id} onChange={val => setDraft(d => ({ ...d, vegetable_id: val }))} />
           <ComponentSelect label="Staple"    items={staples}    value={draft.staple_id}    onChange={val => setDraft(d => ({ ...d, staple_id:    val }))} />
         </div>
@@ -666,7 +713,7 @@ function ComponentSelect({ label, items, value, onChange }: {
         style={{ fontSize: 16 }}
       >
         <option value="">Select {label}…</option>
-        {items.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        {items.map(c => <option key={c.id} value={c.id}>{c.description || c.name}{c.description ? ` — ${c.name}` : ''}</option>)}
       </select>
     </div>
   )

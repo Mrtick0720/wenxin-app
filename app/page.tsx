@@ -9,6 +9,7 @@ import BentoOpsCard from './components/home/BentoOpsCard'
 import TodaysIssuesCard, { type IssueRow } from './components/home/TodaysIssuesCard'
 import ShiftBoardCard from './components/home/ShiftBoardCard'
 import QuickAccessGrid from './components/home/QuickAccessGrid'
+import KitchenHome from './components/home/KitchenHome'
 import { canAccessPath, getHomeVisibility } from '@/lib/auth/permissions'
 import { requireCurrentStaff } from '@/lib/auth/currentStaff'
 import type { StaffRole } from '@/lib/auth/types'
@@ -94,14 +95,19 @@ async function getPendingChecklistCount(supabase: SupabaseClient) {
 async function getComplaintCount() { return 1 }
 
 async function getReceivablesSummary(supabase: SupabaseClient) {
-  const { data } = await supabase
-    .from('receivables')
-    .select('original_amount, paid_amount')
-    .neq('status', 'paid')
-  const rows = (data ?? []) as { original_amount: number; paid_amount: number }[]
+  const [recRes, bentoRes] = await Promise.all([
+    supabase.from('receivables').select('original_amount, paid_amount').neq('status', 'paid'),
+    // Completed-but-unpaid bento orders are money owed for meals already
+    // delivered (e.g. postpaid schools), so fold them into the receivables total.
+    supabase.from('bento_orders').select('amount').eq('status', 'completed').eq('paid', false),
+  ])
+  const rows = (recRes.data ?? []) as { original_amount: number; paid_amount: number }[]
+  const bentoRows = (bentoRes.data ?? []) as { amount: number | null }[]
+  const recBalance = rows.reduce((s, r) => s + Math.max(0, Number(r.original_amount) - Number(r.paid_amount)), 0)
+  const bentoBalance = bentoRows.reduce((s, r) => s + Number(r.amount || 0), 0)
   return {
-    totalBalance: rows.reduce((s, r) => s + Math.max(0, Number(r.original_amount) - Number(r.paid_amount)), 0),
-    openCount: rows.length,
+    totalBalance: recBalance + bentoBalance,
+    openCount: rows.length + bentoRows.length,
   }
 }
 
@@ -152,6 +158,13 @@ function getTodayIssues(role: StaffRole): Issue[] {
 
 export default async function Home() {
   const staff = await requireCurrentStaff()
+
+  // Kitchen gets a dedicated execution-first command center, not the
+  // owner/manager financial dashboard.
+  if (staff.role === 'kitchen') {
+    return <KitchenHome />
+  }
+
   const supabase = await createServerSupabaseClient()
   const visibility = getHomeVisibility(staff.role)
   // Each source is wrapped in safe() so it resolves independently. The outer

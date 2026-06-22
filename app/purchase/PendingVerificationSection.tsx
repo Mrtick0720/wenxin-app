@@ -1,9 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useStaff } from '@/app/components/StaffProvider'
+import {
+  resolveCatalogDisplayName,
+  type CatalogItem,
+} from '@/lib/purchaseLedger/catalog'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { categoryColor } from '@/lib/purchaseLedger/categories'
+import { fetchCatalogAction } from './actions'
 import { acceptVerificationAction, rejectVerificationAction, cancelPurchaseAction } from './verification-actions'
 
 const Z_MAX = 2147483647
@@ -30,6 +36,7 @@ function fmtQty(n: number, unit: string): string {
 
 type SheetProps = {
   item: PendingVerificationItem
+  displayName: string
   canVerify: boolean
   onAccept: (receivedQty: number) => Promise<void>
   onReject: (reason: string) => Promise<void>
@@ -37,7 +44,7 @@ type SheetProps = {
   onClose: () => void
 }
 
-function VerificationSheet({ item, canVerify, onAccept, onReject, onCancel, onClose }: SheetProps) {
+function VerificationSheet({ item, displayName, canVerify, onAccept, onReject, onCancel, onClose }: SheetProps) {
   const [receivedQty, setReceivedQty] = useState(String(item.quantity))
   const [rejectReason, setRejectReason] = useState('')
   const [mode, setMode] = useState<'main' | 'reject'>('main')
@@ -86,7 +93,7 @@ function VerificationSheet({ item, canVerify, onAccept, onReject, onCancel, onCl
             </button>
           ) : <div />}
           <span className="font-semibold text-base text-gray-900">
-            {mode === 'reject' ? `Reject — ${item.name}` : item.name}
+            {mode === 'reject' ? `Reject — ${displayName}` : displayName}
           </span>
           <button type="button" onClick={onClose} className="text-gray-400 text-2xl leading-none active:opacity-70">×</button>
         </div>
@@ -191,12 +198,13 @@ function VerificationSheet({ item, canVerify, onAccept, onReject, onCancel, onCl
 
 type RowProps = {
   item: PendingVerificationItem
+  displayName: string
   isFirst: boolean
   isLast: boolean
   onTap: () => void
 }
 
-function PendingRow({ item, isFirst, isLast, onTap }: RowProps) {
+function PendingRow({ item, displayName, isFirst, isLast, onTap }: RowProps) {
   const clr = categoryColor(item.category)
   const borderBottom = !isLast ? '1px solid #f3f4f6' : 'none'
   const stripRadius = {
@@ -222,7 +230,7 @@ function PendingRow({ item, isFirst, isLast, onTap }: RowProps) {
         </div>
         {/* Name — matches checklist: font-semibold 16px */}
         <span className="flex-1 font-semibold text-gray-900 truncate" style={{ fontSize: 16 }}>
-          {item.name}
+          {displayName}
         </span>
         {/* Qty — matches checklist: font-medium 13px */}
         <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap" style={{ fontSize: 13 }}>
@@ -246,7 +254,34 @@ function PendingRow({ item, isFirst, isLast, onTap }: RowProps) {
 // ── Section ──────────────────────────────────────────────────────────────────
 
 export default function PendingVerificationSection({ items, canVerify, onAccepted, onAcceptFailed, onRejected, onRejectFailed, onCancelled, onCancelFailed }: Props) {
+  const staff = useStaff()
+  const latinOnly = staff?.role === 'kitchen'
+  const [catalog, setCatalog] = useState<CatalogItem[]>([])
+  const [catalogLoaded, setCatalogLoaded] = useState(false)
   const [activeItem, setActiveItem] = useState<PendingVerificationItem | null>(null)
+
+  useEffect(() => {
+    if (!latinOnly) return
+
+    let active = true
+    fetchCatalogAction()
+      .then((result) => {
+        if (active && result.ok) setCatalog(result.data)
+      })
+      .finally(() => {
+        if (active) setCatalogLoaded(true)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [latinOnly])
+
+  function displayName(item: PendingVerificationItem): string {
+    if (!latinOnly) return item.name
+    if (!catalogLoaded) return '...'
+    return resolveCatalogDisplayName(item.name, catalog, 'latin')
+  }
 
   async function handleAccept(receivedQty: number) {
     if (!activeItem) return
@@ -284,6 +319,7 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
           <PendingRow
             key={item.id}
             item={item}
+            displayName={displayName(item)}
             isFirst={i === 0}
             isLast={i === items.length - 1}
             onTap={() => setActiveItem(item)}
@@ -294,6 +330,7 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
       {activeItem && (
         <VerificationSheet
           item={activeItem}
+          displayName={displayName(activeItem)}
           canVerify={canVerify}
           onAccept={handleAccept}
           onReject={handleReject}

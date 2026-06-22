@@ -40,6 +40,7 @@ export const routeMeta: RouteMeta[] = [
   { path: '/complaints',   label: 'Complaints',   section: 'operations', key: 'complaints' },
   { path: '/incidents',    label: 'Incidents',    section: 'operations', key: 'incidents' },
   { path: '/tasks',        label: 'Tasks',        section: 'operations', key: 'tasks' },
+  { path: '/kitchen-tasks', label: 'Kitchen Tasks', section: 'operations', key: 'kitchen-tasks' },
   { path: '/all',          label: 'All Modules',  section: 'system',     key: 'all' },
   { path: '/suppliers',    label: 'Suppliers',    section: 'inventory',  key: 'suppliers' },
   { path: '/attendance',   label: 'Attendance',   section: 'people',     key: 'attendance' },

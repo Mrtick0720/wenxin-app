@@ -3,6 +3,7 @@
 /* eslint-disable react-hooks/refs */
 
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { createPortal } from 'react-dom'
 import BackButton from '../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr, addDays, getMondayOfWeek } from '@/lib/dateUtils'
@@ -19,6 +20,7 @@ const UnpaidPage       = lazy(() => import('@/app/bento/unpaid/page'))
 const WeeklyMenuPage   = lazy(() => import('@/app/bento/weekly-menu/page'))
 const ProductionPage   = lazy(() => import('@/app/bento/production/page'))
 const CustomersClient  = lazy(() => import('@/app/bento/customers/CustomersClient'))
+const EditOrderPage    = lazy(() => import('@/app/bento/orders/[id]/edit/page'))
 
 type Order = {
   id: number
@@ -88,6 +90,7 @@ export default function BentoClient({
   const router = useRouter()
   const { push } = useNavigation()
   const isKitchen = role === 'kitchen'
+  const isOwner = role === 'owner'
   const canViewFinancialDetails = role !== 'kitchen'
   const canManageCustomers = role !== 'kitchen'
   const canOpenProduction = role !== 'front_desk'
@@ -96,6 +99,7 @@ export default function BentoClient({
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Order | null>(null)
   const [selectedDate, setSelectedDate] = useState(today)
   const [filterArea, setFilterArea] = useState(ALL)
   const [filterType, setFilterType] = useState(ALL)
@@ -219,6 +223,8 @@ export default function BentoClient({
       fetchDate(today).then(data => { setOrders(data); cache.current[today] = data })
     }
     prefetchAdjacent(today)
+    // Preload edit page chunk so it opens instantly
+    import('@/app/bento/orders/[id]/edit/page')
   }, []) // eslint-disable-line
 
   const refreshSelectedDate = useCallback(async () => {
@@ -419,6 +425,44 @@ export default function BentoClient({
         return
       }
       const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
+      setOrders(updated); cache.current[selectedDate] = updated
+    } catch {
+      setError('Network error. Please check your connection.')
+    }
+    setLoading(null)
+  }
+
+  // Owner-only: permanently delete an order. Unlinks it from any subscription
+  // day first so the FK never blocks the delete. If the order is still PENDING
+  // (not yet made) and belongs to a package member, its portions are refunded
+  // back to the package — a completed order is already made, so it is not.
+  async function confirmDeleteOrder() {
+    const order = deleteTarget
+    if (!order || !isOwner) return
+    setDeleteTarget(null)
+    setLoading(order.id)
+    setError(null)
+    try {
+      if (order.status !== 'completed') {
+        const { data: custs } = await supabase
+          .from('bento_customers')
+          .select('id, used_portions, total_portions')
+          .ilike('name', order.customer_name)
+          .limit(1)
+        const cust = custs?.[0]
+        if (cust && cust.total_portions > 0) {
+          const refunded = Math.max(0, (cust.used_portions ?? 0) - (order.quantity ?? 0))
+          await supabase.from('bento_customers').update({ used_portions: refunded }).eq('id', cust.id)
+        }
+      }
+      await supabase.from('bento_subscription_days').update({ order_id: null }).eq('order_id', order.id)
+      const { error: delError } = await supabase.from('bento_orders').delete().eq('id', order.id)
+      if (delError) {
+        setError(delError.message || 'Failed to delete order.')
+        setLoading(null)
+        return
+      }
+      const updated = orders.filter(o => o.id !== order.id)
       setOrders(updated); cache.current[selectedDate] = updated
     } catch {
       setError('Network error. Please check your connection.')
@@ -681,6 +725,9 @@ export default function BentoClient({
                         </span>
                         {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
                         {(order.quantity ?? 1) > 1 && <span className="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full">×{order.quantity}</span>}
+                        <div className="flex-1" />
+                        <button onClick={() => push(`/bento/orders/${order.id}/edit`, <Suspense fallback={pageFallback}><EditOrderPage orderId={order.id} order={order as unknown as Record<string, unknown>} /></Suspense>)}
+                          className="text-xs text-blue-500 active:text-blue-700 font-medium px-2 py-1">Edit</button>
                       </div>
                       {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
                       <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
@@ -700,6 +747,10 @@ export default function BentoClient({
                         className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
                         {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
                       </button>}
+                      {isOwner && <button onClick={() => setDeleteTarget(order)} disabled={loading === order.id}
+                        className="mt-2 w-full py-2 rounded-xl text-sm font-medium text-red-400 bg-red-50 active:opacity-80">
+                        {loading === order.id ? '…' : 'Delete order'}
+                      </button>}
                     </div>
                   )
                 })}
@@ -716,6 +767,32 @@ export default function BentoClient({
             TODAY
           </button>
         </div>
+      )}
+
+      {/* Delete-order confirmation — in-app styled dialog */}
+      {deleteTarget && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center px-8"
+          style={{ zIndex: 2147483647, background: 'rgba(0,0,0,0.4)' }}
+          onClick={() => setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-xs p-5 shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="text-base font-semibold text-gray-900 mb-1">Delete order?</div>
+            <div className="text-sm text-gray-500 mb-5 leading-relaxed">
+              Delete {deleteTarget.customer_name}&apos;s order? This can&apos;t be undone.
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setDeleteTarget(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">
+                Cancel
+              </button>
+              <button type="button" onClick={confirmDeleteOrder}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white active:opacity-80"
+                style={{ background: '#ef4444' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

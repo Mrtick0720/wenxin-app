@@ -4,12 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
+import { useNavigation } from '../../../components/NavigationStack'
 
-const SUB_TYPES = [
-  { value: 'weekly', label: 'Weekly' },
-  { value: 'monthly', label: 'Monthly' },
-  { value: 'school', label: 'School / Custom' },
-]
 const DELIVERY_METHODS = [
   { value: 'pickup', label: '🏪 Pickup' },
   { value: 'delivery', label: '🚚 Delivery' },
@@ -20,14 +16,16 @@ const DELIVERY_FREQUENCIES = [
   { value: 'weekdays', label: 'Weekdays' },
 ]
 
-export default function NewCustomerPage() {
+export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
   const router = useRouter()
+  const { pop, canPop } = useNavigation()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     phone: '',
     subscription_type: 'monthly',
+    package_mode: 'scheduled',
     delivery_method: 'pickup',
     delivery_frequency: 'weekdays',
     delivery_address: '',
@@ -51,6 +49,7 @@ export default function NewCustomerPage() {
         name: form.name.trim(),
         phone: form.phone,
         subscription_type: form.subscription_type,
+        package_mode: form.package_mode,
         delivery_method: form.delivery_method,
         delivery_frequency: form.delivery_frequency,
         delivery_address: form.delivery_address,
@@ -68,7 +67,11 @@ export default function NewCustomerPage() {
         setSaving(false)
         return
       }
-      router.replace('/bento/customers')
+      onSaved?.()
+      // Stack page: pop back to the customers list (router.replace doesn't
+      // unmount a stack layer, which left the button stuck on "Saving…").
+      if (canPop) pop()
+      else router.replace('/bento/customers')
     } catch {
       setError('Network error. Please check your connection.')
       setSaving(false)
@@ -94,18 +97,6 @@ export default function NewCustomerPage() {
           <label className="text-xs text-gray-500 mb-1 block">Phone</label>
           <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
             placeholder="0123456789" type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} />
-        </div>
-
-        <div>
-          <label className="text-xs text-gray-500 mb-1 block">Subscription Type</label>
-          <div className="flex gap-2">
-            {SUB_TYPES.map(t => (
-              <button key={t.value} type="button" onClick={() => set('subscription_type', t.value)}
-                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.subscription_type === t.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                {t.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         <div>
@@ -166,6 +157,29 @@ export default function NewCustomerPage() {
           <label className="text-xs text-gray-500 mb-1 block">Taste Notes</label>
           <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
             placeholder="e.g. mild, no spicy, extra rice, no pork" value={form.taste_notes} onChange={e => set('taste_notes', e.target.value)} />
+        </div>
+
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Package Mode</label>
+          <div className="flex gap-2">
+            {[
+              { value: 'scheduled', label: '📅 Daily' },
+              { value: 'balance', label: '🎫 Balance' },
+              { value: 'postpaid', label: '🏢 Postpaid' },
+            ].map(m => (
+              <button key={m.value} type="button" onClick={() => set('package_mode', m.value)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.package_mode === m.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-1">
+            {form.package_mode === 'balance'
+              ? 'A quota of portions, deducted per order at a flexible rate (1/2/4 a day).'
+              : form.package_mode === 'postpaid'
+              ? 'No quota — corporate/account client, bills per order and pays later.'
+              : 'One meal per delivery day, projected to an end date.'}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

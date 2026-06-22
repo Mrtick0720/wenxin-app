@@ -15,6 +15,9 @@ const ITEMS: { href: string; label: string; always: boolean; icon: React.ReactNo
   { href: '/inventory', label: 'Inventory', always: false, icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M22 7 13.5 15.5 8.5 10.5 2 17"/><path d="M16 7h6v6"/></svg>
   ) },
+  { href: '/kitchen-tasks', label: 'Kitchen Tasks', always: false, icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/><path d="M8 6 6 4"/><path d="m8 12-2-2"/><path d="m8 18-2-2"/></svg>
+  ) },
   { href: '/staff', label: 'Staff', always: false, icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
   ) },

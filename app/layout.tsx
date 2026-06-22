@@ -4,6 +4,7 @@ import { NavigationProvider } from "./components/NavigationStack";
 import SessionHeartbeat from "./components/SessionHeartbeat";
 import StaffProvider from "./components/StaffProvider";
 import GlobalBottomNav from "./components/GlobalBottomNav";
+import UnregisterSW from "./components/UnregisterSW";
 import { getCurrentStaff } from "@/lib/auth/currentStaff";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -38,6 +39,8 @@ async function getPurchasePending(): Promise<boolean> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   themeColor: "#C9A84C",
 };
@@ -88,8 +91,7 @@ export default async function RootLayout({
         <meta httpEquiv="Expires" content="0" />
       </head>
       <body className="min-h-full" style={{ colorScheme: 'light', background: '#ffffff' }}>
-        {/* Unregister any stale service workers — prevents iOS PWA cache from serving outdated JS */}
-        <script dangerouslySetInnerHTML={{ __html: `if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(function(rs){rs.forEach(function(r){r.unregister()})})}` }} />
+        <UnregisterSW />
         <StaffProvider staff={staff}>
           <SessionHeartbeat />
           <NavigationProvider>

@@ -151,9 +151,9 @@ export default function ComponentsPage() {
               <div key={item.id} className="flex items-center px-4 py-3">
                 <div className="flex-1 min-w-0">
                   <span className={`text-sm ${item.is_active ? 'text-gray-800' : 'text-gray-300 line-through'}`}>
-                    {item.name}
+                    {item.description || item.name}
                   </span>
-                  {item.description && <div className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</div>}
+                  {item.description && <div className="text-[11px] text-gray-400 mt-0.5 truncate">{item.name}</div>}
                   {tab === 'staples' && item.is_rice && <span className="text-[10px] text-blue-500 ml-1">🍚</span>}
                 </div>
                 {canEdit && (

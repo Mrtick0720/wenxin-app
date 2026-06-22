@@ -37,6 +37,7 @@ const ROUTE_RULES: RouteRule[] = [
   // Kitchen removed: the Suppliers page exposes purchase cost totals, which
   // must never reach staff devices (see Purchase ledger cost-hiding policy).
   { prefix: '/suppliers', roles: { owner: true, manager: true } },
+  { prefix: '/kitchen-tasks', roles: { owner: true, manager: true } },
   { prefix: '/attendance', roles: ALL_ROLES },
   { prefix: '/checklist', roles: ALL_ROLES },
   { prefix: '/assets', roles: ALL_ROLES },

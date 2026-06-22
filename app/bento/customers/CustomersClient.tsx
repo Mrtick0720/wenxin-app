@@ -31,12 +31,6 @@ export type Customer = {
   active: boolean
 }
 
-const SUB_LABELS: Record<string, { label: string; color: string; bg: string }> = {
-  weekly:  { label: 'Weekly',  color: '#f97316', bg: '#fff7ed' },
-  monthly: { label: 'Monthly', color: '#3b82f6', bg: '#eff6ff' },
-  school:  { label: 'School',  color: '#8b5cf6', bg: '#faf5ff' },
-}
-
 export default function CustomersClient() {
   const staff = useStaff()
   const router = useRouter()
@@ -52,8 +46,8 @@ export default function CustomersClient() {
   }, [staff, router])
 
   // Fetch customers — RLS on bento_customers enforces the same access control
-  useEffect(() => {
-    supabase
+  function loadCustomers() {
+    return supabase
       .from('bento_customers')
       .select('*')
       .order('name')
@@ -61,16 +55,51 @@ export default function CustomersClient() {
         setCustomers((data || []) as Customer[])
         setLoading(false)
       })
-  }, [])
+  }
+  useEffect(() => { void loadCustomers() }, [])
 
   useEffect(() => {
     void loadCustomerDetailPage()
   }, [])
 
-  const active = customers.filter(c => c.active)
-  const weekly = active.filter(c => c.subscription_type === 'weekly')
-  const monthly = active.filter(c => c.subscription_type === 'monthly')
-  const school = active.filter(c => c.subscription_type === 'school')
+  // Customers run portion PACKAGES — group by status, not by weekly/monthly.
+  const activeList = customers.filter(c => c.active)
+  const completedList = customers.filter(c => !c.active)
+
+  function CustomerCard({ c, done }: { c: Customer; done: boolean }) {
+    const remaining = c.total_portions - c.used_portions
+    const pct = c.total_portions > 0 ? Math.round((c.used_portions / c.total_portions) * 100) : 0
+    const accent = done ? '#9ca3af' : '#f97316'
+    return (
+      <button type="button" onClick={() => push(
+        `/bento/customers/${c.id}`,
+        <Suspense fallback={detailFallback}><CustomerDetailPage customerId={c.id} initialCustomer={c} /></Suspense>,
+      )} className="block w-full text-left bg-white rounded-2xl p-4 shadow-sm">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900">{c.name}</span>
+            <span className="text-xs font-mono text-gray-400">C{String(c.id).padStart(3, '0')}</span>
+          </div>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-gray-50 text-gray-500">
+            {c.delivery_method === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'}
+          </span>
+        </div>
+        {c.taste_notes && <div className="text-xs text-orange-500 mb-1">📝 {c.taste_notes}</div>}
+        {c.menu_preference && <div className="text-xs text-gray-400 mb-1">🍱 Prefers: {c.menu_preference}</div>}
+        {c.total_portions > 0 && (
+          <div className="mt-2">
+            <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <span>{c.used_portions} used</span>
+              <span className={!done && remaining <= 3 ? 'text-red-500 font-medium' : 'text-gray-400'}>{done ? 'Completed' : `${remaining} left`}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-1.5">
+              <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#9ca3af' : pct >= 80 ? '#ef4444' : accent }} />
+            </div>
+          </div>
+        )}
+      </button>
+    )
+  }
 
   if (loading) {
     return (
@@ -88,84 +117,47 @@ export default function CustomersClient() {
           <BackButton href="/bento" />
           <span className="font-semibold text-base">Customers</span>
         </div>
-        <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage /></Suspense>)} className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-xl leading-none">+</button>
+        <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage onSaved={loadCustomers} /></Suspense>)} className="w-8 h-8 bg-orange-500 text-white rounded-full flex items-center justify-center text-xl leading-none">+</button>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-5">
-        {/* Summary */}
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            { label: 'Weekly', count: weekly.length, color: '#f97316', bg: '#fff7ed' },
-            { label: 'Monthly', count: monthly.length, color: '#3b82f6', bg: '#eff6ff' },
-            { label: 'School', count: school.length, color: '#8b5cf6', bg: '#faf5ff' },
-          ].map(s => (
-            <div key={s.label} className="rounded-2xl p-3 text-center" style={{ background: s.bg }}>
-              <div className="text-xl font-bold" style={{ color: s.color }}>{s.count}</div>
-              <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
-            </div>
-          ))}
+        {/* Summary — by status */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="rounded-2xl p-3 text-center" style={{ background: '#fff7ed' }}>
+            <div className="text-xl font-bold" style={{ color: '#f97316' }}>{activeList.length}</div>
+            <div className="text-xs text-gray-500 mt-0.5">Active</div>
+          </div>
+          <div className="rounded-2xl p-3 text-center" style={{ background: '#f3f4f6' }}>
+            <div className="text-xl font-bold text-gray-500">{completedList.length}</div>
+            <div className="text-xs text-gray-500 mt-0.5">Completed</div>
+          </div>
         </div>
 
         {customers.length === 0 && (
           <div className="text-center text-gray-400 py-16">
             <div className="text-4xl mb-3">👥</div>
             <div className="text-sm">No customers yet</div>
-            <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage /></Suspense>)} className="mt-3 inline-block text-sm text-orange-500">+ Add first customer</button>
+            <button type="button" onClick={() => push('/bento/customers/new', <Suspense fallback={detailFallback}><NewCustomerPage onSaved={loadCustomers} /></Suspense>)} className="mt-3 inline-block text-sm text-orange-500">+ Add first customer</button>
           </div>
         )}
 
-        {/* Customer list grouped by type */}
-        {[
-          { key: 'weekly', list: weekly },
-          { key: 'monthly', list: monthly },
-          { key: 'school', list: school },
-        ].filter(g => g.list.length > 0).map(({ key, list }) => {
-          const meta = SUB_LABELS[key]
-          return (
-            <div key={key}>
-              <div className="text-xs font-semibold uppercase tracking-wide mb-2 px-1" style={{ color: meta.color }}>{meta.label}</div>
-              <div className="space-y-2">
-                {list.map(c => {
-                  const remaining = c.total_portions - c.used_portions
-                  const pct = c.total_portions > 0 ? Math.round((c.used_portions / c.total_portions) * 100) : 0
-                  return (
-                    <button key={c.id} type="button" onClick={() => {
-                      push(
-                        `/bento/customers/${c.id}`,
-                        <Suspense fallback={detailFallback}>
-                          <CustomerDetailPage customerId={c.id} initialCustomer={c} />
-                        </Suspense>,
-                      )
-                    }} className="block w-full text-left bg-white rounded-2xl p-4 shadow-sm">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-900">{c.name}</span>
-                          <span className="text-xs font-mono text-gray-400">C{String(c.id).padStart(3, '0')}</span>
-                        </div>
-                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: meta.bg, color: meta.color }}>
-                          {c.delivery_method === 'delivery' ? '🚚 Delivery' : '🏪 Pickup'}
-                        </span>
-                      </div>
-                      {c.taste_notes && <div className="text-xs text-orange-500 mb-1">📝 {c.taste_notes}</div>}
-                      {c.menu_preference && <div className="text-xs text-gray-400 mb-1">🍱 Prefers: {c.menu_preference}</div>}
-                      {c.total_portions > 0 && (
-                        <div className="mt-2">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1">
-                            <span>{c.used_portions} used</span>
-                            <span className={remaining <= 3 ? 'text-red-500 font-medium' : 'text-gray-400'}>{remaining} left</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-1.5">
-                            <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : meta.color }} />
-                          </div>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
+        {activeList.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-2 px-1 text-orange-500">In progress</div>
+            <div className="space-y-2">
+              {activeList.map(c => <CustomerCard key={c.id} c={c} done={false} />)}
             </div>
-          )
-        })}
+          </div>
+        )}
+
+        {completedList.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-2 px-1 text-gray-400">Completed</div>
+            <div className="space-y-2">
+              {completedList.map(c => <CustomerCard key={c.id} c={c} done={true} />)}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -42,6 +42,7 @@ export type WeeklyMenuItem = {
   menu_library_id: number | null
   custom_name: string | null
   dish_name?: string | null
+  dish_description?: string | null
 }
 
 // ── Variants ────────────────────────────────────────────────────────
@@ -128,16 +129,24 @@ export async function fetchWeeklyMenuAction(week_start: string): Promise<ActionR
   try {
     await requireCurrentStaff()
     const supabase = await createServerSupabaseClient()
+    // Read from the new composer table (bento_weekly_menu_assignments),
+    // joining component tables to get dish names.
     const { data, error } = await supabase
-      .from('bento_weekly_menu_items')
-      .select('*, bento_menu_variants(code, name), bento_menu_library(dish_name)')
+      .from('bento_weekly_menu_assignments')
+      .select('*, bento_menu_variants(code, name), bento_proteins(name, description), bento_vegetables(name, description), bento_staples(name, description)')
       .eq('week_start', week_start)
       .order('day_of_week')
       .order('variant_id')
     if (error) throw error
     const items = (data ?? []).map((r: Record<string, unknown>) => {
       const v = (r.bento_menu_variants as Record<string, unknown> | null)
-      const lib = (r.bento_menu_library as Record<string, unknown> | null)
+      const protein = r.bento_proteins as Record<string, unknown> | null
+      const vegetable = r.bento_vegetables as Record<string, unknown> | null
+      const staple = r.bento_staples as Record<string, unknown> | null
+      // Compose a display name from the three components
+      const parts = [protein?.name, vegetable?.name, staple?.name].filter(Boolean)
+      const dishName = parts.length > 0 ? parts.join(' + ') : null
+      const dishDescr = [protein?.description, vegetable?.description, staple?.description].filter(Boolean).join(' + ') || null
       return {
         id: r.id as number,
         week_start: r.week_start as string,
@@ -145,9 +154,10 @@ export async function fetchWeeklyMenuAction(week_start: string): Promise<ActionR
         variant_id: r.variant_id as number,
         variant_code: v?.code as string | undefined,
         variant_name: v?.name as string | undefined,
-        menu_library_id: (r.menu_library_id as number) ?? null,
-        custom_name: (r.custom_name as string) ?? null,
-        dish_name: lib?.dish_name as string | undefined,
+        menu_library_id: null,
+        custom_name: null,
+        dish_name: dishName,
+        dish_description: dishDescr,
       }
     })
     return { ok: true, data: items }
@@ -170,7 +180,7 @@ export async function upsertWeeklyMenuItemAction(
         { week_start, day_of_week, variant_id, menu_library_id, custom_name: custom_name?.trim() || null },
         { onConflict: 'week_start,day_of_week,variant_id' },
       )
-      .select('*, bento_menu_variants(code, name), bento_menu_library(dish_name)')
+      .select('*, bento_menu_variants(code, name), bento_menu_library(dish_name, description)')
       .single()
     if (error) throw error
     const v = (data as Record<string, unknown>).bento_menu_variants as Record<string, unknown> | null
@@ -185,6 +195,7 @@ export async function upsertWeeklyMenuItemAction(
       menu_library_id: ((data as Record<string, unknown>).menu_library_id as number) ?? null,
       custom_name: ((data as Record<string, unknown>).custom_name as string) ?? null,
       dish_name: lib?.dish_name as string | undefined,
+      dish_description: (lib?.description as string) ?? null,
     }}
   } catch (e) { return fail(e) }
 }

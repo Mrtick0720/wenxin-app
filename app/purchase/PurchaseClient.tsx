@@ -23,7 +23,7 @@ import {
   updateRecordAction,
   deleteRecordAction,
 } from './actions'
-import { fetchChecklistAction, moveRecordToChecklistAction } from './checklist-actions'
+import { fetchChecklistAction, fetchPurchaseContentAction, moveRecordToChecklistAction } from './checklist-actions'
 import type { ChecklistEntry } from './checklist-actions'
 import type { RestoreChecklistAction } from './ChecklistSection'
 import CatalogCombobox from './CatalogCombobox'
@@ -502,6 +502,7 @@ type PurchaseCache = {
   checklist: ChecklistEntry[] | undefined
   checklistLoaded: boolean
   recordsLoaded: boolean
+  pendingVerification: LedgerRecord[]
   cachedAt: number
 }
 let purchaseCache: PurchaseCache | null = null
@@ -523,7 +524,7 @@ export default function PurchaseClient(props: Props) {
   const [records, setRecords]   = useState<LedgerRecord[]>(props.initialRecords ?? initCache?.records ?? [])
   const [summary, setSummary]   = useState<PurchaseSummary | null>(props.initialSummary ?? initCache?.summary ?? null)
   const [kpi, setKpi]           = useState<PurchaseKpi | null>(props.initialKpi ?? initCache?.kpi ?? null)
-  const [pendingVerification, setPendingVerification] = useState<LedgerRecord[]>([])
+  const [pendingVerification, setPendingVerification] = useState<LedgerRecord[]>(initCache?.pendingVerification ?? [])
   const [pendingVerificationLoaded, setPendingVerificationLoaded] = useState(false)
 
   const [heroLoading, setHeroLoading] = useState(!hasInitial && !initCache)
@@ -553,88 +554,130 @@ export default function PurchaseClient(props: Props) {
   const [bootError, setBootError]     = useState<string | null>(null)
   const [bootAttempt, setBootAttempt] = useState(0)
 
+  // When SSR provides initial data (hasInitial), write it into the module cache
+  // so that re-entry after popToRoot() renders instantly from cache instead of
+  // showing the full loading skeleton.
+  useEffect(() => {
+    if (!hasInitial) return
+    const ctx = { role: props.role!, today: props.today!, perms: props.perms! }
+    purchaseCache = {
+      ctx,
+      records: (props.initialRecords ?? purchaseCache?.records ?? []) as LedgerRecord[],
+      summary: props.initialSummary ?? purchaseCache?.summary ?? null,
+      kpi: props.initialKpi ?? purchaseCache?.kpi ?? null,
+      checklist: props.initialChecklist ?? purchaseCache?.checklist,
+      checklistLoaded: !!(props.initialChecklist ?? purchaseCache?.checklistLoaded),
+      recordsLoaded: !!(props.initialRecords ?? purchaseCache?.recordsLoaded),
+      pendingVerification: purchaseCache?.pendingVerification ?? [],
+      cachedAt: Date.now(),
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     if (hasInitial) return
     let active = true
 
     // On explicit retry (bootAttempt > 0), ignore any stale cache and force a fresh load
     const cache = bootAttempt === 0 ? initCache : null
+    let loadedContent: {
+      checklist: ChecklistEntry[]
+      pending: LedgerRecord[]
+      records: LedgerRecord[]
+      summary: PurchaseSummary | null
+    } | null = null
+
+    async function refreshPendingVerificationFromCache() {
+      const res = await fetchPendingVerificationAction()
+      if (!active) return
+      if (res.ok) {
+        const pending = res.data as LedgerRecord[]
+        setPendingVerification(pending)
+        if (purchaseCache) {
+          purchaseCache = { ...purchaseCache, pendingVerification: pending }
+        }
+      }
+      setPendingVerificationLoaded(true)
+    }
 
     async function loadStages() {
       setBootError(null)
       setRecordsError(null)
-
-      // Stage 1: render the hero as soon as role/context/KPI are available.
       setHeroLoading(!cache?.kpi)
-      const heroRes = await fetchPurchaseHeroAction()
-      if (!active) return
-      if (!heroRes.ok) {
-        setBootError(heroRes.error)
-        setHeroLoading(false)
-        return
-      }
-
-      const newCtx = {
-        role: heroRes.data.role,
-        today: heroRes.data.today,
-        perms: heroRes.data.perms,
-      }
-      setCtx(newCtx)
-      setKpi(heroRes.data.kpi)
-      purchaseCache = {
-        ctx: newCtx,
-        records: purchaseCache?.records ?? [],
-        summary: purchaseCache?.summary ?? null,
-        kpi: heroRes.data.kpi,
-        checklist: purchaseCache?.checklist,
-        checklistLoaded: purchaseCache?.checklistLoaded ?? false,
-        recordsLoaded: purchaseCache?.recordsLoaded ?? false,
-        cachedAt: Date.now(),
-      }
-      setHeroLoading(false)
-
-      // Stage 2: reveal the checklist + pending verification without waiting for history.
       setChecklistLoading(!cache?.checklistLoaded)
-      const [checkRes, pendingVerRes] = await Promise.all([
-        fetchChecklistAction(),
-        fetchPendingVerificationAction(),
-      ])
-      if (!active) return
-      if (checkRes.ok) {
-        setChecklistSeed(checkRes.data)
-        purchaseCache = {
-          ...purchaseCache!,
-          checklist: checkRes.data,
-          checklistLoaded: true,
-          cachedAt: Date.now(),
-        }
-      }
-      if (pendingVerRes.ok) setPendingVerification(pendingVerRes.data as LedgerRecord[])
-      setPendingVerificationLoaded(true) // always mark loaded so section renders even on fetch error
-      setChecklistLoading(false)
-
-      // Stage 3: load the larger records/history query last.
       setRecordsLoading(!cache?.recordsLoaded)
-      const recordsRes = await fetchPurchaseRecordsAction()
-      if (!active) return
-      if (recordsRes.ok) {
-        setRecords(recordsRes.data.records as LedgerRecord[])
-        setSummary(recordsRes.data.summary)
-        purchaseCache = {
-          ...purchaseCache!,
-          records: recordsRes.data.records as LedgerRecord[],
-          summary: recordsRes.data.summary,
-          recordsLoaded: true,
-          cachedAt: Date.now(),
+
+      // Start both independent requests before awaiting either one. Content can
+      // become usable while the slower KPI finishes, and vice versa.
+      const contentPromise = fetchPurchaseContentAction()
+      const heroPromise = fetchPurchaseHeroAction()
+
+      async function loadContent() {
+        const contentRes = await contentPromise
+        if (!active) return
+
+        if (contentRes.ok) {
+          const { checklist, pending, records: recs, summary: sum } = contentRes.data
+          loadedContent = {
+            checklist,
+            pending: pending as LedgerRecord[],
+            records: recs as LedgerRecord[],
+            summary: sum,
+          }
+          setChecklistSeed(checklist)
+          setPendingVerification(loadedContent.pending)
+          setRecords(loadedContent.records)
+          setSummary(sum)
+          if (purchaseCache) {
+            purchaseCache = {
+              ...purchaseCache,
+              checklist,
+              checklistLoaded: true,
+              pendingVerification: loadedContent.pending,
+              records: loadedContent.records,
+              summary: sum,
+              recordsLoaded: true,
+              cachedAt: Date.now(),
+            }
+          }
+        } else {
+          setRecordsError(contentRes.error)
         }
-      } else {
-        setRecordsError(recordsRes.error)
+        setChecklistLoading(false)
+        setPendingVerificationLoaded(true)
+        setRecordsLoading(false)
       }
-      setRecordsLoading(false)
+
+      async function loadHero() {
+        const heroRes = await heroPromise
+        if (!active) return
+
+        if (!heroRes.ok) {
+          setBootError(heroRes.error)
+        } else {
+          const newCtx = { role: heroRes.data.role, today: heroRes.data.today, perms: heroRes.data.perms }
+          setCtx(newCtx)
+          setKpi(heroRes.data.kpi)
+          purchaseCache = {
+            ctx: newCtx,
+            records: loadedContent?.records ?? purchaseCache?.records ?? [],
+            summary: loadedContent?.summary ?? purchaseCache?.summary ?? null,
+            kpi: heroRes.data.kpi,
+            checklist: loadedContent?.checklist ?? purchaseCache?.checklist,
+            checklistLoaded: loadedContent ? true : purchaseCache?.checklistLoaded ?? false,
+            recordsLoaded: loadedContent ? true : purchaseCache?.recordsLoaded ?? false,
+            pendingVerification: loadedContent?.pending ?? purchaseCache?.pendingVerification ?? [],
+            cachedAt: Date.now(),
+          }
+        }
+        setHeroLoading(false)
+      }
+
+      await Promise.all([loadContent(), loadHero()])
     }
 
-    // Start fetches immediately. Cached data renders instantly; a cold entry
-    // deliberately reveals hero → checklist → records in that order.
+    // Start all fetches immediately. Cached data renders instantly; a cold entry
+    // shows each section as soon as its data arrives (all in parallel now).
     if (!cache) {
       loadStages().catch((error) => {
         if (!active) return
@@ -647,13 +690,14 @@ export default function PurchaseClient(props: Props) {
         cache.checklistLoaded &&
         cache.recordsLoaded &&
         Date.now() - cache.cachedAt < CACHE_TTL_MS
-      if (!isFresh) {
+      if (isFresh) {
+        void refreshPendingVerificationFromCache()
+      } else {
         setRefreshing(true)
         loadStages().finally(() => {
           if (active) setRefreshing(false)
         })
       }
-      // Fresh cache: nothing to do — cached state already applied at useState init
     }
 
     return () => { active = false }
@@ -708,32 +752,32 @@ export default function PurchaseClient(props: Props) {
 
   const [filters, setFilters] = useState({ category: '', from: '', to: '', supplier: '', purchaser: '' })
 
-  // Pending verification is near-realtime and is NOT part of purchaseCache, so the
-  // fresh-cache boot path skips it entirely. Always fetch it on mount so the section
-  // shows up regardless of whether loadStages() ran.
-  useEffect(() => {
-    let active = true
-    fetchPendingVerificationAction()
-      .then((res) => {
-        if (!active) return
-        if (res.ok) setPendingVerification(res.data as LedgerRecord[])
-      })
-      .finally(() => { if (active) setPendingVerificationLoaded(true) })
-    return () => { active = false }
+  const [catalog, setCatalog]               = useState<CatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError]     = useState<string | null>(null)
+  const catalogLoadStarted = useRef(false)
+  const ensureCatalogLoaded = useCallback(async () => {
+    if (catalogLoadStarted.current) return
+    catalogLoadStarted.current = true
+    setCatalogLoading(true)
+    setCatalogError(null)
+    try {
+      const res = await fetchCatalogAction()
+      if (res.ok) setCatalog(res.data)
+      else setCatalogError(res.error)
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : 'Failed to load catalog')
+    } finally {
+      setCatalogLoading(false)
+    }
   }, [])
 
-  const [catalog, setCatalog]               = useState<CatalogItem[]>([])
-  const [catalogLoading, setCatalogLoading] = useState(true)
-  const [catalogError, setCatalogError]     = useState<string | null>(null)
+  // Kitchen (no cost view) renders item names translated via the catalog, so it
+  // must load eagerly — not just when the Add sheet opens. Without this the
+  // kitchen list shows "Unknown item" for every row (empty catalog).
   useEffect(() => {
-    fetchCatalogAction()
-      .then((res) => {
-        if (res.ok) setCatalog(res.data)
-        else setCatalogError(res.error)
-      })
-      .catch((e) => setCatalogError(e?.message ?? 'Failed to load catalog'))
-      .finally(() => setCatalogLoading(false))
-  }, [])
+    if (ctx && !ctx.perms.canViewCosts) void ensureCatalogLoaded()
+  }, [ctx, ensureCatalogLoaded])
 
   const [showAdd, setShowAdd]                 = useState(false)
   const [form, setForm]                       = useState(emptyForm)
@@ -948,6 +992,7 @@ export default function PurchaseClient(props: Props) {
 
   // ── Open add sheet ──
   function openAdd() {
+    void ensureCatalogLoaded()
     setForm(emptyForm)
     setSelectedAddItem(null)
     setAddError(null)
@@ -1411,11 +1456,38 @@ export default function PurchaseClient(props: Props) {
       {/* ── Scrollable content ── */}
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
 
-        {/* ── Hero KPI ── */}
-        {heroLoading && (
-          <div className="mx-4 mt-4 h-32 animate-pulse rounded-2xl bg-white" />
-        )}
-        {kpi && ctx && (() => {
+        {/* ── Hero KPI — always at top; shell renders immediately, numbers fill in last ── */}
+        {heroLoading ? (
+          <div className="mx-4 mt-4 rounded-2xl overflow-hidden" style={{ backgroundImage: BAND_THEME.danger.gradient }}>
+            <div className="relative px-5 pt-3 pb-2">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium" style={{ color: 'rgba(255,255,255,0.5)' }}>Purchase Cost Ratio</div>
+                <div className="w-20 h-3 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+              </div>
+              <div className="flex items-center justify-between" style={{ minHeight: 40 }}>
+                <div className="flex gap-1.5 items-center" style={{ height: 36 }}>
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-2 h-2 rounded-full" style={{ background: 'rgba(255,255,255,0.5)', animation: 'pulse-dot 1.2s ease-in-out infinite', animationDelay: `${i * 0.2}s` }} />
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-end justify-between mt-1">
+                <div className="flex gap-6">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Purchase</div>
+                    <div className="w-16 h-4 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+                  </div>
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: 'rgba(255,255,255,0.35)' }}>Revenue</div>
+                    <div className="w-16 h-4 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+                  </div>
+                </div>
+                <div className="w-16 h-6 rounded-full" style={{ background: 'rgba(255,255,255,0.12)' }} />
+              </div>
+            </div>
+            <div style={{ height: 15 }} />
+          </div>
+        ) : kpi && ctx ? (() => {
           const band = ratioBand(kpi.today.ratio)
           const theme = BAND_THEME[band]
           const d = new Date(ctx.today + 'T00:00:00')
@@ -1423,54 +1495,24 @@ export default function PurchaseClient(props: Props) {
           return (
             <div className="mx-4 mt-4">
               <button type="button" onClick={openKpiDetails} className="w-full text-left active:opacity-90">
-                {/* Hero shell — mirrors the Home Revenue card: same rounded-2xl,
-                    paddings and type scale. Only the colour system + metrics differ. */}
                 <div className="relative rounded-2xl overflow-hidden">
-                  {/* Stacked gradient layers: only the active band is opaque, so a
-                      ratio crossing a category boundary cross-fades smoothly (a
-                      single background can't tween between two gradients). */}
                   {RATIO_BANDS.map((b) => (
-                    <div
-                      key={b}
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: BAND_THEME[b].gradient,
-                        opacity: b === band ? 1 : 0,
-                        transition: 'opacity 0.5s ease',
-                      }}
-                    />
+                    <div key={b} className="absolute inset-0" style={{ backgroundImage: BAND_THEME[b].gradient, opacity: b === band ? 1 : 0, transition: 'opacity 0.5s ease' }} />
                   ))}
-
-                  {/* Content — same vertical rhythm as HeroCard slide 1 */}
                   <div className="relative px-0 pt-3 pb-2">
-                    <div
-                      className="flex flex-col px-5"
-                      style={{ color: theme.fg, transition: 'color 0.4s ease' }}
-                    >
-                      {/* Title row */}
+                    <div className="flex flex-col px-5" style={{ color: theme.fg, transition: 'color 0.4s ease' }}>
                       <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm font-medium" style={{ color: theme.fgMuted }}>
-                          Purchase Cost Ratio
-                        </div>
+                        <div className="text-sm font-medium" style={{ color: theme.fgMuted }}>Purchase Cost Ratio</div>
                         <span className="flex items-center gap-0.5 text-xs font-medium" style={{ color: theme.fgFaint }}>
                           Target ≤ {kpi.target}%
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </span>
                       </div>
-
-                      {/* Main value — the percentage is the visual focus */}
                       <div className="flex items-center justify-between" style={{ minHeight: 40 }}>
-                        <div className="text-3xl font-bold tracking-tight leading-none">
-                          {ratioText(kpi.today.ratio)}
-                        </div>
-                        <div className="text-xs font-medium" style={{ color: theme.fgFaint }}>
-                          {monthLabel}
-                        </div>
+                        <div className="text-3xl font-bold tracking-tight leading-none">{ratioText(kpi.today.ratio)}</div>
+                        <div className="text-xs font-medium" style={{ color: theme.fgFaint }}>{monthLabel}</div>
                       </div>
-
                       <div className="flex-1 min-h-0" />
-
-                      {/* Secondary info: monthly purchase cost + revenue, status badge */}
                       <div className="flex items-end justify-between">
                         <div className="flex gap-6">
                           <div>
@@ -1482,24 +1524,18 @@ export default function PurchaseClient(props: Props) {
                             <div className="text-base font-bold leading-tight whitespace-nowrap">{rmHero(kpi.today.revenue)}</div>
                           </div>
                         </div>
-                        <span
-                          className="text-xs font-medium rounded-full px-3 py-1 whitespace-nowrap"
-                          style={{ background: theme.badgeBg, color: theme.badgeFg, transition: 'background 0.4s ease, color 0.4s ease' }}
-                        >
+                        <span className="text-xs font-medium rounded-full px-3 py-1 whitespace-nowrap" style={{ background: theme.badgeBg, color: theme.badgeFg, transition: 'background 0.4s ease, color 0.4s ease' }}>
                           {ratioBandLabel(band)}
                         </span>
                       </div>
                     </div>
                   </div>
-
-                  {/* Bottom region — reserves the same height as the Home card's
-                      page-dot row so the two cards stand exactly equal. */}
                   <div className="relative" style={{ height: 15 }} aria-hidden />
                 </div>
               </button>
             </div>
           )
-        })()}
+        })() : null}
 
         {/* ── Stage tabs: Checklist → Verify → Received ── */}
         <div className="mx-4 mt-4 flex gap-2">
@@ -1569,6 +1605,7 @@ export default function PurchaseClient(props: Props) {
                 triggerAddRef={triggerAddChecklistRef}
                 purchasedChecklistIds={purchasedChecklistIds}
                 updateItemsRef={updateChecklistRef}
+                onItemsChange={setChecklistSeed}
               />
             )}
           </div>
@@ -1838,7 +1875,10 @@ export default function PurchaseClient(props: Props) {
       {activeTab === 'checklist' && typeof document !== 'undefined' && createPortal(
         <button
           type="button"
-          onClick={() => triggerAddChecklistRef.current?.()}
+          onClick={() => {
+            void ensureCatalogLoaded()
+            triggerAddChecklistRef.current?.()
+          }}
           aria-label="Add item to buy"
           className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
           style={{

@@ -35,6 +35,8 @@ const loadAllModulesPage = () => import('@/app/all/page')
 const loadSuppliersPage = () => import('@/app/suppliers/page')
 const loadAssetsPage = () => import('@/app/assets/page')
 const loadMarketingPage = () => import('@/app/marketing/page')
+const loadKitchenTasksPage = () => import('@/app/kitchen-tasks/page')
+const loadCustomersClient = () => import('@/app/bento/customers/CustomersClient')
 
 const PurchaseClient = lazy(loadPurchaseClient)
 const BentoClient = lazy(loadBentoClient)
@@ -55,6 +57,8 @@ const AllModulesPage = lazy(loadAllModulesPage)
 const SuppliersPage = lazy(loadSuppliersPage)
 const AssetsPage = lazy(loadAssetsPage)
 const MarketingPage = lazy(loadMarketingPage)
+const KitchenTasksPage = lazy(loadKitchenTasksPage)
+const CustomersClientPage = lazy(loadCustomersClient)
 
 function PageFallback() {
   return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
@@ -114,6 +118,8 @@ const pages: Record<string, RouteFactory> = {
   '/suppliers':    () => <S><SuppliersPage /></S>,
   '/assets':       () => <S><AssetsPage /></S>,
   '/marketing':    () => <S><MarketingPage /></S>,
+  '/kitchen-tasks': () => <S><KitchenTasksPage /></S>,
+  '/bento/customers': () => <S><CustomersClientPage /></S>,
 }
 
 /**
