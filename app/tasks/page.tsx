@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
@@ -64,15 +65,12 @@ export default function TasksPage() {
     <PageTransition>
     <main className="bg-gray-50 w-full mx-auto">
       {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
-        <div className="flex items-center gap-3">
-          <BackButton href="/" />
-          <span className="font-semibold text-base">Tasks</span>
-        </div>
-        <button onClick={() => router.push('/tasks/new')} className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New task">+</button>
+      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
+        <BackButton href="/" />
+        <span className="font-semibold text-base">Tasks</span>
       </div>
 
-      <div className="px-4 py-4 pb-8 space-y-4">
+      <div className="px-4 py-4 space-y-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 144px)' }}>
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="text-sm text-gray-500 mb-3">Today&apos;s Summary</div>
           <div className="grid grid-cols-3 gap-3">
@@ -118,6 +116,19 @@ export default function TasksPage() {
         </div>
       </div>
     </main>
+      {typeof document !== 'undefined' && createPortal(
+        <button
+          onClick={() => router.push('/tasks/new')}
+          aria-label="New task"
+          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+          style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>,
+        document.body
+      )}
     </PageTransition>
   )
 }
