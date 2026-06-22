@@ -340,6 +340,7 @@ function CheckRow({
   item, canComplete, showCosts,
   onComplete, onUncomplete, onEdit,
   catalog, catalogLoading,
+  selectMode = false, selected = false, onToggleSelect,
 }: {
   item: ChecklistEntry
   canComplete: boolean
@@ -349,6 +350,9 @@ function CheckRow({
   onEdit: (item: ChecklistEntry) => void
   catalog: CatalogItem[]
   catalogLoading: boolean
+  selectMode?: boolean
+  selected?: boolean
+  onToggleSelect?: (id: number) => void
 }) {
   const done = item.status === 'done'
   const categoryClr = categoryColor(item.category)
@@ -391,6 +395,37 @@ function CheckRow({
           <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>
             {qtyStr} {item.unit}
           </span>
+        </div>
+      </div>
+    )
+  }
+
+  // Select mode: tap whole row to toggle selection
+  if (selectMode) {
+    return (
+      <div
+        style={{ position: 'relative', borderBottom: '1px solid #f3f4f6', background: selected ? '#fff7ed' : '#fff' }}
+        className="last:border-b-0 active:opacity-80"
+        onClick={() => onToggleSelect?.(item.id)}
+      >
+        <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, zIndex: 2, pointerEvents: 'none' }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '40px minmax(0, 2fr) minmax(0, 0.75fr) minmax(0, 1fr)', alignItems: 'center', minHeight: 56, padding: '0 12px', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{
+              width: 22, height: 22, borderRadius: 11,
+              border: `2px solid ${selected ? '#f97316' : '#d1d5db'}`,
+              background: selected ? '#f97316' : '#fff',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {selected && <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </div>
+          </div>
+          <div className="min-w-0">
+            <div className="font-semibold text-gray-900 truncate" style={{ fontSize: 16 }}>{item.name}</div>
+            {planningDetails.length > 0 && <div className="mt-0.5 truncate text-[11px] font-normal text-gray-400">{planningDetails.join(' · ')}</div>}
+          </div>
+          <span className="font-medium text-gray-500 tabular-nums whitespace-nowrap text-left" style={{ fontSize: 13 }}>{qtyStr} {item.unit}</span>
+          <span className="font-medium text-gray-500 truncate text-left" style={{ fontSize: 13 }}>{item.created_by_name || '—'}</span>
         </div>
       </div>
     )
@@ -450,6 +485,91 @@ export type RestoreChecklistAction =
   | { type: 'replace'; tempId: number; item: ChecklistEntry }
   | { type: 'remove'; id: number }
 
+// ── Send Sheet ────────────────────────────────────────────────────────────────
+const CATEGORY_LABELS: Record<string, string> = {
+  Meat: '肉类', Seafood: '海鲜', Vegetables: '蔬菜', Fruits: '水果',
+  Dairy: '乳制品', Dry: '干货', Beverages: '饮料', Condiments: '调味品',
+  Packaging: '包材', Cleaning: '清洁', Other: '其他',
+}
+
+function formatSendText(items: ChecklistEntry[], purchaser: string): string {
+  const today = new Date()
+  const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`
+  // Group by category
+  const groups: Record<string, ChecklistEntry[]> = {}
+  for (const item of items) {
+    if (!groups[item.category]) groups[item.category] = []
+    groups[item.category].push(item)
+  }
+  let text = `📦 文心采购单\n采购人：${purchaser}  日期：${dateStr}\n`
+  for (const [cat, catItems] of Object.entries(groups)) {
+    const label = CATEGORY_LABELS[cat] || cat
+    text += `\n【${label}】\n`
+    for (const item of catItems) {
+      const qty = item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)
+      text += `• ${item.name}  ${qty} ${item.unit}\n`
+    }
+  }
+  return text.trim()
+}
+
+function SendSheet({
+  items, purchaserName,
+  onClose,
+}: {
+  items: ChecklistEntry[]
+  purchaserName: string
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const text = formatSendText(items, purchaserName)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => { setCopied(false); onClose() }, 1200)
+    })
+  }
+
+  return typeof document !== 'undefined' ? createPortal(
+    <div
+      className="fixed flex flex-col justify-end"
+      style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.5)' }}
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-t-3xl flex flex-col"
+        style={{ maxHeight: '80vh', paddingBottom: 'calc(env(safe-area-inset-bottom,0px) + 16px)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <span className="text-base font-semibold text-gray-900">采购单预览</span>
+          <button type="button" onClick={onClose} className="text-gray-400 active:opacity-60 text-2xl leading-none">×</button>
+        </div>
+        {/* Preview */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans leading-relaxed bg-gray-50 rounded-2xl p-4">
+            {text}
+          </pre>
+        </div>
+        {/* Copy button */}
+        <div className="px-5 pt-3">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full py-3.5 rounded-2xl text-base font-semibold text-white active:opacity-80 transition-colors"
+            style={{ background: copied ? '#16a34a' : '#f97316' }}
+          >
+            {copied ? '✓ 已复制！去粘贴发送' : '复制采购单'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  ) : null
+}
+
 // ── Main ChecklistSection ─────────────────────────────────────────────────────
 export default function ChecklistSection({
   showCosts,
@@ -463,9 +583,11 @@ export default function ChecklistSection({
   refreshKey = 0,
   restoreItemRef,
   triggerAddRef,
+  triggerSendRef,
   purchasedChecklistIds,
   updateItemsRef,
   onItemsChange,
+  purchaserName = '',
 }: {
   showCosts: boolean
   catalog: CatalogItem[]
@@ -478,9 +600,11 @@ export default function ChecklistSection({
   refreshKey?: number
   restoreItemRef?: React.MutableRefObject<((action: RestoreChecklistAction) => void) | null>
   triggerAddRef?: React.MutableRefObject<(() => void) | null>
+  triggerSendRef?: React.MutableRefObject<(() => void) | null>
   purchasedChecklistIds?: Set<number>
   updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
   onItemsChange?: (items: ChecklistEntry[]) => void
+  purchaserName?: string
 }) {
   const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
   const [loading, setLoading] = useState(!initialItems)
@@ -488,6 +612,11 @@ export default function ChecklistSection({
   // Report the live list up so the parent's "To Buy" count stays in sync with
   // adds/completes/deletes that happen inside this component.
   useEffect(() => { onItemsChange?.(items) }, [items, onItemsChange])
+
+  // Select-to-send mode
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [showSendSheet, setShowSendSheet] = useState(false)
 
   // Add sheet
   const [showAdd, setShowAdd] = useState(false)
@@ -585,6 +714,16 @@ export default function ChecklistSection({
       }
     }
   }, [triggerAddRef])
+
+  // Expose triggerSend so parent can activate select-to-send mode.
+  useEffect(() => {
+    if (triggerSendRef) {
+      triggerSendRef.current = () => {
+        setSelectedIds(new Set())
+        setSelectMode(true)
+      }
+    }
+  }, [triggerSendRef])
 
   // Expose a direct items updater so the parent can push fresh server data
   // atomically (in the same React batch as records/KPI), eliminating the
@@ -785,8 +924,35 @@ export default function ChecklistSection({
     )
     .sort((a, b) => categoryOrderIndex(a.category) - categoryOrderIndex(b.category))
 
+  const allSelected = pending.length > 0 && pending.every(i => selectedIds.has(i.id))
+  const selectedItems = pending.filter(i => selectedIds.has(i.id))
+
   return (
     <div>
+      {/* Select mode header */}
+      {selectMode && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-orange-50">
+          <button
+            type="button"
+            className="text-sm font-medium text-orange-600 active:opacity-60"
+            onClick={() => {
+              if (allSelected) setSelectedIds(new Set())
+              else setSelectedIds(new Set(pending.map(i => i.id)))
+            }}
+          >
+            {allSelected ? '取消全选' : '全选'}
+          </button>
+          <span className="text-sm text-gray-500">已选 {selectedIds.size} 项</span>
+          <button
+            type="button"
+            className="text-sm font-medium text-gray-500 active:opacity-60"
+            onClick={() => { setSelectMode(false); setSelectedIds(new Set()) }}
+          >
+            取消
+          </button>
+        </div>
+      )}
+
       {loading && items.length === 0 ? (
         <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
       ) : pending.length === 0 ? (
@@ -806,9 +972,38 @@ export default function ChecklistSection({
               onEdit={openEdit}
               catalog={catalog}
               catalogLoading={catalogLoading}
+              selectMode={selectMode}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={(id) => setSelectedIds(prev => {
+                const next = new Set(prev)
+                if (next.has(id)) next.delete(id); else next.add(id)
+                return next
+              })}
             />
           ))}
         </div>
+      )}
+
+      {/* Select mode bottom action bar */}
+      {selectMode && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed left-0 right-0 flex flex-col gap-2 px-4 pt-3"
+          style={{
+            bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)',
+            zIndex: 200,
+          }}
+        >
+          <button
+            type="button"
+            disabled={selectedIds.size === 0}
+            onClick={() => setShowSendSheet(true)}
+            className="w-full py-3.5 rounded-2xl text-base font-semibold text-white shadow-lg active:opacity-80 transition-opacity"
+            style={{ background: selectedIds.size === 0 ? '#d1d5db' : '#f97316' }}
+          >
+            {selectedIds.size === 0 ? '请选择条目' : `生成采购单（${selectedIds.size} 项）`}
+          </button>
+        </div>,
+        document.body
       )}
 
       {/* Toast */}
@@ -875,6 +1070,15 @@ export default function ChecklistSection({
           onSave={handleCompleteSave}
           onClose={() => setCompletingItem(null)}
           onDelete={() => { const it = completingItem; setCompletingItem(null); requestDelete(it) }}
+        />
+      )}
+
+      {/* Send sheet */}
+      {showSendSheet && (
+        <SendSheet
+          items={selectedItems}
+          purchaserName={purchaserName}
+          onClose={() => { setShowSendSheet(false); setSelectMode(false); setSelectedIds(new Set()) }}
         />
       )}
 

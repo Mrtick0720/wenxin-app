@@ -488,6 +488,7 @@ type Props = {
   initialKpi?: PurchaseKpi
   initialChecklist?: ChecklistEntry[]
   perms?: Perms
+  purchaserName?: string
 }
 
 const emptyForm = {
@@ -550,6 +551,7 @@ export default function PurchaseClient(props: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const restoreChecklistRef = useRef<((action: RestoreChecklistAction) => void) | null>(null)
   const triggerAddChecklistRef = useRef<(() => void) | null>(null)
+  const triggerSendChecklistRef = useRef<(() => void) | null>(null)
   const updateChecklistRef = useRef<((items: ChecklistEntry[]) => void) | null>(null)
   const breakdownRef = useRef<HTMLDivElement>(null)
   const pendingUnchecks = useRef<Set<number>>(new Set())
@@ -1621,9 +1623,11 @@ export default function PurchaseClient(props: Props) {
                 refreshKey={checklistRefreshKey}
                 restoreItemRef={restoreChecklistRef}
                 triggerAddRef={triggerAddChecklistRef}
+                triggerSendRef={triggerSendChecklistRef}
                 purchasedChecklistIds={purchasedChecklistIds}
                 updateItemsRef={updateChecklistRef}
                 onItemsChange={setChecklistSeed}
+                purchaserName={props.purchaserName ?? ''}
               />
             )}
           </div>
@@ -1891,25 +1895,43 @@ export default function PurchaseClient(props: Props) {
 
       {/* ── Checklist FAB — fixed above bottom nav, only on Checklist tab ── */}
       {activeTab === 'checklist' && typeof document !== 'undefined' && createPortal(
-        <button
-          type="button"
-          onClick={() => {
-            void ensureCatalogLoaded()
-            triggerAddChecklistRef.current?.()
-          }}
-          aria-label="Add item to buy"
-          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+        <div
+          className="fixed z-[290] flex items-center gap-3"
           style={{
-            background: '#f97316',
             bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)',
             left: '50%',
             transform: 'translateX(-50%)',
           }}
         >
+          {/* Send button */}
+          <button
+            type="button"
+            onClick={() => triggerSendChecklistRef.current?.()}
+            aria-label="Send purchase order"
+            className="w-12 h-12 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+            style={{ background: '#fff', border: '2px solid #f97316' }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+          {/* Add button */}
+          <button
+            type="button"
+            onClick={() => {
+              void ensureCatalogLoaded()
+              triggerAddChecklistRef.current?.()
+            }}
+            aria-label="Add item to buy"
+            className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+            style={{ background: '#f97316' }}
+          >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </button>,
+          </button>
+        </div>,
         document.body
       )}
 

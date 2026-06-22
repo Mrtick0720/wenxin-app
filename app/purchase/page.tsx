@@ -13,7 +13,7 @@ import PurchaseClient from './PurchaseClient'
 export const dynamic = 'force-dynamic'
 
 export default async function PurchasePage() {
-  const staff = await requireRole('owner', 'manager', 'kitchen')
+  const staff = await requireRole('owner', 'manager', 'kitchen', 'front_desk')
 
   // Fetch all data in parallel — checklist included so ChecklistSection
   // hydrates immediately from SSR without a separate client-side fetch on mount.
@@ -32,6 +32,7 @@ export default async function PurchasePage() {
       initialSummary={summary}
       initialKpi={kpi}
       initialChecklist={checklistRes.ok ? checklistRes.data : undefined}
+      purchaserName={staff.displayName}
       perms={{
         canViewCosts: canViewPurchaseCosts(staff.role),
         canDelete: canDeletePurchase(staff.role),
