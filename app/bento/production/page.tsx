@@ -110,9 +110,10 @@ export default function ProductionPage() {
   useEffect(() => {
     loadData(selectedDate)
 
-    // Realtime on bento_orders (view won't fire events)
+    // Realtime: unique channel per date to avoid duplicate subscription errors
+    const channelName = `production-${selectedDate}`
     const channel = supabase
-      .channel('production-realtime')
+      .channel(channelName)
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'bento_orders' },
         () => { loadData(selectedDate) }
@@ -120,7 +121,7 @@ export default function ProductionPage() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [loadData, selectedDate, staff?.role])
+  }, [loadData, selectedDate])
 
   const bentoName = (o: Order) => (o.bento_items?.trim() || o.items?.trim() || o.menu_type || 'Bento')
 
