@@ -6,6 +6,9 @@ const ITEMS: { href: string; label: string; always: boolean; icon: React.ReactNo
   { href: '/tasks', label: 'Approvals', always: false, icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
   ) },
+  { href: '/tasks', label: 'Tasks', always: false, icon: (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
+  ) },
   { href: '/bento/customers', label: 'Customers', always: false, icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
   ) },
@@ -36,13 +39,17 @@ const ITEMS: { href: string; label: string; always: boolean; icon: React.ReactNo
 ]
 
 export default function QuickAccessGrid({ role }: { role: StaffRole }) {
-  const items = ITEMS.filter(item => item.always || canAccessPath(role, item.href))
+  const all = ITEMS.filter(item => item.always || canAccessPath(role, item.href))
+  const viewAll = all.find(i => i.href === '/all')
+  const rest = all.filter(i => i.href !== '/all')
+  // Show at most 7 content items + View All = 2 rows of 4
+  const visible = [...rest.slice(0, 7), ...(viewAll ? [viewAll] : [])]
   return (
     <div>
       <div className="text-sm font-semibold text-gray-800 mb-2 px-1">Quick Access</div>
       <div className="grid grid-cols-4 gap-2">
-        {items.map(({ href, label, icon }) => (
-          <NavLink key={href} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm flex flex-col items-center gap-1.5 overflow-hidden">
+        {visible.map(({ href, label, icon }) => (
+          <NavLink key={label} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm flex flex-col items-center gap-1.5 overflow-hidden">
             <span className="text-orange-500">{icon}</span>
             <span className="text-[11px] font-medium text-gray-600 truncate max-w-full">{label}</span>
           </NavLink>

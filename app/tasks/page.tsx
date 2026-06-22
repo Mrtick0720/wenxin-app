@@ -64,9 +64,12 @@ export default function TasksPage() {
     <PageTransition>
     <main className="bg-gray-50 w-full mx-auto">
       {/* Header */}
-      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
-        <BackButton href="/" />
-        <span className="font-semibold text-base">Tasks</span>
+      <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
+        <div className="flex items-center gap-3">
+          <BackButton href="/" />
+          <span className="font-semibold text-base">Tasks</span>
+        </div>
+        <button onClick={() => router.push('/tasks/new')} className="bg-orange-500 text-white text-xl leading-none w-9 h-9 rounded-full flex items-center justify-center" aria-label="New task">+</button>
       </div>
 
       <div className="px-4 py-4 pb-8 space-y-4">
