@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
@@ -40,12 +39,6 @@ export default function TasksPage() {
   const staff = useStaff()
   const router = useRouter()
   const [tasks, setTasks] = useState<Task[]>([])
-  const [fabReady, setFabReady] = useState(false)
-
-  useEffect(() => {
-    const t = setTimeout(() => setFabReady(true), 320)
-    return () => clearTimeout(t)
-  }, [])
 
   useEffect(() => {
     if (!staff) {
@@ -122,19 +115,16 @@ export default function TasksPage() {
         </div>
       </div>
     </main>
-      {fabReady && typeof document !== 'undefined' && createPortal(
-        <button
-          onClick={() => router.push('/tasks/new')}
-          aria-label="New task"
-          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
-          style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>,
-        document.body
-      )}
+      <button
+        onClick={() => router.push('/tasks/new')}
+        aria-label="New task"
+        className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+        style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </button>
     </PageTransition>
   )
 }
