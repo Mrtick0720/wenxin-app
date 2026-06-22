@@ -486,31 +486,28 @@ export type RestoreChecklistAction =
   | { type: 'remove'; id: number }
 
 // ── Send Sheet ────────────────────────────────────────────────────────────────
-const CATEGORY_LABELS: Record<string, string> = {
-  Meat: '肉类', Seafood: '海鲜', Vegetables: '蔬菜', Fruits: '水果',
-  Dairy: '乳制品', Dry: '干货', Beverages: '饮料', Condiments: '调味品',
-  Packaging: '包材', Cleaning: '清洁', Other: '其他',
-}
-
-function formatSendText(items: ChecklistEntry[], purchaser: string): string {
+function formatSendText(items: ChecklistEntry[]): string {
   const today = new Date()
-  const dateStr = `${today.getFullYear()}/${String(today.getMonth() + 1).padStart(2,'0')}/${String(today.getDate()).padStart(2,'0')}`
-  // Group by category
+  const dd = String(today.getDate()).padStart(2, '0')
+  const mm = String(today.getMonth() + 1).padStart(2, '0')
+  const yyyy = today.getFullYear()
+  const dateStr = `${dd}/${mm}/${yyyy}`
+  // Group by category (preserve insertion order → sorted by categoryOrderIndex upstream)
   const groups: Record<string, ChecklistEntry[]> = {}
   for (const item of items) {
     if (!groups[item.category]) groups[item.category] = []
     groups[item.category].push(item)
   }
-  let text = `📦 文心采购单\n采购人：${purchaser}  日期：${dateStr}\n`
+  let text = `WENXIN PURCHASE ORDER\nDate: ${dateStr}\n`
   for (const [cat, catItems] of Object.entries(groups)) {
-    const label = CATEGORY_LABELS[cat] || cat
-    text += `\n【${label}】\n`
+    text += `\n${cat.toUpperCase()}\n`
     for (const item of catItems) {
       const qty = item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)
-      text += `• ${item.name}  ${qty} ${item.unit}\n`
+      text += `• ${item.name} – ${qty} ${item.unit}\n`
     }
   }
-  return text.trim()
+  text += '\nThank you.'
+  return text
 }
 
 function SendSheet({
@@ -522,7 +519,7 @@ function SendSheet({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
-  const text = formatSendText(items, purchaserName)
+  const text = formatSendText(items)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleCopy() {
