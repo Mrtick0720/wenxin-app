@@ -82,10 +82,21 @@ type Group = {
   rows: Order[]
 }
 
+function defaultProductionDate(): string {
+  const now = new Date()
+  const today = todayLocalStr()
+  if (now.getHours() >= 15) {
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toISOString().slice(0, 10)
+  }
+  return today
+}
+
 export default function ProductionPage() {
   const staff = useStaff()
   const today = todayLocalStr()
-  const [selectedDate, setSelectedDate] = useState(today)
+  const [selectedDate, setSelectedDate] = useState(defaultProductionDate)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [showDatePicker, setShowDatePicker] = useState(false)
@@ -110,7 +121,7 @@ export default function ProductionPage() {
   useEffect(() => {
     loadData(selectedDate)
 
-    // Realtime: unique channel per date to avoid duplicate subscription errors
+    // Always subscribe to bento_orders (the base table) — views are not replication targets
     const channelName = `production-${selectedDate}`
     const channel = supabase
       .channel(channelName)
@@ -120,10 +131,25 @@ export default function ProductionPage() {
       )
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Also listen for in-app edit/new events (covers kitchen role where realtime RLS may block)
+    function onOrderUpdated(e: Event) {
+      const date = (e as CustomEvent<{ date?: string }>).detail?.date
+      if (!date || date === selectedDate) loadData(selectedDate)
+    }
+    window.addEventListener('bento-order-updated', onOrderUpdated)
+
+    return () => {
+      supabase.removeChannel(channel)
+      window.removeEventListener('bento-order-updated', onOrderUpdated)
+    }
   }, [loadData, selectedDate])
 
-  const bentoName = (o: Order) => (o.bento_items?.trim() || o.items?.trim() || o.menu_type || 'Bento')
+  const bentoName = (o: Order) => {
+    const raw = o.bento_items?.trim()
+    // bento_items may now contain structured JSON — ignore it for display
+    if (raw && !raw.startsWith('{')) return raw
+    return o.items?.trim() || o.menu_type || 'Bento'
+  }
 
   const totalPortions = orders.reduce((s, o) => s + (o.quantity ?? 1), 0)
   const completedCount = orders.filter(o => o.status === 'completed').length
@@ -186,7 +212,7 @@ export default function ProductionPage() {
         <BackButton href="/bento" />
         <div className="flex-1 min-w-0">
           <div className="text-[15px] font-medium text-slate-100 leading-tight">Production sheet</div>
-          <button onClick={() => setShowDatePicker(s => !s)} className="text-[11px] text-slate-400 leading-tight">
+          <button onClick={() => setShowDatePicker(s => !s)} className="text-[13px] text-slate-400 leading-tight mt-0.5">
             {formatDateFull(selectedDate)} <span style={{ color: '#475569' }}>▾</span>
           </button>
         </div>
@@ -276,7 +302,7 @@ export default function ProductionPage() {
       )}
 
       {/* Scrollable production list */}
-      <div className="flex-1 overflow-y-auto px-3 pt-2 pb-6">
+      <div className="flex-1 overflow-y-auto px-3 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}>
         {loading && (
           <div className="flex items-center justify-center py-20">
             <div className="text-sm" style={{ color: '#64748b' }}>Loading…</div>
@@ -293,42 +319,29 @@ export default function ProductionPage() {
           const theme: Theme = g.ready_by ? (gi === 0 ? ORANGE : BLUE) : GRAY
           const isPickup = g.fulfillment_type === 'pickup'
           return (
-            <div key={g.key}>
-              {/* Deadline header */}
-              <div className="mb-1.5 rounded-[10px] flex items-stretch overflow-hidden"
-                style={{ background: theme.headerBg, border: theme.border === 'transparent' ? 'none' : `1px solid ${theme.border}` }}>
-                <div className="flex flex-col justify-center flex-shrink-0" style={{ padding: '9px 13px 9px 12px' }}>
-                  <div className="flex items-center gap-1.5 mb-px" style={{ color: theme.infoIcon }}>
-                    <span style={{ color: theme.time }}>{ClockIcon(13)}</span>
-                    <span className="text-[11px] font-medium tracking-wide" style={{ color: theme.label }}>READY BY</span>
-                  </div>
-                  <div className="leading-none">
-                    <span className="text-[27px] font-medium" style={{ color: theme.time }}>{g.ready_by ? fmtTime(g.ready_by) : '—'}</span>
-                  </div>
+            <div key={g.key} className="rounded-[10px] overflow-hidden"
+              style={{ border: `1px solid ${theme.border === 'transparent' ? '#334155' : theme.border}`, marginBottom: gi === groups.length - 1 ? 4 : 11 }}>
+              {/* Compact single-line header — two equal halves */}
+              <div className="flex items-center px-3 py-2" style={{ background: theme.headerBg }}>
+                <div className="flex items-center gap-1.5 flex-1">
+                  <span style={{ color: theme.time, flexShrink: 0 }}>{ClockIcon(13)}</span>
+                  <span className="text-[11px] font-medium tracking-wide flex-shrink-0" style={{ color: theme.label }}>READY BY</span>
+                  <span className="text-[14px] font-semibold" style={{ color: theme.time }}>{g.ready_by ? fmtTime(g.ready_by) : '—'}</span>
                 </div>
-                {(g.delivery_or_pickup_time || g.fulfillment_type) && (
-                  <>
-                    <div style={{ width: 1, background: theme.divider, margin: '8px 0' }} />
-                    <div className="flex flex-col justify-center flex-1" style={{ padding: '9px 12px' }}>
-                      <div className="flex items-center gap-1.5">
-                        <span style={{ color: theme.infoIcon }}>{isPickup ? StoreIcon(14) : TruckIcon(14)}</span>
-                        <span className="text-[13px] capitalize" style={{ color: theme.infoText }}>{g.fulfillment_type || 'Delivery'}</span>
-                        {g.delivery_or_pickup_time && <span className="text-[13px] font-medium" style={{ color: theme.infoTime }}>{fmtTime(g.delivery_or_pickup_time)}</span>}
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div className="flex items-center gap-1.5 flex-1">
+                  <span style={{ color: theme.infoIcon, flexShrink: 0 }}>{isPickup ? StoreIcon(13) : TruckIcon(13)}</span>
+                  <span className="text-[13px] capitalize" style={{ color: theme.infoText }}>{g.fulfillment_type || 'Delivery'}</span>
+                  {g.delivery_or_pickup_time && <span className="text-[13px] font-medium" style={{ color: theme.infoTime }}>{fmtTime(g.delivery_or_pickup_time)}</span>}
+                </div>
               </div>
 
-              {/* Bento cards */}
+              {/* Bento order rows */}
               {g.rows.map((o, ri) => {
                 const done = o.status === 'completed'
-                const last = gi === groups.length - 1 && ri === g.rows.length - 1
                 const seq = groups.slice(0, gi).reduce((s, gg) => s + gg.rows.length, 0) + ri + 1
-                const seqLabel = String.fromCharCode(64 + seq) // 1→A, 2→B …
+                const seqLabel = String.fromCharCode(64 + seq)
                 return (
-                  <div key={o.id} className="rounded-[10px] overflow-hidden"
-                    style={{ background: '#1e293b', border: `1px solid ${done ? '#14532d' : '#334155'}`, opacity: done ? 0.55 : 1, marginBottom: last ? 4 : ri === g.rows.length - 1 ? 11 : 5 }}>
+                  <div key={o.id} style={{ background: done ? '#0d1f12' : '#1e293b', opacity: done ? 0.7 : 1, borderTop: `1px solid ${theme.divider}` }}>
                     <div style={{ padding: '10px 11px' }}>
                       <div className="flex items-baseline justify-between gap-1.5 mb-1.5">
                         <span className="flex items-baseline gap-1.5 flex-1 min-w-0">
@@ -339,12 +352,6 @@ export default function ProductionPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <div className="flex-1 flex flex-col gap-1">
-                          {o.compartment_a && (
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Meat">🍗</span>
-                              <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{o.compartment_a}</span>
-                            </div>
-                          )}
                           {o.compartment_b && (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Vegetable">🥬</span>

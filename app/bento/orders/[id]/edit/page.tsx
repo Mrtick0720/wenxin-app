@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import { useNavigation } from '../../../../components/NavigationStack'
 import { updateOrderAction } from '../../actions'
+import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
 
@@ -40,15 +41,19 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Holds variantQtys parsed from bento_items on initial load — restored after weekly menu loads
+  const pendingQtysRef = useRef<Record<number, number> | null>(null)
+
   // Proteins / vegetables / staples for custom combos
   const [proteins,   setProteins]   = useState<Component[]>([])
   const [vegetables, setVegetables] = useState<Component[]>([])
   const [staples,    setStaples]    = useState<Component[]>([])
 
   // Weekly menu
-  const [allVariants,        setAllVariants]        = useState<BentoVariant[]>([])
-  const [assignedVariantIds, setAssignedVariantIds] = useState<number[] | null>(null)
-  const [variantQtys,        setVariantQtys]        = useState<Record<number, number>>({})
+  const [allVariants,          setAllVariants]          = useState<BentoVariant[]>([])
+  const [assignedVariantIds,   setAssignedVariantIds]   = useState<number[] | null>(null)
+  const [variantCompartments,  setVariantCompartments]  = useState<Record<number, { a: string|null; b: string|null; c: string|null }>>({})
+  const [variantQtys,          setVariantQtys]          = useState<Record<number, number>>({})
   const [customCombos,       setCustomCombos]       = useState<CustomCombo[]>([])
 
   const [form, setForm] = useState({
@@ -83,13 +88,31 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
         area: (o.area as string) ?? '',
         address: (o.address as string) ?? '',
         menu_type: (o.menu_type as string) ?? '',
-        unit_price: o.amount && o.quantity ? String((o.amount as number) / (o.quantity as number)) : '',
+        unit_price: o.quantity ? String(((o.amount as number) || 0) / (o.quantity as number)) : '',
         note: (o.note as string) ?? '',
         payment_status: (o.payment_status as string) ?? ((o.paid as boolean) ? 'paid' : 'unpaid'),
         payment_method: (o.payment_method as string) ?? '',
         amount_paid: String(o.amount_paid ?? (o.paid ? (o.amount ?? 0) : 0)),
         payment_note: (o.payment_note as string) ?? '',
       })
+      // Restore structured menu selections if available
+      const raw = o.bento_items as string | null | undefined
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as {
+            variants?: { id: number; qty: number }[]
+            combos?: CustomCombo[]
+          }
+          if (parsed.variants?.length) {
+            const qtys: Record<number, number> = {}
+            for (const v of parsed.variants) qtys[v.id] = v.qty
+            // Don't set immediately — the delivery_date effect will clear it.
+            // Store here; the effect will restore after weekly menu loads.
+            pendingQtysRef.current = qtys
+          }
+          if (parsed.combos?.length) setCustomCombos(parsed.combos)
+        } catch { /* ignore malformed */ }
+      }
       setLoading(false)
     }
 
@@ -122,17 +145,39 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
   useEffect(() => {
     if (!form.delivery_date) return
     setAssignedVariantIds(null)
-    setVariantQtys({})
+    setVariantCompartments({})
     const dow       = dowFromDate(form.delivery_date)
     const weekStart = getWeekStart(form.delivery_date)
     supabase
       .from('bento_weekly_menu_assignments')
-      .select('variant_id')
+      .select('variant_id, bento_proteins(name,description), bento_vegetables(name,description), bento_staples(name,description)')
       .eq('week_start', weekStart)
       .eq('day_of_week', dow)
       .then(({ data, error }) => {
         if (error) return
-        setAssignedVariantIds((data ?? []).map((r: { variant_id: number }) => r.variant_id))
+        const rows = (data ?? []) as unknown as Array<{
+          variant_id: number
+          bento_proteins:   { name: string; description: string | null } | null
+          bento_vegetables: { name: string; description: string | null } | null
+          bento_staples:    { name: string; description: string | null } | null
+        }>
+        setAssignedVariantIds(rows.map(r => r.variant_id))
+        const comps: Record<number, { a: string|null; b: string|null; c: string|null }> = {}
+        for (const r of rows) {
+          comps[r.variant_id] = {
+            a: r.bento_proteins?.description   || r.bento_proteins?.name   || null,
+            b: r.bento_vegetables?.description || r.bento_vegetables?.name || null,
+            c: r.bento_staples?.description    || r.bento_staples?.name    || null,
+          }
+        }
+        setVariantCompartments(comps)
+        // Restore saved selections from bento_items on initial load; clear on date change
+        if (pendingQtysRef.current) {
+          setVariantQtys(pendingQtysRef.current)
+          pendingQtysRef.current = null
+        } else {
+          setVariantQtys({})
+        }
       })
   }, [form.delivery_date])
 
@@ -143,6 +188,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
 
   async function handleSave() {
     if (!form.customer_name.trim()) { setError('Customer name is required.'); return }
+    if (!form.unit_price || unitPrice <= 0) { setError('Unit price is required.'); return }
 
     const activeVariantSubmit = activeVariants.filter(v => (variantQtys[v.id] ?? 0) > 0)
     const activeCustomCombos  = customCombos.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
@@ -176,6 +222,15 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     const firstProtein = firstCustom ? proteins.find(p => p.id === firstCustom.protein_id) : null
     const firstVeg     = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
     const firstStaple  = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
+    const firstVariantComp = activeVariantSubmit.length > 0 ? (variantCompartments[activeVariantSubmit[0].id] ?? null) : null
+    const compA = firstVariantComp?.a ?? firstProtein?.description ?? firstProtein?.name ?? null
+    const compB = firstVariantComp?.b ?? firstVeg?.description     ?? firstVeg?.name     ?? null
+    const compC = firstVariantComp?.c ?? firstStaple?.description  ?? firstStaple?.name  ?? null
+
+    const structuredMenu = JSON.stringify({
+      variants: activeVariantSubmit.map(v => ({ id: v.id, qty: variantQtys[v.id] })),
+      combos:   activeCustomCombos,
+    })
 
     const payload: Record<string, unknown> = {
       customer_name:           form.customer_name.trim(),
@@ -187,9 +242,10 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       address:                 form.fulfillment_type === 'delivery' ? (form.address || null) : null,
       menu_type:               menuType,
       items:                   itemsText,
-      compartment_a:           firstProtein?.description || firstProtein?.name || null,
-      compartment_b:           firstVeg?.description     || firstVeg?.name     || null,
-      compartment_c:           firstStaple?.description  || firstStaple?.name  || null,
+      bento_items:             structuredMenu,
+      compartment_a:           compA,
+      compartment_b:           compB,
+      compartment_c:           compC,
       quantity:                totalQty,
       amount,
       note:                    form.note || null,
@@ -203,8 +259,9 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     const res = await updateOrderAction(orderId, payload)
     setSaving(false)
     if (!res.ok) { setError(res.error); return }
+    window.dispatchEvent(new CustomEvent('bento-order-updated', { detail: { date: form.delivery_date } }))
     router.refresh()
-    setTimeout(() => { pop() }, 400)
+    setTimeout(() => { pop() }, 100)
   }
 
   const isDelivery     = form.fulfillment_type === 'delivery'
@@ -229,9 +286,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
         <span className="font-semibold text-base">Edit Order #{orderId}</span>
       </div>
 
-      <div className="px-4 py-4 space-y-4 flex-1 overflow-y-auto" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}>
-        {error && <div className="px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>}
-
+      <div className="px-4 py-4 space-y-4 flex-1 overflow-y-auto overflow-x-hidden" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}>
         {/* Customer */}
         <div>
           <label className="text-sm text-gray-600 mb-1 block">Customer Name *</label>
@@ -255,16 +310,25 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
           </div>
         </div>
 
-        {/* Date */}
-        <div>
-          <label className="text-sm text-gray-600 mb-1 block">Date</label>
-          <input name="delivery_date" type="date" value={form.delivery_date} onChange={handleChange} className={INPUT} />
-        </div>
-
-        {/* Time */}
-        <div>
-          <label className="text-sm text-gray-600 mb-1 block">{isDelivery ? 'Delivery' : 'Pickup'} Time</label>
-          <input name="order_time" type="time" value={form.order_time} onChange={handleChange} className={INPUT} />
+        {/* Date + Time */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="min-w-0">
+            <label className="text-sm text-gray-600 mb-1 block">Date</label>
+            <DatePickerField
+              ariaLabel="Order date"
+              value={form.delivery_date}
+              onChange={value => setForm(prev => ({ ...prev, delivery_date: value }))}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="text-sm text-gray-600 mb-1 block">{isDelivery ? 'Delivery' : 'Pickup'} Time</label>
+            <TimePickerField
+              ariaLabel={isDelivery ? 'Delivery time' : 'Pickup time'}
+              title={isDelivery ? 'Delivery Time' : 'Pickup Time'}
+              value={form.order_time}
+              onChange={value => setForm(prev => ({ ...prev, order_time: value }))}
+            />
+          </div>
         </div>
 
         {/* Delivery fields */}
@@ -305,8 +369,8 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
                 {activeVariants.map(v => {
                   const qty = variantQtys[v.id] ?? 0
                   return (
-                    <div key={v.id} className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm">
-                      <span className="text-sm font-medium text-gray-800">{v.name}</span>
+                    <div key={v.id} className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm overflow-hidden">
+                      <span className="text-sm font-medium text-gray-800 truncate min-w-0 mr-2">{v.name}</span>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -466,6 +530,11 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
         </div>
 
         {/* Save */}
+        {error && (
+          <div className="px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 text-center">
+            {error}
+          </div>
+        )}
         <button type="button" onClick={handleSave} disabled={saving}
           className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium text-sm active:opacity-80 disabled:opacity-50">
           {saving ? 'Saving…' : 'Save Changes'}
@@ -482,12 +551,12 @@ function ComponentSelect({ label, items, value, onChange }: {
   onChange: (id: number | null) => void
 }) {
   return (
-    <div className="flex items-center gap-2 mb-1.5">
+    <div className="flex items-center gap-2 mb-1.5 min-w-0">
       <span className="text-[11px] text-gray-400 w-10 flex-shrink-0">{label}</span>
       <select
         value={value ?? ''}
         onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-400 bg-white text-gray-700"
+        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-400 bg-white text-gray-700"
       >
         <option value="">Select…</option>
         {items.map(c => (
