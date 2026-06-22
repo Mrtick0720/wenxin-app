@@ -102,10 +102,35 @@ export default function ProductionPage() {
     setLoading(false)
   }, []) // stable — reads role via ref
 
+  // Silent refetch (no loading flash) — used by polling and realtime/event triggers
+  const silentReload = useCallback(async (date: string) => {
+    const source = roleRef.current === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
+    const { data } = await supabase
+      .from(source)
+      .select('*')
+      .eq('date', date)
+      .neq('status', 'canceled')
+      .order('ready_by', { ascending: true, nullsFirst: false })
+      .order('id', { ascending: true })
+    if (data) {
+      setOrders(data as Order[])
+      setUpdatedAt(nowUpdatedStr())
+    }
+  }, [])
+
   // Reload whenever date changes
   useEffect(() => {
     loadData(selectedDate)
   }, [loadData, selectedDate])
+
+  // Poll every 8s while visible — guarantees cross-device updates even for
+  // the kitchen role, whose RLS blocks realtime on bento_orders.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') silentReload(selectedDateRef.current)
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [silentReload])
 
   // Single long-lived channel + listeners — never torn down on date change
   useEffect(() => {
@@ -113,7 +138,7 @@ export default function ProductionPage() {
       .channel('production-orders')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'bento_orders' },
-        () => { loadData(selectedDateRef.current) }
+        () => { silentReload(selectedDateRef.current) }
       )
       .subscribe()
 
@@ -126,10 +151,10 @@ export default function ProductionPage() {
         setUpdatedAt(nowUpdatedStr())
         return
       }
-      if (dates.length === 0 || dates.includes(cur)) loadData(cur)
+      if (dates.length === 0 || dates.includes(cur)) silentReload(cur)
     }
     function refreshVisible() {
-      if (document.visibilityState === 'visible') loadData(selectedDateRef.current)
+      if (document.visibilityState === 'visible') silentReload(selectedDateRef.current)
     }
     window.addEventListener('bento-order-updated', onOrderUpdated)
     window.addEventListener('focus', refreshVisible)
@@ -141,7 +166,7 @@ export default function ProductionPage() {
       window.removeEventListener('focus', refreshVisible)
       document.removeEventListener('visibilitychange', refreshVisible)
     }
-  }, [loadData]) // runs once on mount
+  }, [silentReload]) // runs once on mount
 
   const totalPortions = orders.reduce((s, o) => s + (o.quantity ?? 1), 0)
   const allProductionCards = aggregateProductionCards(orders)
