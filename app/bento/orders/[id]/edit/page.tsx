@@ -213,9 +213,9 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       const veg     = vegetables.find(v => v.id === c.vegetable_id)
       const staple  = staples.find(s => s.id === c.staple_id)
       const label   = [
-        protein?.name,
-        veg?.name,
-        staple?.name,
+        protein?.description || protein?.name,
+        veg?.description || veg?.name,
+        staple?.description || staple?.name,
       ].filter(Boolean).join(' / ') || 'Custom'
       parts.push(`${label} x${c.qty}`)
     }
@@ -229,7 +229,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     const firstVeg     = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
     const firstStaple  = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
     const firstVariantComp = activeVariantSubmit.length > 0 ? (variantCompartments[activeVariantSubmit[0].id] ?? null) : null
-    const compA = firstVariantComp?.a ?? firstProtein?.name ?? null
+    const compA = firstVariantComp?.a ?? firstProtein?.description ?? firstProtein?.name ?? null
     const compB = firstVariantComp?.b ?? firstVeg?.description     ?? firstVeg?.name     ?? null
     const compC = firstVariantComp?.c ?? firstStaple?.description  ?? firstStaple?.name  ?? null
 
@@ -250,10 +250,10 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       const staple = staples.find(s => s.id === c.staple_id)
       productionLines.push({
         key: `custom:${c.protein_id ?? 0}:${c.vegetable_id ?? 0}:${c.staple_id ?? 0}`,
-        label: [protein?.name, veg?.description || veg?.name, staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom',
-        compartment_a: protein?.name || null,
-        compartment_b: veg?.description || veg?.name || null,
-        compartment_c: staple?.description || staple?.name || null,
+        label: [protein?.description || protein?.name, veg?.description || veg?.description || veg?.name, staple?.description || staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom',
+        compartment_a: protein?.description || protein?.name || null,
+        compartment_b: veg?.description || veg?.description || veg?.name || null,
+        compartment_c: staple?.description || staple?.description || staple?.name || null,
         qty: c.qty,
       })
     }
@@ -623,7 +623,7 @@ function ComponentSelect({ label, items, value, onChange, groupable = false }: {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const selected = items.find(c => c.id === value)
-  const displayName = (c: Component) => c.description ? `${c.name} — ${c.description}` : c.name
+  const displayName = (c: Component) => c.description ? `${c.description} — ${c.name}` : c.name
 
   const filtered = search.trim()
     ? items.filter(c => displayName(c).toLowerCase().includes(search.toLowerCase()))
