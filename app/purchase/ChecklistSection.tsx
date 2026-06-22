@@ -523,12 +523,33 @@ function SendSheet({
 }) {
   const [copied, setCopied] = useState(false)
   const text = formatSendText(items, purchaserName)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleCopy() {
-    navigator.clipboard.writeText(text).then(() => {
+    // Primary: Clipboard API (modern browsers)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true)
+        setTimeout(() => { setCopied(false); onClose() }, 1400)
+      }).catch(() => fallbackCopy())
+    } else {
+      fallbackCopy()
+    }
+  }
+
+  function fallbackCopy() {
+    // Fallback: select textarea and execCommand (works on iOS Safari)
+    const ta = textareaRef.current
+    if (!ta) return
+    ta.select()
+    ta.setSelectionRange(0, 99999)
+    try {
+      document.execCommand('copy')
       setCopied(true)
-      setTimeout(() => { setCopied(false); onClose() }, 1200)
-    })
+      setTimeout(() => { setCopied(false); onClose() }, 1400)
+    } catch {
+      // last resort: show text for manual copy
+    }
   }
 
   return typeof document !== 'undefined' ? createPortal(
@@ -544,9 +565,17 @@ function SendSheet({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <span className="text-base font-semibold text-gray-900">采购单预览</span>
+          <span className="text-base font-semibold text-gray-900">Order Preview</span>
           <button type="button" onClick={onClose} className="text-gray-400 active:opacity-60 text-2xl leading-none">×</button>
         </div>
+        {/* Hidden textarea for fallback copy */}
+        <textarea
+          ref={textareaRef}
+          readOnly
+          value={text}
+          style={{ position: 'absolute', left: -9999, top: -9999, opacity: 0, height: 1 }}
+          aria-hidden
+        />
         {/* Preview */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           <pre className="whitespace-pre-wrap text-sm text-gray-700 font-sans leading-relaxed bg-gray-50 rounded-2xl p-4">
@@ -561,7 +590,7 @@ function SendSheet({
             className="w-full py-3.5 rounded-2xl text-base font-semibold text-white active:opacity-80 transition-colors"
             style={{ background: copied ? '#16a34a' : '#f97316' }}
           >
-            {copied ? '✓ 已复制！去粘贴发送' : '复制采购单'}
+            {copied ? '✓ Copied! Go paste & send' : 'Copy Order'}
           </button>
         </div>
       </div>
@@ -587,6 +616,7 @@ export default function ChecklistSection({
   purchasedChecklistIds,
   updateItemsRef,
   onItemsChange,
+  onSelectModeChange,
   purchaserName = '',
 }: {
   showCosts: boolean
@@ -604,6 +634,7 @@ export default function ChecklistSection({
   purchasedChecklistIds?: Set<number>
   updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
   onItemsChange?: (items: ChecklistEntry[]) => void
+  onSelectModeChange?: (active: boolean) => void
   purchaserName?: string
 }) {
   const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
@@ -721,9 +752,10 @@ export default function ChecklistSection({
       triggerSendRef.current = () => {
         setSelectedIds(new Set())
         setSelectMode(true)
+        onSelectModeChange?.(true)
       }
     }
-  }, [triggerSendRef])
+  }, [triggerSendRef, onSelectModeChange])
 
   // Expose a direct items updater so the parent can push fresh server data
   // atomically (in the same React batch as records/KPI), eliminating the
@@ -927,10 +959,16 @@ export default function ChecklistSection({
   const allSelected = pending.length > 0 && pending.every(i => selectedIds.has(i.id))
   const selectedItems = pending.filter(i => selectedIds.has(i.id))
 
+  function exitSelectMode() {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+    onSelectModeChange?.(false)
+  }
+
   return (
     <div>
-      {/* Select mode header */}
-      {selectMode && (
+      {/* List header: send icon on right (normal mode) OR select controls (select mode) */}
+      {selectMode ? (
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-orange-50">
           <button
             type="button"
@@ -940,18 +978,32 @@ export default function ChecklistSection({
               else setSelectedIds(new Set(pending.map(i => i.id)))
             }}
           >
-            {allSelected ? '取消全选' : '全选'}
+            {allSelected ? 'Deselect All' : 'Select All'}
           </button>
-          <span className="text-sm text-gray-500">已选 {selectedIds.size} 项</span>
+          <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
           <button
             type="button"
             className="text-sm font-medium text-gray-500 active:opacity-60"
-            onClick={() => { setSelectMode(false); setSelectedIds(new Set()) }}
+            onClick={exitSelectMode}
           >
-            取消
+            Cancel
           </button>
         </div>
-      )}
+      ) : showCosts && pending.length > 0 ? (
+        <div className="flex justify-end px-4 py-2 border-b border-gray-100">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-xs text-gray-400 active:opacity-60"
+            onClick={() => { setSelectedIds(new Set()); setSelectMode(true); onSelectModeChange?.(true) }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+            Send Order
+          </button>
+        </div>
+      ) : null}
 
       {loading && items.length === 0 ? (
         <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
@@ -984,26 +1036,19 @@ export default function ChecklistSection({
         </div>
       )}
 
-      {/* Select mode bottom action bar */}
-      {selectMode && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed left-0 right-0 flex flex-col gap-2 px-4 pt-3"
-          style={{
-            bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)',
-            zIndex: 200,
-          }}
-        >
+      {/* Select mode: generate button inline at bottom of card */}
+      {selectMode && (
+        <div className="px-4 py-3 border-t border-gray-100">
           <button
             type="button"
             disabled={selectedIds.size === 0}
             onClick={() => setShowSendSheet(true)}
-            className="w-full py-3.5 rounded-2xl text-base font-semibold text-white shadow-lg active:opacity-80 transition-opacity"
+            className="w-full py-3 rounded-2xl text-sm font-semibold text-white active:opacity-80 transition-opacity"
             style={{ background: selectedIds.size === 0 ? '#d1d5db' : '#f97316' }}
           >
-            {selectedIds.size === 0 ? '请选择条目' : `生成采购单（${selectedIds.size} 项）`}
+            {selectedIds.size === 0 ? 'Select items above' : `Generate Order (${selectedIds.size} items)`}
           </button>
-        </div>,
-        document.body
+        </div>
       )}
 
       {/* Toast */}
@@ -1078,7 +1123,7 @@ export default function ChecklistSection({
         <SendSheet
           items={selectedItems}
           purchaserName={purchaserName}
-          onClose={() => { setShowSendSheet(false); setSelectMode(false); setSelectedIds(new Set()) }}
+          onClose={() => { setShowSendSheet(false); exitSelectMode() }}
         />
       )}
 
