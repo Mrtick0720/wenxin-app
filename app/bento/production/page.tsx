@@ -366,9 +366,9 @@ export default function ProductionPage() {
                   </div>
                   <button onClick={() => toggleProductionCard(card)}
                     className="flex-shrink-0 rounded-[8px] flex flex-col items-center gap-0.5"
-                    style={{ background: done ? '#052e16' : '#0f172a', border: `1px solid ${done ? '#14532d' : '#2d3748'}`, padding: '8px 10px', minWidth: 58 }}>
-                    <span style={{ color: done ? '#22c55e' : '#475569' }}>{done ? CheckIcon(18) : CircleIcon(18)}</span>
-                    <span className="text-[11px]" style={{ color: done ? '#22c55e' : '#475569' }}>{done ? 'Done' : 'Pending'}</span>
+                    style={{ background: done ? '#052e16' : '#431407', border: `1px solid ${done ? '#14532d' : '#9a3412'}`, padding: '8px 10px', minWidth: 58 }}>
+                    <span style={{ color: done ? '#22c55e' : '#fb923c' }}>{done ? CheckIcon(18) : CircleIcon(18)}</span>
+                    <span className="text-[11px]" style={{ color: done ? '#22c55e' : '#fb923c' }}>{done ? 'Done' : 'Pending'}</span>
                   </button>
                 </div>
               </div>
