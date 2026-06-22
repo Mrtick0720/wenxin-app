@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useNavigation } from '@/app/components/NavigationStack'
+import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
+import { buildStructuredMenu, type ProductionLine } from '@/lib/bentoProduction'
 
 const AREAS = ['Likas', 'Luyang', 'Lintas', 'Karamunsing']
 
@@ -56,10 +59,10 @@ function getWeekStart(dateStr: string): string {
 }
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
-const INPUT_SM = 'w-full min-w-0 bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400'
 
 export default function NewBentoOrder() {
   const router = useRouter()
+  const { pop } = useNavigation()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
@@ -118,6 +121,7 @@ export default function NewBentoOrder() {
   // Order items
   const [allVariants, setAllVariants]               = useState<BentoVariant[]>([])
   const [assignedVariantIds, setAssignedVariantIds] = useState<number[] | null>(null)
+  const [variantCompartments, setVariantCompartments] = useState<Record<number, { a: string|null; b: string|null; c: string|null }>>({})
   const [variantQtys, setVariantQtys]               = useState<Record<number, number>>({})
   const [customCombos, setCustomCombos]             = useState<CustomCombo[]>([])
   const [areaOpen, setAreaOpen] = useState(false)
@@ -136,17 +140,33 @@ export default function NewBentoOrder() {
   useEffect(() => {
     if (!form.delivery_date) return
     setAssignedVariantIds(null)
+    setVariantCompartments({})
     setVariantQtys({})
     const dow       = dowFromDate(form.delivery_date)
     const weekStart = getWeekStart(form.delivery_date)
     supabase
       .from('bento_weekly_menu_assignments')
-      .select('variant_id')
+      .select('variant_id, bento_proteins(name,description), bento_vegetables(name,description), bento_staples(name,description)')
       .eq('week_start', weekStart)
       .eq('day_of_week', dow)
       .then(({ data, error }) => {
         if (error) return
-        setAssignedVariantIds((data ?? []).map((r: { variant_id: number }) => r.variant_id))
+        const rows = (data ?? []) as unknown as Array<{
+          variant_id: number
+          bento_proteins:   { name: string; description: string | null } | null
+          bento_vegetables: { name: string; description: string | null } | null
+          bento_staples:    { name: string; description: string | null } | null
+        }>
+        setAssignedVariantIds(rows.map(r => r.variant_id))
+        const comps: Record<number, { a: string|null; b: string|null; c: string|null }> = {}
+        for (const r of rows) {
+          comps[r.variant_id] = {
+            a: r.bento_proteins?.description   || r.bento_proteins?.name   || null,
+            b: r.bento_vegetables?.description || r.bento_vegetables?.name || null,
+            c: r.bento_staples?.description    || r.bento_staples?.name    || null,
+          }
+        }
+        setVariantCompartments(comps)
       })
   }, [form.delivery_date])
 
@@ -219,15 +239,50 @@ export default function NewBentoOrder() {
     const itemsText = parts.join(', ')
     const menuType  = activeVariantSubmit.length > 0 ? activeVariantSubmit[0].code : 'custom'
 
+    // compartment_a/b/c: prefer first variant's weekly-menu dishes, fall back to first custom combo
+    const firstVariantComp = activeVariantSubmit.length > 0 ? (variantCompartments[activeVariantSubmit[0].id] ?? null) : null
     const firstCustom  = activeCustomCombos[0]
     const firstProtein = firstCustom ? proteins.find(p => p.id === firstCustom.protein_id) : null
     const firstVeg     = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
     const firstStaple  = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
+    const compA = firstVariantComp?.a ?? firstProtein?.description ?? firstProtein?.name ?? null
+    const compB = firstVariantComp?.b ?? firstVeg?.description     ?? firstVeg?.name     ?? null
+    const compC = firstVariantComp?.c ?? firstStaple?.description  ?? firstStaple?.name  ?? null
+
+    const productionLines: ProductionLine[] = activeVariantSubmit.map(v => {
+      const compartments = variantCompartments[v.id]
+      return {
+        key: `variant:${v.id}`,
+        label: v.name,
+        compartment_a: compartments?.a ?? null,
+        compartment_b: compartments?.b ?? null,
+        compartment_c: compartments?.c ?? null,
+        qty: variantQtys[v.id],
+      }
+    })
+    for (const c of activeCustomCombos) {
+      const protein = proteins.find(p => p.id === c.protein_id)
+      const veg = vegetables.find(v => v.id === c.vegetable_id)
+      const staple = staples.find(s => s.id === c.staple_id)
+      productionLines.push({
+        key: `custom:${c.protein_id ?? 0}:${c.vegetable_id ?? 0}:${c.staple_id ?? 0}`,
+        label: [protein?.description || protein?.name, veg?.description || veg?.name, staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom',
+        compartment_a: protein?.description || protein?.name || null,
+        compartment_b: veg?.description || veg?.name || null,
+        compartment_c: staple?.description || staple?.name || null,
+        qty: c.qty,
+      })
+    }
+    const structuredMenu = buildStructuredMenu({
+      variants: activeVariantSubmit.map(v => ({ id: v.id, qty: variantQtys[v.id] })),
+      combos: activeCustomCombos,
+      productionLines,
+    })
 
     setLoading(true)
     setError(null)
     try {
-      const { error: err } = await supabase.from('bento_orders').insert({
+      const { data: savedOrder, error: err } = await supabase.from('bento_orders').insert({
         date:                    form.delivery_date,
         customer_name:           form.customer_name.trim(),
         phone:                   form.phone,
@@ -237,10 +292,10 @@ export default function NewBentoOrder() {
         delivery_or_pickup_time: form.order_time || null,
         menu_type:               menuType,
         items:                   itemsText,
-        bento_items:             null,
-        compartment_a:           firstProtein?.description || firstProtein?.name || null,
-        compartment_b:           firstVeg?.description || firstVeg?.name || null,
-        compartment_c:           firstStaple?.description || firstStaple?.name || null,
+        bento_items:             structuredMenu,
+        compartment_a:           compA,
+        compartment_b:           compB,
+        compartment_c:           compC,
         ready_by:                form.ready_by || null,
         note:                    form.note,
         amount:                  total,
@@ -251,7 +306,7 @@ export default function NewBentoOrder() {
         payment_method:          form.payment_method || null,
         amount_paid:             parseFloat(form.amount_paid) || 0,
         payment_note:            form.payment_note || '',
-      })
+      }).select('*').single()
       if (err) {
         setError(err.message || 'Failed to create order.')
         setLoading(false)
@@ -261,8 +316,11 @@ export default function NewBentoOrder() {
         const nextUsed = Math.min(selectedCustomer.total_portions, selectedCustomer.used_portions + totalQty)
         await supabase.from('bento_customers').update({ used_portions: nextUsed }).eq('id', selectedCustomer.id)
       }
-      router.push('/bento')
+      window.dispatchEvent(new CustomEvent('bento-order-updated', {
+        detail: { date: form.delivery_date, order: savedOrder },
+      }))
       router.refresh()
+      setTimeout(() => { pop() }, 100)
     } catch {
       setError('Network error. Please check your connection.')
       setLoading(false)
@@ -411,15 +469,22 @@ export default function NewBentoOrder() {
         {/* ── Date ── */}
         <div>
           <label className="text-sm text-gray-600 mb-1 block">{isDelivery ? 'Delivery Date *' : 'Pickup Date *'}</label>
-          <input type="date" name="delivery_date"
-            value={form.delivery_date} onChange={handleChange} className={INPUT} />
+          <DatePickerField
+            ariaLabel={isDelivery ? 'Delivery date' : 'Pickup date'}
+            value={form.delivery_date}
+            onChange={value => setForm(prev => ({ ...prev, delivery_date: value }))}
+          />
         </div>
 
         {/* ── Single time (delivery or pickup) ── */}
         <div>
           <label className="text-sm text-gray-600 mb-1 block">{timeLabel}</label>
-          <input type="time" name="order_time"
-            value={form.order_time} onChange={handleChange} className={INPUT} />
+          <TimePickerField
+            ariaLabel={timeLabel}
+            title={timeLabel}
+            value={form.order_time}
+            onChange={value => setForm(prev => ({ ...prev, order_time: value }))}
+          />
         </div>
 
         {/* ── Delivery-only: Area + Address ── */}
@@ -533,6 +598,7 @@ export default function NewBentoOrder() {
                   items={proteins}
                   value={c.protein_id}
                   onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, protein_id: val } : x))}
+                  groupable
                 />
                 <ComponentSelect
                   label="素菜"
@@ -571,7 +637,12 @@ export default function NewBentoOrder() {
         {/* ── Ready by (kitchen) ── */}
         <div style={{ maxWidth: '50%' }}>
           <label className="text-xs text-gray-500 mb-1 block">Ready by (kitchen)</label>
-          <input type="time" name="ready_by" value={form.ready_by} onChange={handleChange} className={INPUT_SM} />
+          <TimePickerField
+            ariaLabel="Ready by kitchen time"
+            title="Ready by"
+            value={form.ready_by}
+            onChange={value => setForm(prev => ({ ...prev, ready_by: value }))}
+          />
         </div>
 
         {/* ── Pricing: unit price × qty = total ── */}
@@ -662,11 +733,6 @@ export default function NewBentoOrder() {
         </div>
 
         {/* ── Submit ── */}
-        <button type="submit" disabled={loading}
-          className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium text-sm active:opacity-80">
-          {loading ? 'Submitting...' : 'Create Order'}
-        </button>
-
         {error && (
           <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
@@ -675,27 +741,97 @@ export default function NewBentoOrder() {
             <span>{error}</span>
           </div>
         )}
+        <button type="submit" disabled={loading}
+          className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium text-sm active:opacity-80">
+          {loading ? 'Submitting...' : 'Create Order'}
+        </button>
       </form>
 
     </div>
   )
 }
 
-// ── Inline component select ──
-function ComponentSelect({ label, items, value, onChange }: {
-  label: string; items: Component[]; value: number | null; onChange: (id: number | null) => void
+// ── Searchable component picker ──
+const PROTEIN_GROUPS: { label: string; keywords: string[] }[] = [
+  { label: 'Chicken', keywords: ['chicken'] },
+  { label: 'Beef',    keywords: ['beef'] },
+  { label: 'Pork',    keywords: ['pork'] },
+  { label: 'Fish & Seafood', keywords: ['fish', 'shrimp', 'prawn', 'seafood', 'luffa shrimp', 'crab', 'squid'] },
+  { label: 'Tofu & Veg', keywords: ['tofu', 'mushroom', 'vegetarian', 'veg'] },
+]
+function proteinGroup(name: string): string {
+  const lower = name.toLowerCase()
+  for (const g of PROTEIN_GROUPS) {
+    if (g.keywords.some(k => lower.includes(k))) return g.label
+  }
+  return 'Others'
+}
+function groupItems(items: Component[]): { group: string; items: Component[] }[] {
+  const map = new Map<string, Component[]>()
+  for (const item of items) {
+    const g = proteinGroup(item.description || item.name)
+    if (!map.has(g)) map.set(g, [])
+    map.get(g)!.push(item)
+  }
+  const order = [...PROTEIN_GROUPS.map(g => g.label), 'Others']
+  return order.filter(g => map.has(g)).map(g => ({ group: g, items: map.get(g)! }))
+}
+
+function ComponentSelect({ label, items, value, onChange, groupable = false }: {
+  label: string; items: Component[]; value: number | null; onChange: (id: number | null) => void; groupable?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const selected = items.find(c => c.id === value)
+  const displayName = (c: Component) => c.description || c.name
+
+  const filtered = search.trim()
+    ? items.filter(c => displayName(c).toLowerCase().includes(search.toLowerCase()))
+    : items
+
+  const grouped = groupable && !search.trim() ? groupItems(filtered) : [{ group: '', items: filtered }]
+
   return (
-    <div className="flex items-center gap-2 mb-1.5">
-      <span className="text-[11px] text-gray-400 w-16 flex-shrink-0">{label}</span>
-      <select
-        value={value ?? ''}
-        onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-400 bg-white text-gray-700"
-      >
-        <option value="">Select…</option>
-        {items.map(c => <option key={c.id} value={c.id}>{c.description || c.name}{c.description ? ` — ${c.name}` : ''}</option>)}
-      </select>
+    <div className="flex items-center gap-2 mb-1.5 min-w-0">
+      <span className="text-[11px] text-gray-400 w-10 flex-shrink-0">{label}</span>
+      <button type="button" onClick={() => setOpen(true)}
+        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-left bg-white text-gray-700 flex items-center justify-between gap-1">
+        <span className={selected ? 'text-gray-800' : 'text-gray-400'}>{selected ? displayName(selected) : 'Select…'}</span>
+        <span className="text-gray-300 flex-shrink-0">▾</span>
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[500] flex flex-col" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setOpen(false)}>
+          <div className="mt-auto bg-white rounded-t-2xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-4 pt-4 pb-2 border-b border-gray-100">
+              <div className="text-sm font-semibold text-gray-700 mb-2">{label}</div>
+              <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400" />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <button type="button" onClick={() => { onChange(null); setOpen(false); setSearch('') }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-400 border-b border-gray-50">
+                — None
+              </button>
+              {grouped.map(({ group, items: gItems }) => (
+                <div key={group || 'all'}>
+                  {group && <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">{group}</div>}
+                  {gItems.map(c => (
+                    <button key={c.id} type="button"
+                      onClick={() => { onChange(c.id); setOpen(false); setSearch('') }}
+                      className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-50 ${value === c.id ? 'text-orange-500 font-medium bg-orange-50' : 'text-gray-800'}`}>
+                      {displayName(c)}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-gray-400">No results</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase/client'
 import { useNavigation } from '../../../../components/NavigationStack'
 import { updateOrderAction } from '../../actions'
 import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
+import { buildStructuredMenu, type ProductionLine } from '@/lib/bentoProduction'
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
 
@@ -43,6 +44,8 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
 
   // Holds variantQtys parsed from bento_items on initial load — restored after weekly menu loads
   const pendingQtysRef = useRef<Record<number, number> | null>(null)
+  const originalDateRef = useRef('')
+  const completedLineKeysRef = useRef<string[]>([])
 
   // Proteins / vegetables / staples for custom combos
   const [proteins,   setProteins]   = useState<Component[]>([])
@@ -95,6 +98,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
         amount_paid: String(o.amount_paid ?? (o.paid ? (o.amount ?? 0) : 0)),
         payment_note: (o.payment_note as string) ?? '',
       })
+      originalDateRef.current = (o.date as string) ?? ''
       // Restore structured menu selections if available
       const raw = o.bento_items as string | null | undefined
       if (raw) {
@@ -102,6 +106,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
           const parsed = JSON.parse(raw) as {
             variants?: { id: number; qty: number }[]
             combos?: CustomCombo[]
+            completed_line_keys?: string[]
           }
           if (parsed.variants?.length) {
             const qtys: Record<number, number> = {}
@@ -111,6 +116,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
             pendingQtysRef.current = qtys
           }
           if (parsed.combos?.length) setCustomCombos(parsed.combos)
+          completedLineKeysRef.current = parsed.completed_line_keys ?? []
         } catch { /* ignore malformed */ }
       }
       setLoading(false)
@@ -227,10 +233,41 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     const compB = firstVariantComp?.b ?? firstVeg?.description     ?? firstVeg?.name     ?? null
     const compC = firstVariantComp?.c ?? firstStaple?.description  ?? firstStaple?.name  ?? null
 
-    const structuredMenu = JSON.stringify({
-      variants: activeVariantSubmit.map(v => ({ id: v.id, qty: variantQtys[v.id] })),
-      combos:   activeCustomCombos,
+    const productionLines: ProductionLine[] = activeVariantSubmit.map(v => {
+      const compartments = variantCompartments[v.id]
+      return {
+        key: `variant:${v.id}`,
+        label: v.name,
+        compartment_a: compartments?.a ?? null,
+        compartment_b: compartments?.b ?? null,
+        compartment_c: compartments?.c ?? null,
+        qty: variantQtys[v.id],
+      }
     })
+    for (const c of activeCustomCombos) {
+      const protein = proteins.find(p => p.id === c.protein_id)
+      const veg = vegetables.find(v => v.id === c.vegetable_id)
+      const staple = staples.find(s => s.id === c.staple_id)
+      productionLines.push({
+        key: `custom:${c.protein_id ?? 0}:${c.vegetable_id ?? 0}:${c.staple_id ?? 0}`,
+        label: [protein?.description || protein?.name, veg?.description || veg?.name, staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom',
+        compartment_a: protein?.description || protein?.name || null,
+        compartment_b: veg?.description || veg?.name || null,
+        compartment_c: staple?.description || staple?.name || null,
+        qty: c.qty,
+      })
+    }
+    const structuredMenu = buildStructuredMenu({
+      variants: activeVariantSubmit.map(v => ({ id: v.id, qty: variantQtys[v.id] })),
+      combos: activeCustomCombos,
+      productionLines,
+      completedLineKeys: completedLineKeysRef.current,
+    })
+    const retainedCompletedKeys = completedLineKeysRef.current.filter(key =>
+      productionLines.some(line => line.key === key)
+    )
+    const allProductionDone = productionLines.length > 0 &&
+      productionLines.every(line => retainedCompletedKeys.includes(line.key))
 
     const payload: Record<string, unknown> = {
       customer_name:           form.customer_name.trim(),
@@ -254,12 +291,18 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       payment_method:          form.payment_method || null,
       amount_paid:             parseFloat(form.amount_paid) || 0,
       payment_note:            form.payment_note || '',
+      status:                  allProductionDone ? 'completed' : 'pending',
     }
 
     const res = await updateOrderAction(orderId, payload)
     setSaving(false)
     if (!res.ok) { setError(res.error); return }
-    window.dispatchEvent(new CustomEvent('bento-order-updated', { detail: { date: form.delivery_date } }))
+    window.dispatchEvent(new CustomEvent('bento-order-updated', {
+      detail: {
+        dates: [originalDateRef.current, form.delivery_date].filter(Boolean),
+        order: { id: orderId, ...payload, ...res.data },
+      },
+    }))
     router.refresh()
     setTimeout(() => { pop() }, 100)
   }
@@ -424,6 +467,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
                   items={proteins}
                   value={c.protein_id}
                   onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, protein_id: val } : x))}
+                  groupable
                 />
                 <ComponentSelect
                   label="素菜"
@@ -544,27 +588,89 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
   )
 }
 
-function ComponentSelect({ label, items, value, onChange }: {
+const PROTEIN_GROUPS: { label: string; keywords: string[] }[] = [
+  { label: 'Chicken',       keywords: ['chicken'] },
+  { label: 'Beef',          keywords: ['beef'] },
+  { label: 'Pork',          keywords: ['pork'] },
+  { label: 'Fish & Seafood',keywords: ['fish', 'shrimp', 'prawn', 'seafood', 'crab', 'squid'] },
+  { label: 'Tofu & Veg',   keywords: ['tofu', 'mushroom', 'vegetarian', 'veg'] },
+]
+function proteinGroup(name: string): string {
+  const lower = name.toLowerCase()
+  for (const g of PROTEIN_GROUPS) {
+    if (g.keywords.some(k => lower.includes(k))) return g.label
+  }
+  return 'Others'
+}
+function groupItems(items: Component[]): { group: string; items: Component[] }[] {
+  const map = new Map<string, Component[]>()
+  for (const item of items) {
+    const g = proteinGroup(item.description || item.name)
+    if (!map.has(g)) map.set(g, [])
+    map.get(g)!.push(item)
+  }
+  const order = [...PROTEIN_GROUPS.map(g => g.label), 'Others']
+  return order.filter(g => map.has(g)).map(g => ({ group: g, items: map.get(g)! }))
+}
+
+function ComponentSelect({ label, items, value, onChange, groupable = false }: {
   label: string
   items: Component[]
   value: number | null
   onChange: (id: number | null) => void
+  groupable?: boolean
 }) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const selected = items.find(c => c.id === value)
+  const displayName = (c: Component) => c.description || c.name
+
+  const filtered = search.trim()
+    ? items.filter(c => displayName(c).toLowerCase().includes(search.toLowerCase()))
+    : items
+  const grouped = groupable && !search.trim() ? groupItems(filtered) : [{ group: '', items: filtered }]
+
   return (
     <div className="flex items-center gap-2 mb-1.5 min-w-0">
       <span className="text-[11px] text-gray-400 w-10 flex-shrink-0">{label}</span>
-      <select
-        value={value ?? ''}
-        onChange={e => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-orange-400 bg-white text-gray-700"
-      >
-        <option value="">Select…</option>
-        {items.map(c => (
-          <option key={c.id} value={c.id}>
-            {c.description || c.name}{c.description ? ` — ${c.name}` : ''}
-          </option>
-        ))}
-      </select>
+      <button type="button" onClick={() => setOpen(true)}
+        className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-left bg-white text-gray-700 flex items-center justify-between gap-1">
+        <span className={selected ? 'text-gray-800' : 'text-gray-400'}>{selected ? displayName(selected) : 'Select…'}</span>
+        <span className="text-gray-300 flex-shrink-0">▾</span>
+      </button>
+      {open && (
+        <div className="fixed inset-0 z-[500] flex flex-col" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setOpen(false)}>
+          <div className="mt-auto bg-white rounded-t-2xl max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-4 pt-4 pb-2 border-b border-gray-100">
+              <div className="text-sm font-semibold text-gray-700 mb-2">{label}</div>
+              <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400" />
+            </div>
+            <div className="overflow-y-auto flex-1">
+              <button type="button" onClick={() => { onChange(null); setOpen(false); setSearch('') }}
+                className="w-full px-4 py-2.5 text-left text-sm text-gray-400 border-b border-gray-50">
+                — None
+              </button>
+              {grouped.map(({ group, items: gItems }) => (
+                <div key={group || 'all'}>
+                  {group && <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">{group}</div>}
+                  {gItems.map(c => (
+                    <button key={c.id} type="button"
+                      onClick={() => { onChange(c.id); setOpen(false); setSearch('') }}
+                      className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-50 ${value === c.id ? 'text-orange-500 font-medium bg-orange-50' : 'text-gray-800'}`}>
+                      {displayName(c)}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-gray-400">No results</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
