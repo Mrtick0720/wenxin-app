@@ -60,7 +60,7 @@ function getWeekStart(dateStr: string): string {
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
 
-export default function NewBentoOrder() {
+export default function NewBentoOrder({ initialDate }: { initialDate?: string } = {}) {
   const router = useRouter()
   const { pop } = useNavigation()
   const [loading, setLoading] = useState(false)
@@ -69,7 +69,7 @@ export default function NewBentoOrder() {
     customer_name:    '',
     phone:            '',
     fulfillment_type: 'delivery',
-    delivery_date:    todayStr(),
+    delivery_date:    initialDate ?? todayStr(),
     order_time:       '',
     area:             '',
     address:          '',

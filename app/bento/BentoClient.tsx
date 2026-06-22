@@ -830,7 +830,7 @@ export default function BentoClient({
       {/* FAB — fixed above bottom nav, visible on main page and detail panel for owner/manager */}
       {!isKitchen && typeof document !== 'undefined' && createPortal(
         <button
-          onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder /></Suspense>)}
+          onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder initialDate={selectedDate} /></Suspense>)}
           aria-label="New order"
           className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
           style={{

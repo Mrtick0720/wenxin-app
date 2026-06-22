@@ -74,6 +74,7 @@ export function DatePickerField({
         min={min}
         max={max}
         onChange={event => onChange(event.target.value)}
+        onClick={openPicker}
         className="absolute inset-0 h-full w-full cursor-pointer rounded-xl opacity-0"
         style={{ fontSize: 16 }}
       />
