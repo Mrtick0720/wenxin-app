@@ -6,6 +6,7 @@ import PageTransition from '@/app/components/PageTransition'
 import { useStaff } from '@/app/components/StaffProvider'
 import { supabase } from '@/lib/supabase/client'
 import type { CurrentStaff } from '@/lib/auth/types'
+import { CenteredSpinner } from '@/app/components/Spinner'
 
 type SessionRow = {
   id: number
@@ -168,11 +169,7 @@ export default function AttendanceClient({
               Today&apos;s Sessions
             </div>
 
-            {loading && (
-              <div className="text-center text-gray-400 py-4 text-sm">
-                Loading...
-              </div>
-            )}
+            {loading && <CenteredSpinner />}
 
             {!loading && todaySessions.length === 0 && (
               <div className="text-center text-gray-400 py-4 text-sm">

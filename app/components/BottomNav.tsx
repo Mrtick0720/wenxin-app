@@ -64,11 +64,18 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
   const router = useRouter()
   const pathname = usePathname()
   const [forceHomeActive, setForceHomeActive] = useState(false)
+  const [pendingHref, setPendingHref] = useState<string | null>(null)
 
   // Clear force highlight once pathname catches up
   useEffect(() => {
     if (pathname === '/') setForceHomeActive(false)
   }, [pathname])
+
+  // Clear pendingHref once navigation context catches up
+  const activePath = canPop ? currentPath : pathname
+  useEffect(() => {
+    if (pendingHref && activePath === pendingHref) setPendingHref(null)
+  }, [activePath, pendingHref])
 
   const handleTap = (e: React.MouseEvent, href: string) => {
     e.preventDefault()
@@ -78,11 +85,14 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
     if (action === 'home') {
       if (canPop) popToRoot()
       setForceHomeActive(true)
+      setPendingHref('/')
       router.push('/')
       return
     }
 
     if (action === 'noop') return
+
+    setPendingHref(href)
 
     const el = getPageElement(href)
     if (el) {
@@ -94,14 +104,14 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
     router.push(href)
   }
 
-  const activePath = canPop ? currentPath : pathname
-
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 flex py-2 z-[300]">
       {tabs.map(({ href, label, Icon, badge }) => {
-        const active = href === '/'
-          ? activePath === '/' || forceHomeActive
-          : activePath === href || activePath.startsWith(`${href}/`)
+        const active = pendingHref
+          ? href === pendingHref
+          : href === '/'
+            ? activePath === '/' || forceHomeActive
+            : activePath === href || activePath.startsWith(`${href}/`)
         return (
           <a key={label} href={href} onClick={e => handleTap(e, href)}
             className="flex-1 flex flex-col items-center justify-center relative py-1">

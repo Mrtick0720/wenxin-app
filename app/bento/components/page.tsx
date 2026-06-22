@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import BackButton from '../../components/BackButton'
+import { CenteredSpinner } from '../../components/Spinner'
 import { supabase } from '@/lib/supabase/client'
 import { useStaff } from '@/app/components/StaffProvider'
 
@@ -142,7 +143,7 @@ export default function ComponentsPage() {
 
         {/* List */}
         {loading ? (
-          <div className="text-center text-gray-400 py-8">Loading...</div>
+          <CenteredSpinner />
         ) : items.length === 0 ? (
           <div className="text-center text-gray-400 py-8">No {TABS.find(t => t.key === tab)!.label.toLowerCase()} yet</div>
         ) : (

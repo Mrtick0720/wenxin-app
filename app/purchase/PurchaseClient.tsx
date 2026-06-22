@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect, lazy } from 'react'
+import { FullPageSpinner } from '@/app/components/Spinner'
 import { createPortal } from 'react-dom'
 import type { StaffRole } from '@/lib/auth/types'
 import {
@@ -218,7 +219,7 @@ function groupHistory(records: LedgerRecord[], today: string): MonthGroup[] {
 
 // ── Record row with swipe-to-reveal actions ──
 function RecordRow({
-  item, isFirst, isLast, showCosts, canDelete,
+  item, isFirst, isLast, showCosts, canDelete, catalog,
   onDetail, onEditRecord, onDeleteRecord, onUncheck,
 }: {
   item: LedgerRecord
@@ -226,6 +227,7 @@ function RecordRow({
   isLast: boolean
   showCosts: boolean
   canDelete: boolean
+  catalog: CatalogItem[]
   onDetail:      (r: LedgerRecord) => void
   onEditRecord:  (r: LedgerRecord) => void
   onDeleteRecord:(r: LedgerRecord) => void
@@ -267,21 +269,23 @@ function RecordRow({
 
   // Kitchen: simple row with checked checkbox, no swipe, no prices
   if (!showCosts) {
+    const catalogMatch = catalog.find((c) => c.name_zh === item.name)
+    const displayName = catalogMatch?.name_ms?.trim() || item.name
     return (
       <div style={{ position: 'relative', borderBottom, background: '#fff' }}>
         <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: categoryClr, ...stripRadius }} />
-        <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" onClick={() => onDetail(item)} className="flex items-center gap-3 px-4 py-3 w-full text-left active:opacity-70">
           <div className="flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center"
             style={{ borderColor: '#22c55e', background: '#22c55e' }}>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="20 6 9 17 4 12" />
             </svg>
           </div>
-          <button type="button" onClick={() => onDetail(item)} className="flex-1 text-left min-w-0">
-            <div className="font-medium text-sm text-gray-900">{item.name}</div>
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm text-gray-900">{displayName}</div>
             <div className="text-xs text-gray-400 mt-0.5">{item.quantity} {item.unit}</div>
-          </button>
-        </div>
+          </div>
+        </button>
       </div>
     )
   }
@@ -791,6 +795,12 @@ export default function PurchaseClient(props: Props) {
 
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const [expandedDays,   setExpandedDays]   = useState<Set<string>>(new Set())
+  const [noPermToast, setNoPermToast]       = useState(false)
+
+  function showNoPermToast() {
+    setNoPermToast(true)
+    setTimeout(() => setNoPermToast(false), 2500)
+  }
 
   // ── Refresh function (used by pull-to-refresh, filters, and sync) ──
   // silent=true: background poll — no visible "Refreshing…" indicator
@@ -911,6 +921,7 @@ export default function PurchaseClient(props: Props) {
   }, [])
 
   const showCosts = ctx?.perms.canViewCosts ?? false
+  const canViewReceived = showCosts || ctx?.role === 'kitchen' || ctx?.role === 'front_desk'
   showCostsRef.current = showCosts
 
   // ── Carousel: native touch listeners (passive:false so a classified horizontal
@@ -1101,10 +1112,12 @@ export default function PurchaseClient(props: Props) {
 
   // ── Navigation ──
   function openDetail(r: LedgerRecord) {
+    if (!showCosts) { showNoPermToast(); return }
     push('/purchase/' + r.id, <DetailClient />)
   }
 
   function openKpiDetails() {
+    if (!showCosts) { showNoPermToast(); return }
     push('/purchase/kpi-details', <CostRatioDetailsClient kpi={kpi!} today={ctx!.today} />)
   }
 
@@ -1320,6 +1333,7 @@ export default function PurchaseClient(props: Props) {
   const rowProps = {
     showCosts,
     canDelete: ctx?.perms.canDelete ?? false,
+    catalog,
     onDetail: openDetail,
     onEditRecord: setEditingRecord,
     onDeleteRecord: setDeletingRecord,
@@ -1393,6 +1407,10 @@ export default function PurchaseClient(props: Props) {
       setRecordsError(res.error)
     }
     setRecordsLoading(false)
+  }
+
+  if (!ctx && !bootError) {
+    return <FullPageSpinner />
   }
 
   if (bootError && !ctx) {
@@ -1542,7 +1560,7 @@ export default function PurchaseClient(props: Props) {
           {([
             { key: 'checklist',    label: 'To Buy',    count: checklistPendingCount,        activeBg: '#FF7A1A', inactiveBg: '#FFF3E8', activeText: '#FFFFFF', inactiveText: '#C2410C' },
             { key: 'verification', label: 'To Verify', count: pendingVerification.length,   activeBg: '#2563EB', inactiveBg: '#EFF6FF', activeText: '#FFFFFF', inactiveText: '#1D4ED8' },
-            { key: 'records',      label: 'Received',  count: todayRecords.length, locked: !showCosts, activeBg: '#16A34A', inactiveBg: '#ECFDF5', activeText: '#FFFFFF', inactiveText: '#15803D' },
+            { key: 'records',      label: 'Received',  count: todayRecords.length, locked: !canViewReceived, activeBg: '#16A34A', inactiveBg: '#ECFDF5', activeText: '#FFFFFF', inactiveText: '#15803D' },
           ] as const).map((tab) => {
             const active = activeTab === tab.key
             const locked = 'locked' in tab && tab.locked
@@ -1584,7 +1602,7 @@ export default function PurchaseClient(props: Props) {
             <div ref={(el) => { panelRefs.current[0] = el }} style={{ width: `${pctPerSlide}%` }}>
         <div className="mx-4 mt-4">
           <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
-            {checklistLoading ? (
+            {(checklistLoading || (!showCosts && catalogLoading)) ? (
               <div className="space-y-3 p-4">
                 <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
                 <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
@@ -1654,7 +1672,7 @@ export default function PurchaseClient(props: Props) {
           {pendingVerification.length > 0 ? (
             <PendingVerificationSection
               items={(verifyFilters.category || verifyFilters.supplier ? filteredPending : pendingRecords) as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
-              canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen'}
+              canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen' || ctx?.role === 'front_desk'}
               onAccepted={handleVerificationAccepted}
               onAcceptFailed={handleVerificationAcceptFailed}
               onRejected={handleVerificationRejected}
@@ -1671,7 +1689,7 @@ export default function PurchaseClient(props: Props) {
 
             {/* Panel 2: Received (owner/manager only; kitchen sees a lock) */}
             <div ref={(el) => { panelRefs.current[2] = el }} style={{ width: `${pctPerSlide}%` }}>
-          {!showCosts ? (
+          {!canViewReceived ? (
             <div className="mx-4 mt-4 bg-white rounded-2xl border border-gray-100 px-4 py-12 flex flex-col items-center gap-2 text-sm text-gray-400">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
@@ -1719,7 +1737,7 @@ export default function PurchaseClient(props: Props) {
 
           {/* Today's received */}
           <div className="mx-4 mt-4">
-            {recordsLoading ? (
+            {(recordsLoading || (!showCosts && catalogLoading)) ? (
               <div className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
                 <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
                 <div className="h-14 animate-pulse rounded-xl bg-gray-100" />
@@ -2053,6 +2071,14 @@ export default function PurchaseClient(props: Props) {
         />
       )}
 
+      {noPermToast && (
+        <div
+          className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', background: '#111827' }}
+        >
+          You do not have access to view this information.
+        </div>
+      )}
     </div>
   )
 }

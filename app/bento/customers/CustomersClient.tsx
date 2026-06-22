@@ -6,6 +6,7 @@ import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useStaff } from '@/app/components/StaffProvider'
 import { useNavigation } from '../../components/NavigationStack'
+import { FullPageSpinner } from '@/app/components/Spinner'
 
 const loadCustomerDetailPage = () => import('@/app/bento/customers/[id]/page')
 const CustomerDetailPage = lazy(loadCustomerDetailPage)
@@ -102,11 +103,7 @@ export default function CustomersClient() {
   }
 
   if (loading) {
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="text-gray-400 text-sm">Loading...</div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
   return (

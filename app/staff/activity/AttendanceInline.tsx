@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useStaff } from '@/app/components/StaffProvider'
 import { supabase } from '@/lib/supabase/client'
 import type { CurrentStaff } from '@/lib/auth/types'
+import { CenteredSpinner } from '@/app/components/Spinner'
 
 type SessionRow = {
   id: number
@@ -125,7 +126,7 @@ export default function AttendanceInline({
       {/* Today's Sessions */}
       <div className="bg-white rounded-2xl p-4 shadow-sm">
         <div className="text-sm font-semibold text-gray-700 mb-3">Today&apos;s Sessions</div>
-        {loading && <div className="text-center text-gray-400 py-4 text-sm">Loading...</div>}
+        {loading && <CenteredSpinner />}
         {!loading && todaySessions.length === 0 && (
           <div className="text-center text-gray-400 py-4 text-sm">No sessions recorded today</div>
         )}

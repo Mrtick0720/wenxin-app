@@ -13,10 +13,10 @@ interface ToneStyle {
 }
 
 // One fixed pastel tone per card type (color does not flip on count).
-const RESERVATIONS: ToneStyle = { bg: 'bg-blue-50',   title: 'text-gray-700', number: 'text-blue-600',   status: 'text-gray-500' }
+const BENTO:        ToneStyle = { bg: 'bg-blue-50',   title: 'text-gray-700', number: 'text-blue-600',   status: 'text-blue-500' }
 const COMPLAINTS:   ToneStyle = { bg: 'bg-red-50',    title: 'text-gray-700', number: 'text-red-600',    status: 'text-red-500' }
 const INCIDENTS:    ToneStyle = { bg: 'bg-orange-50', title: 'text-gray-700', number: 'text-orange-600', status: 'text-orange-500' }
-const TASKS:        ToneStyle = { bg: 'bg-yellow-50', title: 'text-gray-700', number: 'text-yellow-700', status: 'text-yellow-700' }
+const RESERVATIONS: ToneStyle = { bg: 'bg-blue-50',   title: 'text-gray-700', number: 'text-blue-600',   status: 'text-gray-500' }
 
 const CLEAR_STATUS = 'text-gray-400'
 
@@ -31,22 +31,24 @@ interface StatusCard {
 }
 
 interface StatusSummaryGridProps {
-  reservations: number
+  bentoOrders: number
+  bentoCompleted: number
   complaints: number
   incidents: number
-  tasks: number
+  reservations: number
 }
 
-export default function StatusSummaryGrid({ reservations, complaints, incidents, tasks }: StatusSummaryGridProps) {
+export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complaints, incidents, reservations }: StatusSummaryGridProps) {
+  const bentoPending = bentoOrders - bentoCompleted
   const cards: StatusCard[] = [
     {
-      title: 'Reservations',
-      href: '/reservations',
-      value: reservations,
-      status: 'Today',
-      isClear: false,
-      tone: RESERVATIONS,
-      image: '/reservations.webp',
+      title: 'Bento',
+      href: '/bento',
+      value: bentoOrders,
+      status: bentoPending > 0 ? `${bentoPending} Pending` : bentoOrders > 0 ? 'All Done' : 'No Orders',
+      isClear: bentoPending === 0,
+      tone: BENTO,
+      image: '/bento-card.webp',
     },
     {
       title: 'Complaints',
@@ -67,13 +69,13 @@ export default function StatusSummaryGrid({ reservations, complaints, incidents,
       image: '/incidents.webp',
     },
     {
-      title: 'Tasks',
-      href: '/tasks',
-      value: tasks,
-      status: tasks > 0 ? `${tasks} Pending` : 'Clear',
-      isClear: tasks === 0,
-      tone: TASKS,
-      image: '/tasks.webp',
+      title: 'Reservations',
+      href: '/reservations',
+      value: reservations,
+      status: 'Today',
+      isClear: false,
+      tone: RESERVATIONS,
+      image: '/reservations.webp',
     },
   ]
 

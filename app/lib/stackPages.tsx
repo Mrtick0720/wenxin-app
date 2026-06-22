@@ -4,6 +4,7 @@ import React, { lazy, Suspense } from 'react'
 import { useStaff } from '@/app/components/StaffProvider'
 import type { StaffRole } from '@/lib/auth/types'
 import { preloadRouteLoaders } from '@/lib/routePreload'
+import { FullPageSpinner } from '@/app/components/Spinner'
 
 // Client-side stack page registry.
 //
@@ -61,28 +62,11 @@ const KitchenTasksPage = lazy(loadKitchenTasksPage)
 const CustomersClientPage = lazy(loadCustomersClient)
 
 function PageFallback() {
-  return <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
+  return <FullPageSpinner />
 }
 
 function PurchaseFallback() {
-  return (
-    <div className="flex h-dvh flex-col bg-gray-50">
-      <div className="flex items-center justify-between border-b border-gray-100 bg-white px-4 py-3">
-        <div className="h-6 w-6" />
-        <span className="text-base font-semibold text-gray-800">Purchase</span>
-        <div className="w-6" />
-      </div>
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <div className="h-32 animate-pulse rounded-2xl bg-white" />
-        <div className="h-5 w-32 animate-pulse rounded bg-gray-200" />
-        <div className="space-y-3 rounded-2xl bg-white p-4">
-          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
-          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
-          <div className="h-12 animate-pulse rounded-xl bg-gray-100" />
-        </div>
-      </div>
-    </div>
-  )
+  return <FullPageSpinner />
 }
 
 function S({ children, fallback = <PageFallback /> }: { children: React.ReactNode; fallback?: React.ReactNode }) {

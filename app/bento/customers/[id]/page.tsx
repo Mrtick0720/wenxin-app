@@ -5,6 +5,7 @@
 import { lazy, Suspense, useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import BackButton from '../../../components/BackButton'
+import { FullPageSpinner } from '../../../components/Spinner'
 import { useNavigation } from '../../../components/NavigationStack'
 import { supabase } from '@/lib/supabase/client'
 import { buildSubscriptionPlan, getDefaultMenuType, type DeliveryFrequency, type Holiday, type PlannedSubscriptionDay, type SubscriptionDay } from '@/lib/subscriptionSchedule'
@@ -15,6 +16,7 @@ import { getCustomerDetailInitialState } from '@/lib/customerDetailState'
 import { splitCustomerMeals } from '@/lib/customerOrderHistory'
 import { archivePeriodAction, fetchPeriodsAction, type SubscriptionPeriod } from '../periodsActions'
 import MealRow from './MealRow'
+import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
 const loadEditCustomerPage = () => import('@/app/bento/customers/[id]/edit/page')
 const EditCustomerPage = lazy(loadEditCustomerPage)
@@ -396,11 +398,7 @@ export default function CustomerDetailPage({
     setUpdatingDate(null)
   }
 
-  if (loading) return (
-    <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
-      <div className="text-gray-400">Loading...</div>
-    </div>
-  )
+  if (loading) return <FullPageSpinner />
 
   if (!customer) return (
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
@@ -599,8 +597,11 @@ export default function CustomerDetailPage({
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] text-gray-400 mb-1 block">New start date</label>
-                      <input type="date" value={archStart} onChange={e => setArchStart(e.target.value)}
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" />
+                      <DatePickerField
+                        ariaLabel="New subscription start date"
+                        value={archStart}
+                        onChange={setArchStart}
+                      />
                     </div>
                     <div>
                       <label className="text-[11px] text-gray-400 mb-1 block">New total portions</label>

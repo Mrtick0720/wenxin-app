@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import BackButton from '../../components/BackButton'
+import { CenteredSpinner } from '../../components/Spinner'
 import { supabase } from '@/lib/supabase/client'
 import {
   groupUnpaidOrdersByCustomerAndDate,
@@ -164,7 +165,7 @@ export default function UnpaidPage() {
           </div>
         )}
 
-        {loading && <div className="text-center text-gray-400 py-8">Loading...</div>}
+        {loading && <CenteredSpinner />}
 
         {!loading && customerGroups.length === 0 && (
           <div className="text-center text-gray-400 py-12">

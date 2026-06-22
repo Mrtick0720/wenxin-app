@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import BackButton from '../../components/BackButton'
+import { FullPageSpinner } from '../../components/Spinner'
 import CatalogCombobox from '../CatalogCombobox'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
 import {
@@ -182,11 +183,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
   const catColor = categoryColor(form.category)
 
   if (loading) {
-    return (
-      <div style={{ position: 'fixed', inset: 0, background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="text-gray-400 text-sm">Loading...</div>
-      </div>
-    )
+    return <FullPageSpinner />
   }
 
   if (notFound) {

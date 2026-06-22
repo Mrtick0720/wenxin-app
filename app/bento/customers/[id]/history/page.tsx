@@ -5,6 +5,7 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'next/navigation'
 import BackButton from '../../../../components/BackButton'
+import { CenteredSpinner } from '../../../../components/Spinner'
 import { supabase } from '@/lib/supabase/client'
 import { splitCustomerMeals, groupRecordsByMonth } from '@/lib/customerOrderHistory'
 import { getDeliveredDates } from '@/lib/customerCalendarStatus'
@@ -72,7 +73,7 @@ export default function CustomerHistoryPage({
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)' }}
       >
         {loading ? (
-          <div className="text-center text-gray-400 text-sm py-16">Loading...</div>
+          <CenteredSpinner />
         ) : history.length === 0 ? (
           <div className="text-center text-gray-400 text-sm py-16">No past deliveries yet</div>
         ) : (

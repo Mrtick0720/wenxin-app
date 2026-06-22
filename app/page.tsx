@@ -317,10 +317,11 @@ export default async function Home() {
         )}
 
         <StatusSummaryGrid
-          reservations={reservationCount}
+          bentoOrders={bentoOrders}
+          bentoCompleted={bentoCompleted}
           complaints={complaintCount}
           incidents={anomalyCount}
-          tasks={pendingCount}
+          reservations={reservationCount}
         />
 
         {visibility.revenue && (

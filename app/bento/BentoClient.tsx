@@ -14,6 +14,7 @@ import DatePicker from '../components/DatePicker'
 import Dropdown from '../components/Dropdown'
 import type { StaffRole } from '@/lib/auth/types'
 import { useNavigation } from '../components/NavigationStack'
+import { CenteredSpinner } from '../components/Spinner'
 
 const NewBentoOrder    = lazy(() => import('@/app/bento/new/page'))
 const UnpaidPage       = lazy(() => import('@/app/bento/unpaid/page'))
@@ -28,8 +29,10 @@ type Order = {
   phone?: string
   address: string
   area: string
+  fulfillment_type?: string
   menu_type: string
   items: string
+  compartment_a?: string | null
   note: string
   amount?: number
   paid?: boolean
@@ -37,6 +40,7 @@ type Order = {
   date: string
   time_slot?: string
   quantity?: number
+  customer_id?: number | null
 }
 
 const ALL = 'all'
@@ -95,12 +99,13 @@ export default function BentoClient({
   const canManageCustomers = role !== 'kitchen'
   const canOpenProduction = role !== 'front_desk'
   const today = todayLocalStr()
+  const defaultDate = new Date().getHours() >= 15 ? addDays(today, 1) : today
   const pageFallback = <div style={{ position: 'fixed', inset: 0, background: '#f9fafb' }} />
   const [orders, setOrders] = useState(initialOrders)
   const [loading, setLoading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Order | null>(null)
-  const [selectedDate, setSelectedDate] = useState(today)
+  const [selectedDate, setSelectedDate] = useState(defaultDate)
   const [filterArea, setFilterArea] = useState(ALL)
   const [filterType, setFilterType] = useState(ALL)
   const [filterTime, setFilterTime] = useState(ALL)
@@ -122,56 +127,18 @@ export default function BentoClient({
     setMainPullOffsetState(offset)
   }, [])
 
-  // ── Panel: always rendered, starts hidden via inline style ──
+  // ── Panel: always rendered; React state controls its resting position ──
   const panelRef = useRef<HTMLDivElement>(null)
-  const panelAnimRef = useRef<Animation | null>(null)
   const panelIsOpen = useRef(false)
-  // Ref callback sets off-screen BEFORE first paint, avoiding Android blank flash
-  const setPanelRef = useCallback((el: HTMLDivElement | null) => {
-    panelRef.current = el
-    if (el) el.style.transform = `translateX(${window.innerWidth}px)`
-  }, [])
 
   // No body/html locking here. The Bento shell handles main-page gestures,
   // while the detail list keeps its own native scroll.
 
-  // ── Panel animation ──
-  function getPanelX(): number {
-    const el = panelRef.current
-    if (!el) return window.innerWidth
-    const t = el.style.transform
-    if (t && t !== 'none') {
-      const m = t.match(/translateX\(([-\d.]+)px\)/)
-      if (m) return parseFloat(m[1])
-    }
-    const computedTransform = window.getComputedStyle(el).transform
-    if (!computedTransform || computedTransform === 'none') return 0
-    return new DOMMatrix(computedTransform).m41
-  }
-
-  function animatePanel(toX: number, onDone?: () => void) {
+  function snapPanel(open: boolean) {
     const el = panelRef.current
     if (!el) return
-    if (panelAnimRef.current) {
-      const mid = getPanelX()
-      panelAnimRef.current.cancel()
-      panelAnimRef.current = null
-      el.style.transform = `translateX(${mid}px)`
-    }
-    const fromX = getPanelX()
-    const dist = Math.abs(toX - fromX)
-    if (dist < 1) { el.style.transform = toX === 0 ? 'none' : `translateX(${toX}px)`; onDone?.(); return }
-    const anim = el.animate(
-      [{ transform: `translateX(${fromX}px)` }, { transform: `translateX(${toX}px)` }],
-      { duration: Math.max(200, Math.min(350, dist * 0.75)), easing: 'cubic-bezier(0.3,0,0.1,1)', fill: 'none' }
-    )
-    panelAnimRef.current = anim
-    anim.onfinish = () => {
-      if (panelAnimRef.current !== anim) return
-      panelAnimRef.current = null
-      el.style.transform = toX === 0 ? 'none' : `translateX(${toX}px)`
-      onDone?.()
-    }
+    el.style.transition = 'transform 0.28s cubic-bezier(0.3,0,0.1,1)'
+    el.style.transform = open ? 'translateX(0)' : 'translateX(100%)'
   }
 
   function openPanel(mode: PanelMode = 'orders') {
@@ -179,13 +146,13 @@ export default function BentoClient({
     setPanelMode(mode)
     panelIsOpen.current = true
     setDetailOpen(true)
-    animatePanel(0)
+    requestAnimationFrame(() => snapPanel(true))
   }
 
   function closePanel() {
     panelIsOpen.current = false
     setDetailOpen(false)
-    animatePanel(window.innerWidth)
+    requestAnimationFrame(() => snapPanel(false))
   }
 
   // ── Data ──
@@ -217,12 +184,30 @@ export default function BentoClient({
     prefetchAdjacent(date)
   }
 
+  // Invalidate cache and re-fetch when an edit/new order completes
+  useEffect(() => {
+    function onOrderUpdated(e: Event) {
+      const date = (e as CustomEvent<{ date?: string }>).detail?.date ?? selectedDate
+      delete cache.current[date]
+      fetchDate(date).then(data => {
+        cache.current[date] = data
+        if (date === selectedDate) setOrders(data)
+      })
+    }
+    window.addEventListener('bento-order-updated', onOrderUpdated)
+    return () => window.removeEventListener('bento-order-updated', onOrderUpdated)
+  }, [fetchDate, selectedDate])
+
   // Self-fetch today's orders when rendered via navigation stack (initialOrders will be empty)
   useEffect(() => {
-    if (initialOrders.length === 0) {
+    if (defaultDate !== today) {
+      // After 15:00 the default view is tomorrow — fetch it, and also pre-fetch today
+      fetchDate(defaultDate).then(data => { setOrders(data); cache.current[defaultDate] = data })
+      fetchDate(today).then(data => { cache.current[today] = data })
+    } else if (initialOrders.length === 0) {
       fetchDate(today).then(data => { setOrders(data); cache.current[today] = data })
     }
-    prefetchAdjacent(today)
+    prefetchAdjacent(defaultDate)
     // Preload edit page chunk so it opens instantly
     import('@/app/bento/orders/[id]/edit/page')
   }, []) // eslint-disable-line
@@ -278,7 +263,6 @@ export default function BentoClient({
         tracking = true; mode = 'close'
         return
       }
-      if (panelAnimRef.current) return
 
       tracking = true
       mode = isInDatePicker(t.clientY) ? 'datepicker' : 'open'
@@ -293,7 +277,10 @@ export default function BentoClient({
         if (dx > 20 && dx > Math.abs(dy) * 1.5) {
           e.preventDefault()
           const el = panelRef.current
-          if (el) el.style.transform = `translateX(${dx}px)`
+          if (el) {
+            el.style.transition = 'none'
+            el.style.transform = `translateX(${dx}px)`
+          }
         }
         return
       }
@@ -314,7 +301,10 @@ export default function BentoClient({
       const el = panelRef.current
       if (mode === 'open' && dx < 0) {
         e.preventDefault()
-        if (el) el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
+        if (el) {
+          el.style.transition = 'none'
+          el.style.transform = `translateX(${Math.max(0, window.innerWidth + dx)}px)`
+        }
       }
     }
 
@@ -330,7 +320,7 @@ export default function BentoClient({
         if (dx > threshold) {
           closePanel()
         } else {
-          animatePanel(0)
+          snapPanel(true)
         }
         return
       }
@@ -349,7 +339,7 @@ export default function BentoClient({
       })
 
       if (action === 'open') openPanel()
-      else if (action === 'reset-closed') animatePanel(window.innerWidth)
+      else if (action === 'reset-closed') snapPanel(false)
     }
 
     // ── Attach listeners to the RIGHT elements ──
@@ -562,7 +552,7 @@ export default function BentoClient({
         <div className="flex-1 px-4 pt-3 flex flex-col gap-3 overflow-hidden">
           <div className="bg-white rounded-2xl p-4 shadow-sm" style={{ flexShrink: 0 }}>
             <div className="flex items-center justify-between mb-3">
-              <div className="text-sm text-gray-500">{isKitchen ? 'Daily Production' : 'Bento Revenue'}</div>
+              <div className="text-sm text-gray-500">{isKitchen ? (selectedDate > today ? 'Tomorrow Production' : 'Daily Production') : 'Bento Revenue'}</div>
               <div className={`text-xs font-medium ${pending > 0 ? 'text-orange-500' : 'text-green-500'}`}>
                 ● {pending > 0 ? 'In Progress' : 'All Done'}
               </div>
@@ -570,6 +560,7 @@ export default function BentoClient({
             <div className="text-3xl font-bold text-gray-900 mb-3">
               {isKitchen ? `${totalPortions} portions` : `RM ${totalAmount > 0 ? totalAmount.toFixed(2) : '0.00'}`}
             </div>
+            {isKitchen ? null : (
             <div className="grid grid-cols-4 gap-2">
               {([
                 { mode: 'portions' as PanelMode, val: totalPortions, label: 'Portions', color: 'text-blue-500' },
@@ -583,8 +574,24 @@ export default function BentoClient({
                 </button>
               ))}
             </div>
+            )}
           </div>
 
+          {/* Kitchen: large cards for Weekly Menu + Production */}
+          {isKitchen ? (
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => push('/bento/weekly-menu', <Suspense fallback={pageFallback}><WeeklyMenuPage /></Suspense>)}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm active:opacity-80 flex flex-col items-center justify-center py-5 px-3">
+                <img src="/weekly-menu.webp" alt="" aria-hidden width={158} height={158} className="object-contain" />
+                <span className="text-sm font-semibold text-gray-800 mt-3">Weekly Menu</span>
+              </button>
+              <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)}
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm active:opacity-80 flex flex-col items-center justify-center py-5 px-3">
+                <img src="/production.webp" alt="" aria-hidden width={158} height={158} className="object-contain" />
+                <span className="text-sm font-semibold text-gray-800 mt-3">Production</span>
+              </button>
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-2">
             {canViewFinancialDetails && <button onClick={() => push('/bento/unpaid', <Suspense fallback={pageFallback}><UnpaidPage /></Suspense>)} className="bg-white rounded-xl p-3 shadow-sm flex items-center gap-2 border border-gray-100 text-left">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -626,6 +633,7 @@ export default function BentoClient({
               </div>
             </button>}
           </div>
+          )}
 
           <button onClick={() => openPanel('orders')} className="w-full flex items-center justify-between bg-white rounded-xl px-4 py-3 border border-gray-100 shadow-sm">
             <span className="text-sm text-gray-600">
@@ -638,13 +646,16 @@ export default function BentoClient({
 
       {/* Detail Panel */}
       <div
-        ref={setPanelRef}
+        ref={panelRef}
         className="fixed inset-0 bg-white"
         style={{
           zIndex: 20,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          transform: detailOpen ? 'translateX(0)' : 'translateX(100%)',
+          transition: 'transform 0.28s cubic-bezier(0.3,0,0.1,1)',
+          willChange: 'transform',
         }}
       >
         <div className="bg-white px-4 py-3 flex items-center justify-between border-b" style={{ flexShrink: 0 }}>
@@ -667,7 +678,7 @@ export default function BentoClient({
           </div>
         )}
 
-        <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4 pb-8" style={{ overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
+        <div ref={scrollAreaRef} data-scroll className="flex-1 min-h-0 overflow-y-auto px-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)', overscrollBehaviorY: 'contain', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}>
           {error && (
             <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2 mb-3">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
@@ -676,7 +687,7 @@ export default function BentoClient({
               <span>{error}</span>
             </div>
           )}
-          {fetching && <div className="text-center text-gray-400 py-8">Loading...</div>}
+          {fetching && <CenteredSpinner />}
 
           {/* Portions breakdown */}
           {!fetching && panelMode === 'portions' && (
@@ -715,28 +726,40 @@ export default function BentoClient({
               <div className="pt-3 space-y-3">
                 {panelOrders.length === 0 && <div className="text-center text-gray-400 py-8">No orders</div>}
                 {panelOrders.map((order) => {
-                  const isDelivery = !!order.address
+                  const isDelivery = order.fulfillment_type ? order.fulfillment_type === 'delivery' : !!order.address
+                  const isMember = !!order.customer_id
+                  const rawMainDish = order.compartment_a || order.items?.split(',')[0]?.replace(/\s*x\d+\s*$/, '').trim() || order.items
+                  const mainDish = rawMainDish === order.customer_name ? (order.items?.split(',')[1]?.trim() ?? rawMainDish) : rawMainDish
                   return (
                     <div key={order.id} className="bg-white rounded-2xl p-4 shadow-sm">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className="font-semibold text-gray-900">{order.customer_name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
-                          {isDelivery ? 'Delivery' : 'Pickup'}
+                      {/* Row 1: name + Edit */}
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`font-semibold ${isMember ? 'text-amber-500' : 'text-gray-900'}`}>
+                          {isMember ? '⭐ ' : ''}{order.customer_name}
                         </span>
-                        {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
-                        {(order.quantity ?? 1) > 1 && <span className="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full">×{order.quantity}</span>}
-                        <div className="flex-1" />
                         <button onClick={() => push(`/bento/orders/${order.id}/edit`, <Suspense fallback={pageFallback}><EditOrderPage orderId={order.id} order={order as unknown as Record<string, unknown>} /></Suspense>)}
                           className="text-xs text-blue-500 active:text-blue-700 font-medium px-2 py-1">Edit</button>
                       </div>
-                      {order.area && <div className="text-xs text-gray-400 mb-1">📍 {order.area}</div>}
-                      <div className="text-sm text-gray-600 mb-1">📦 {order.items}</div>
-                      {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
-                      {order.address && <div className="text-sm text-gray-400 mb-1">{order.address}</div>}
-                      <div className="flex items-center justify-between mt-2">
-                        {order.phone && <span className="text-sm text-gray-400">Phone: {order.phone}</span>}
-                        {canViewFinancialDetails && <span className="font-semibold text-gray-900">RM {order.amount ?? 0}</span>}
+                      {/* Row 2: Delivery/Pickup + area */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${isDelivery ? 'bg-blue-50 text-blue-500' : 'bg-gray-100 text-gray-500'}`}>
+                          {isDelivery ? 'Delivery' : 'Pickup'}
+                        </span>
+                        {order.area && <span className="text-xs text-gray-400">{order.area}</span>}
                       </div>
+                      {/* Row 3: main dish */}
+                      <div className="text-sm text-gray-700 mb-1">{mainDish}</div>
+                      {/* Row 4: menu type tag + qty + amount */}
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          {order.menu_type && <span className="text-xs bg-orange-50 text-orange-500 px-2 py-0.5 rounded-full">{getMenuTypeLabel(order.menu_type)}</span>}
+                          {(order.quantity ?? 1) > 1 && <span className="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full">×{order.quantity}</span>}
+                        </div>
+                        {canViewFinancialDetails && (
+                          <span className="font-semibold text-gray-900 text-sm">RM {order.amount ?? 0}</span>
+                        )}
+                      </div>
+                      {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
                       {isToday && (
                         <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
                           className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
