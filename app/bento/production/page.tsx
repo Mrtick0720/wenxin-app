@@ -328,27 +328,27 @@ export default function ProductionPage() {
           const seqLabel = String.fromCharCode(65 + index)
           return (
             <div key={card.key} className="rounded-[10px] overflow-hidden mb-2.5"
-              style={{ border: '1px solid #334155', background: done ? '#0d1f12' : '#1e293b', opacity: done ? 0.7 : 1 }}>
+              style={{ border: `1px solid ${done ? '#1e3a22' : '#334155'}`, background: done ? '#0d1a10' : '#1e293b' }}>
               <div style={{ padding: '12px 11px' }}>
                 <div className="flex items-baseline justify-between gap-1.5 mb-1.5">
                   <span className="flex items-baseline gap-1.5 flex-1 min-w-0">
-                    <span className="text-[17px] font-bold flex-shrink-0 w-5 text-center" style={{ color: '#f97316' }}>{seqLabel}</span>
-                    <span className="text-[17px] font-semibold leading-tight" style={{ color: '#f1f5f9' }}>{card.compartment_a || card.label}</span>
+                    <span className="text-[17px] font-bold flex-shrink-0 w-5 text-center" style={{ color: done ? '#4b5563' : '#f97316' }}>{seqLabel}</span>
+                    <span className="text-[17px] font-semibold leading-tight" style={{ color: done ? '#4b5563' : '#f1f5f9' }}>{card.compartment_a || card.label}</span>
                   </span>
-                  <span className="text-[21px] font-medium whitespace-nowrap flex-shrink-0" style={{ color: '#f97316' }}>×{card.totalQty}</span>
+                  <span className="text-[21px] font-medium whitespace-nowrap flex-shrink-0" style={{ color: done ? '#4b5563' : '#f97316' }}>×{card.totalQty}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="flex-1 flex flex-col gap-1">
                     {card.compartment_b && (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Vegetable">🥬</span>
-                        <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{card.compartment_b}</span>
+                        <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Vegetable" style={{ opacity: done ? 0.3 : 1 }}>🥬</span>
+                        <span className="text-[13px]" style={{ color: done ? '#4b5563' : '#f1f5f9' }}>{card.compartment_b}</span>
                       </div>
                     )}
                     {card.compartment_c && (
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Rice">🍚</span>
-                        <span className="text-[13px]" style={{ color: '#f1f5f9' }}>{card.compartment_c}</span>
+                        <span className="text-[14px] flex-shrink-0 w-5 text-center" aria-label="Rice" style={{ opacity: done ? 0.3 : 1 }}>🍚</span>
+                        <span className="text-[13px]" style={{ color: done ? '#4b5563' : '#f1f5f9' }}>{card.compartment_c}</span>
                       </div>
                     )}
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
@@ -357,7 +357,7 @@ export default function ProductionPage() {
                         const service = order?.fulfillment_type === 'pickup' ? 'Pickup' : 'Delivery'
                         const time = order?.delivery_or_pickup_time?.slice(0, 5)
                         return (
-                          <span key={`${customer.orderId}-${customer.lineKey}`} className="text-[12px]" style={{ color: '#94a3b8' }}>
+                          <span key={`${customer.orderId}-${customer.lineKey}`} className="text-[12px]" style={{ color: done ? '#374151' : '#94a3b8' }}>
                             {customer.customerName} ×{customer.qty} · {service}{time ? ` ${time}` : ''}
                           </span>
                         )
