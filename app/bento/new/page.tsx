@@ -20,9 +20,9 @@ const PAYMENT_METHODS = [
   { value: 'other',         label: 'Other' },
 ]
 
-type OrderItem = { variant: string; quantity: number }
-type Component = { id: number; name: string; description: string | null; is_active: boolean }
-type CustomItem = { protein_id: number | null; vegetable_id: number | null; staple_id: number | null; qty: number }
+type BentoVariant = { id: number; code: string; name: string }
+type Component    = { id: number; name: string; description: string | null; is_active: boolean }
+type CustomCombo  = { protein_id: number | null; vegetable_id: number | null; staple_id: number | null; qty: number }
 
 type CustomerOpt = {
   id: number
@@ -45,6 +45,14 @@ function todayStr() {
 function dowFromDate(dateStr: string): number {
   const d = new Date(dateStr + 'T00:00:00')
   return (d.getDay() + 6) % 7
+}
+
+function getWeekStart(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00')
+  const day = d.getDay()
+  const diff = day === 0 ? -6 : 1 - day
+  d.setDate(d.getDate() + diff)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
@@ -108,11 +116,39 @@ export default function NewBentoOrder() {
   const [staples, setStaples] = useState<Component[]>([])
 
   // Order items
-  const [orderItems, setOrderItems] = useState<OrderItem[]>([{ variant: '', quantity: 1 }])
-  const [customItems, setCustomItems] = useState<CustomItem[]>([])
+  const [allVariants, setAllVariants]               = useState<BentoVariant[]>([])
+  const [assignedVariantIds, setAssignedVariantIds] = useState<number[] | null>(null)
+  const [variantQtys, setVariantQtys]               = useState<Record<number, number>>({})
+  const [customCombos, setCustomCombos]             = useState<CustomCombo[]>([])
   const [areaOpen, setAreaOpen] = useState(false)
 
   const isDelivery = form.fulfillment_type === 'delivery'
+
+  useEffect(() => {
+    supabase
+      .from('bento_menu_variants')
+      .select('id,code,name')
+      .eq('is_active', true)
+      .order('display_order')
+      .then(({ data }) => setAllVariants((data ?? []) as BentoVariant[]))
+  }, [])
+
+  useEffect(() => {
+    if (!form.delivery_date) return
+    setAssignedVariantIds(null)
+    setVariantQtys({})
+    const dow       = dowFromDate(form.delivery_date)
+    const weekStart = getWeekStart(form.delivery_date)
+    supabase
+      .from('bento_weekly_menu_assignments')
+      .select('variant_id')
+      .eq('week_start', weekStart)
+      .eq('day_of_week', dow)
+      .then(({ data, error }) => {
+        if (error) return
+        setAssignedVariantIds((data ?? []).map((r: { variant_id: number }) => r.variant_id))
+      })
+  }, [form.delivery_date])
 
   // Load component lists
   useEffect(() => {
@@ -143,25 +179,13 @@ export default function NewBentoOrder() {
     }))
   }
 
-  function addItem() { setOrderItems(prev => [...prev, { variant: '', quantity: 1 }]) }
-  function removeItem(idx: number) { setOrderItems(prev => prev.filter((_, i) => i !== idx)) }
-  function setItemVariant(idx: number, variant: string) {
-    setOrderItems(prev => prev.map((it, i) => i === idx ? { ...it, variant } : it))
-  }
-  function adjustQty(idx: number, delta: number) {
-    setOrderItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: Math.max(1, it.quantity + delta) } : it))
-  }
-
-  function addCustom() { setCustomItems(prev => [...prev, { protein_id: null, vegetable_id: null, staple_id: null, qty: 1 }]) }
-  function removeCustom(idx: number) { setCustomItems(prev => prev.filter((_, i) => i !== idx)) }
-  function setCustomField(idx: number, field: keyof CustomItem, value: number | null) {
-    setCustomItems(prev => prev.map((c, i) => i === idx ? { ...c, [field]: value } : c))
-  }
-  function adjustCustomQty(idx: number, delta: number) {
-    setCustomItems(prev => prev.map((c, i) => i === idx ? { ...c, qty: Math.max(1, c.qty + delta) } : c))
-  }
-
-  const totalQty = orderItems.filter(i => i.variant).reduce((s, i) => s + i.quantity, 0) + customItems.reduce((s, c) => s + c.qty, 0)
+  const activeVariants   = assignedVariantIds === null
+    ? []
+    : allVariants.filter(v => assignedVariantIds.includes(v.id))
+  const hasWeeklyMenu    = assignedVariantIds !== null && assignedVariantIds.length > 0
+  const variantTotal     = activeVariants.reduce((s, v) => s + (variantQtys[v.id] ?? 0), 0)
+  const customTotal      = customCombos.reduce((s, c) => s + c.qty, 0)
+  const totalQty         = variantTotal + customTotal
   const unitPrice = parseFloat(form.unit_price) || 0
   const total = unitPrice * totalQty
 
@@ -170,37 +194,35 @@ export default function NewBentoOrder() {
     if (!form.customer_name.trim()) { setError('Customer name is required.'); return }
     if (!form.unit_price || unitPrice <= 0) { setError('Unit price is required.'); return }
 
-    const activeOrderItems = orderItems.filter(i => i.variant)
-    const activeCustomItems = customItems.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
-    if (activeOrderItems.length === 0 && activeCustomItems.length === 0) {
+    const activeVariantSubmit = activeVariants.filter(v => (variantQtys[v.id] ?? 0) > 0)
+    const activeCustomCombos  = customCombos.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
+    if (activeVariantSubmit.length === 0 && activeCustomCombos.length === 0) {
       setError('Please add at least one menu item.'); return
     }
 
-    // Build items text from both variant and custom items
     const parts: string[] = []
-
-    // Variant items
-    for (const item of activeOrderItems) {
-      parts.push(`${item.variant === 'light' ? 'Light' : 'Flavorful'} x${item.quantity}`)
+    for (const v of activeVariantSubmit) {
+      parts.push(`${v.name} x${variantQtys[v.id]}`)
     }
-
-    // Custom items
-    for (const c of activeCustomItems) {
+    for (const c of activeCustomCombos) {
       const protein = proteins.find(p => p.id === c.protein_id)
-      const veg = vegetables.find(v => v.id === c.vegetable_id)
-      const staple = staples.find(s => s.id === c.staple_id)
-      const label = [protein?.description || protein?.name, veg?.description || veg?.name, staple?.description || staple?.name].filter(Boolean).join(' / ') || 'Custom'
+      const veg     = vegetables.find(v => v.id === c.vegetable_id)
+      const staple  = staples.find(s => s.id === c.staple_id)
+      const label   = [
+        protein?.description || protein?.name,
+        veg?.description     || veg?.name,
+        staple?.description  || staple?.name,
+      ].filter(Boolean).join(' / ') || 'Custom'
       parts.push(`${label} x${c.qty}`)
     }
 
     const itemsText = parts.join(', ')
-    const menuType = activeOrderItems.length > 0 ? activeOrderItems[0].variant : 'custom'
+    const menuType  = activeVariantSubmit.length > 0 ? activeVariantSubmit[0].code : 'custom'
 
-    // Compartments from first custom item (for kitchen view)
-    const firstCustom = activeCustomItems[0]
+    const firstCustom  = activeCustomCombos[0]
     const firstProtein = firstCustom ? proteins.find(p => p.id === firstCustom.protein_id) : null
-    const firstVeg = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
-    const firstStaple = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
+    const firstVeg     = firstCustom ? vegetables.find(v => v.id === firstCustom.vegetable_id) : null
+    const firstStaple  = firstCustom ? staples.find(s => s.id === firstCustom.staple_id) : null
 
     setLoading(true)
     setError(null)
@@ -436,87 +458,109 @@ export default function NewBentoOrder() {
           </>
         )}
 
-        {/* ── Meal selection ── */}
+        {/* ── Menu ── */}
         <div className="pt-2 border-t border-gray-200">
           <label className="text-sm text-gray-600 mb-2 block font-medium">Menu *</label>
 
-          {/* Variant buttons */}
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">Meal plan</span>
-            <button type="button" onClick={addItem}
-              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
-              style={{ background: '#f97316' }} aria-label="Add item">+</button>
-          </div>
-          <div className="space-y-2 mb-4">
-            {orderItems.map((item, idx) => (
-              <div key={idx} className="bg-white rounded-xl px-3 pt-2 pb-2.5 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Meal #{idx + 1}</span>
-                  <button type="button" onClick={() => removeItem(idx)}
-                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5" aria-label="Remove item">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  {[
-                    { code: 'light', label: 'Light', color: '#3B82F6' },
-                    { code: 'flavorful', label: 'Flavorful', color: '#F97316' },
-                  ].map(v => (
-                    <button key={v.code} type="button" onClick={() => setItemVariant(idx, v.code)}
-                      style={item.variant === v.code ? { background: v.color, borderColor: v.color } : undefined}
-                      className={`py-2 rounded-lg text-xs font-medium border transition-colors ${
-                        item.variant === v.code ? 'text-white' : 'bg-white text-gray-600 border-gray-200'
-                      }`}>{v.label}</button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-gray-400">Qty</span>
-                  <div className="flex items-center gap-1.5">
-                    <button type="button" onClick={() => adjustQty(idx, -1)}
-                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200">−</button>
-                    <span className="text-xs font-semibold w-5 text-center tabular-nums">{item.quantity}</span>
-                    <button type="button" onClick={() => adjustQty(idx, 1)}
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
-                      style={{ background: '#f97316' }}>+</button>
-                  </div>
-                </div>
+          {/* Layer 1 — Weekly menu variants */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-400">Weekly menu</span>
+            </div>
+            {assignedVariantIds === null ? (
+              <div className="text-xs text-gray-400 px-1">Loading…</div>
+            ) : !hasWeeklyMenu ? (
+              <div className="text-xs text-gray-400 bg-gray-50 rounded-xl px-3 py-2">
+                No weekly menu set for this day — use custom combos below.
               </div>
-            ))}
+            ) : (
+              <div className="space-y-2">
+                {activeVariants.map(v => {
+                  const qty = variantQtys[v.id] ?? 0
+                  return (
+                    <div key={v.id} className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm">
+                      <span className="text-sm font-medium text-gray-800">{v.name}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setVariantQtys(prev => ({ ...prev, [v.id]: Math.max(0, (prev[v.id] ?? 0) - 1) }))}
+                          className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
+                        >−</button>
+                        <span className="text-sm font-semibold w-6 text-center tabular-nums">{qty}</span>
+                        <button
+                          type="button"
+                          onClick={() => setVariantQtys(prev => ({ ...prev, [v.id]: (prev[v.id] ?? 0) + 1 }))}
+                          className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+                          style={{ background: '#f97316' }}
+                        >+</button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Custom build */}
+          {/* Layer 2 — Custom combos */}
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs text-gray-400">Custom</span>
-            <button type="button" onClick={addCustom}
+            <span className="text-xs text-gray-400">Custom combos</span>
+            <button
+              type="button"
+              onClick={() => setCustomCombos(prev => [...prev, { protein_id: null, vegetable_id: null, staple_id: null, qty: 1 }])}
               className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
-              style={{ background: '#9ca3af' }} aria-label="Add custom">+</button>
+              style={{ background: '#9ca3af' }}
+              aria-label="Add combo"
+            >+</button>
           </div>
           <div className="space-y-2">
-            {customItems.map((c, idx) => (
+            {customCombos.map((c, idx) => (
               <div key={idx} className="bg-white rounded-xl px-3 pt-2 pb-2.5 shadow-sm">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Custom #{idx + 1}</span>
-                  <button type="button" onClick={() => removeCustom(idx)}
-                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5" aria-label="Remove item">
+                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Combo #{idx + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCustomCombos(prev => prev.filter((_, i) => i !== idx))}
+                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5"
+                    aria-label="Remove combo"
+                  >
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                     </svg>
                   </button>
                 </div>
-                <ComponentSelect label="Protein" items={proteins} value={c.protein_id} onChange={val => setCustomField(idx, 'protein_id', val)} />
-                <ComponentSelect label="Vegetable" items={vegetables} value={c.vegetable_id} onChange={val => setCustomField(idx, 'vegetable_id', val)} />
-                <ComponentSelect label="Staple" items={staples} value={c.staple_id} onChange={val => setCustomField(idx, 'staple_id', val)} />
+                <ComponentSelect
+                  label="荤菜"
+                  items={proteins}
+                  value={c.protein_id}
+                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, protein_id: val } : x))}
+                />
+                <ComponentSelect
+                  label="素菜"
+                  items={vegetables}
+                  value={c.vegetable_id}
+                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, vegetable_id: val } : x))}
+                />
+                <ComponentSelect
+                  label="主食"
+                  items={staples}
+                  value={c.staple_id}
+                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, staple_id: val } : x))}
+                />
                 <div className="flex items-center gap-2 mt-2">
                   <span className="text-[11px] text-gray-400">Qty</span>
                   <div className="flex items-center gap-1.5">
-                    <button type="button" onClick={() => adjustCustomQty(idx, -1)}
-                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200">−</button>
+                    <button
+                      type="button"
+                      onClick={() => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, qty: Math.max(1, x.qty - 1) } : x))}
+                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
+                    >−</button>
                     <span className="text-xs font-semibold w-5 text-center tabular-nums">{c.qty}</span>
-                    <button type="button" onClick={() => adjustCustomQty(idx, 1)}
+                    <button
+                      type="button"
+                      onClick={() => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, qty: x.qty + 1 } : x))}
                       className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
-                      style={{ background: '#f97316' }}>+</button>
+                      style={{ background: '#f97316' }}
+                    >+</button>
                   </div>
                 </div>
               </div>
