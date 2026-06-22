@@ -2,9 +2,12 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import BackButton from '../../components/BackButton'
+import { useNavigation } from '../../components/NavigationStack'
+
+const NewBentoOrder = lazy(() => import('@/app/bento/new/page'))
 import { CenteredSpinner } from '../../components/Spinner'
 import { supabase } from '@/lib/supabase/client'
 import {
@@ -39,6 +42,7 @@ function money(amount: number): string {
 }
 
 export default function UnpaidPage() {
+  const { push } = useNavigation()
   const [orders, setOrders] = useState<UnpaidOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [payingBillKey, setPayingBillKey] = useState<string | null>(null)
@@ -306,6 +310,16 @@ export default function UnpaidPage() {
         </div>,
         document.body,
       )}
+      <button
+        onClick={() => push('/bento/new', <Suspense fallback={null}><NewBentoOrder /></Suspense>)}
+        aria-label="New order"
+        className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+        style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+      </button>
     </main>
   )
 }

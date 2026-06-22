@@ -828,8 +828,8 @@ export default function BentoClient({
         document.body,
       )}
 
-      {/* FAB — visible in detail panels and Unpaid page, not on Production/Weekly Menu */}
-      {!isKitchen && (detailOpen || currentPath === '/bento/unpaid') && typeof document !== 'undefined' && createPortal(
+      {/* FAB — visible in detail panels only (slides with BentoClient StackLayer) */}
+      {!isKitchen && detailOpen && (
         <button
           onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder initialDate={selectedDate} /></Suspense>)}
           aria-label="New order"
@@ -839,8 +839,7 @@ export default function BentoClient({
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-        </button>,
-        document.body
+        </button>
       )}
     </div>
   )
