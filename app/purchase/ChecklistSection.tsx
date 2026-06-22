@@ -486,13 +486,18 @@ export type RestoreChecklistAction =
   | { type: 'remove'; id: number }
 
 // ── Send Sheet ────────────────────────────────────────────────────────────────
-function formatSendText(items: ChecklistEntry[]): string {
+function resolveEnglishName(itemName: string, catalog: CatalogItem[]): string {
+  const norm = (s: string) => s.trim().toLowerCase()
+  const match = catalog.find(c => norm(c.name_zh) === norm(itemName))
+  return match?.name_ms?.trim() || itemName
+}
+
+function formatSendText(items: ChecklistEntry[], catalog: CatalogItem[]): string {
   const today = new Date()
   const dd = String(today.getDate()).padStart(2, '0')
   const mm = String(today.getMonth() + 1).padStart(2, '0')
   const yyyy = today.getFullYear()
   const dateStr = `${dd}/${mm}/${yyyy}`
-  // Group by category (preserve insertion order → sorted by categoryOrderIndex upstream)
   const groups: Record<string, ChecklistEntry[]> = {}
   for (const item of items) {
     if (!groups[item.category]) groups[item.category] = []
@@ -503,7 +508,8 @@ function formatSendText(items: ChecklistEntry[]): string {
     text += `\n${cat.toUpperCase()}\n`
     for (const item of catItems) {
       const qty = item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)
-      text += `• ${item.name} – ${qty} ${item.unit}\n`
+      const displayName = resolveEnglishName(item.name, catalog)
+      text += `• ${displayName} – ${qty} ${item.unit}\n`
     }
   }
   text += '\nThank you.'
@@ -511,15 +517,16 @@ function formatSendText(items: ChecklistEntry[]): string {
 }
 
 function SendSheet({
-  items, purchaserName,
+  items, purchaserName, catalog,
   onClose,
 }: {
   items: ChecklistEntry[]
   purchaserName: string
+  catalog: CatalogItem[]
   onClose: () => void
 }) {
   const [copied, setCopied] = useState(false)
-  const text = formatSendText(items)
+  const text = formatSendText(items, catalog)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   function handleCopy() {
@@ -1115,6 +1122,7 @@ export default function ChecklistSection({
         <SendSheet
           items={selectedItems}
           purchaserName={purchaserName}
+          catalog={catalog}
           onClose={() => { setShowSendSheet(false); exitSelectMode() }}
         />
       )}
