@@ -300,7 +300,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     window.dispatchEvent(new CustomEvent('bento-order-updated', {
       detail: {
         dates: [originalDateRef.current, form.delivery_date].filter(Boolean),
-        order: { id: orderId, ...payload, ...(res.data as Record<string, unknown>) },
+        order: { id: orderId, ...payload, ...(res.data as unknown as Record<string, unknown>) },
       },
     }))
     router.refresh()
