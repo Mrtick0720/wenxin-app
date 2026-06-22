@@ -552,7 +552,11 @@ export default function PurchaseClient(props: Props) {
   const restoreChecklistRef = useRef<((action: RestoreChecklistAction) => void) | null>(null)
   const triggerAddChecklistRef = useRef<(() => void) | null>(null)
   const triggerSendChecklistRef = useRef<(() => void) | null>(null)
+  const triggerSelectAllRef = useRef<(() => void) | null>(null)
+  const triggerCancelSelectRef = useRef<(() => void) | null>(null)
   const [checklistSelectMode, setChecklistSelectMode] = useState(false)
+  const [checklistSelectedCount, setChecklistSelectedCount] = useState(0)
+  const [checklistAllSelected, setChecklistAllSelected] = useState(false)
   const updateChecklistRef = useRef<((items: ChecklistEntry[]) => void) | null>(null)
   const breakdownRef = useRef<HTMLDivElement>(null)
   const pendingUnchecks = useRef<Set<number>>(new Set())
@@ -1604,6 +1608,35 @@ export default function PurchaseClient(props: Props) {
             {/* Panel 0: Checklist */}
             <div ref={(el) => { panelRefs.current[0] = el }} style={{ width: `${pctPerSlide}%` }}>
         <div className="mx-4 mt-4">
+          {/* Send icon (outside card, top-right) OR select controls */}
+          {showCosts && (checklistSeed?.filter(i => i.status === 'pending' && i.purchase_record_id === null).length ?? 0) > 0 && (
+            checklistSelectMode ? (
+              <div className="flex items-center justify-between px-1 pb-2">
+                <button type="button" className="text-sm font-medium text-orange-500 active:opacity-60"
+                  onClick={() => triggerSelectAllRef.current?.()}>
+                  {checklistAllSelected ? 'Deselect All' : 'Select All'}
+                </button>
+                <span className="text-sm text-gray-400">{checklistSelectedCount} selected</span>
+                <button type="button" className="text-sm font-medium text-gray-500 active:opacity-60"
+                  onClick={() => triggerCancelSelectRef.current?.()}>
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex justify-end pb-2">
+                <button type="button"
+                  className="p-1 text-gray-400 active:opacity-60"
+                  aria-label="Send order"
+                  onClick={() => triggerSendChecklistRef.current?.()}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              </div>
+            )
+          )}
           <div className="bg-white rounded-2xl overflow-hidden border border-gray-100">
             {(checklistLoading || (!showCosts && catalogLoading)) ? (
               <div className="space-y-3 p-4">
@@ -1625,10 +1658,13 @@ export default function PurchaseClient(props: Props) {
                 restoreItemRef={restoreChecklistRef}
                 triggerAddRef={triggerAddChecklistRef}
                 triggerSendRef={triggerSendChecklistRef}
+                triggerSelectAllRef={triggerSelectAllRef}
+                triggerCancelSelectRef={triggerCancelSelectRef}
                 purchasedChecklistIds={purchasedChecklistIds}
                 updateItemsRef={updateChecklistRef}
                 onItemsChange={setChecklistSeed}
                 onSelectModeChange={setChecklistSelectMode}
+                onSelectionChange={(count, all) => { setChecklistSelectedCount(count); setChecklistAllSelected(all) }}
                 purchaserName={props.purchaserName ?? ''}
               />
             )}

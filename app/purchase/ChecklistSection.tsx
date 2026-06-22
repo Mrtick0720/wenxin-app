@@ -613,10 +613,13 @@ export default function ChecklistSection({
   restoreItemRef,
   triggerAddRef,
   triggerSendRef,
+  triggerSelectAllRef,
+  triggerCancelSelectRef,
   purchasedChecklistIds,
   updateItemsRef,
   onItemsChange,
   onSelectModeChange,
+  onSelectionChange,
   purchaserName = '',
 }: {
   showCosts: boolean
@@ -631,10 +634,13 @@ export default function ChecklistSection({
   restoreItemRef?: React.MutableRefObject<((action: RestoreChecklistAction) => void) | null>
   triggerAddRef?: React.MutableRefObject<(() => void) | null>
   triggerSendRef?: React.MutableRefObject<(() => void) | null>
+  triggerSelectAllRef?: React.MutableRefObject<(() => void) | null>
+  triggerCancelSelectRef?: React.MutableRefObject<(() => void) | null>
   purchasedChecklistIds?: Set<number>
   updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
   onItemsChange?: (items: ChecklistEntry[]) => void
   onSelectModeChange?: (active: boolean) => void
+  onSelectionChange?: (count: number, allSelected: boolean) => void
   purchaserName?: string
 }) {
   const [items, setItems] = useState<ChecklistEntry[]>(initialItems ?? [])
@@ -648,6 +654,7 @@ export default function ChecklistSection({
   const [selectMode, setSelectMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [showSendSheet, setShowSendSheet] = useState(false)
+  const pendingRef = useRef<ChecklistEntry[]>([])
 
   // Add sheet
   const [showAdd, setShowAdd] = useState(false)
@@ -756,6 +763,24 @@ export default function ChecklistSection({
       }
     }
   }, [triggerSendRef, onSelectModeChange])
+
+  useEffect(() => {
+    if (triggerSelectAllRef) {
+      triggerSelectAllRef.current = () => {
+        setSelectedIds(prev => {
+          const allSelected = pendingRef.current.every(i => prev.has(i.id))
+          return allSelected ? new Set() : new Set(pendingRef.current.map(i => i.id))
+        })
+      }
+    }
+  }, [triggerSelectAllRef])
+
+  useEffect(() => {
+    if (triggerCancelSelectRef) {
+      triggerCancelSelectRef.current = () => exitSelectMode()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [triggerCancelSelectRef])
 
   // Expose a direct items updater so the parent can push fresh server data
   // atomically (in the same React batch as records/KPI), eliminating the
@@ -956,8 +981,11 @@ export default function ChecklistSection({
     )
     .sort((a, b) => categoryOrderIndex(a.category) - categoryOrderIndex(b.category))
 
+  pendingRef.current = pending
   const allSelected = pending.length > 0 && pending.every(i => selectedIds.has(i.id))
   const selectedItems = pending.filter(i => selectedIds.has(i.id))
+  // Notify parent of selection state so it can render controls outside the card
+  useEffect(() => { onSelectionChange?.(selectedIds.size, allSelected) }, [selectedIds, allSelected, onSelectionChange])
 
   function exitSelectMode() {
     setSelectMode(false)
@@ -967,43 +995,6 @@ export default function ChecklistSection({
 
   return (
     <div>
-      {/* List header: send icon on right (normal mode) OR select controls (select mode) */}
-      {selectMode ? (
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 bg-orange-50">
-          <button
-            type="button"
-            className="text-sm font-medium text-orange-600 active:opacity-60"
-            onClick={() => {
-              if (allSelected) setSelectedIds(new Set())
-              else setSelectedIds(new Set(pending.map(i => i.id)))
-            }}
-          >
-            {allSelected ? 'Deselect All' : 'Select All'}
-          </button>
-          <span className="text-sm text-gray-500">{selectedIds.size} selected</span>
-          <button
-            type="button"
-            className="text-sm font-medium text-gray-500 active:opacity-60"
-            onClick={exitSelectMode}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : showCosts && pending.length > 0 ? (
-        <div className="flex justify-end px-4 py-2 border-b border-gray-100">
-          <button
-            type="button"
-            className="p-1 text-gray-400 active:opacity-60"
-            onClick={() => { setSelectedIds(new Set()); setSelectMode(true); onSelectModeChange?.(true) }}
-            aria-label="Send order"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13" />
-              <polygon points="22 2 15 22 11 13 2 9 22 2" />
-            </svg>
-          </button>
-        </div>
-      ) : null}
 
       {loading && items.length === 0 ? (
         <div className="py-6 text-center text-gray-400 text-sm">Loading…</div>
@@ -1039,17 +1030,17 @@ export default function ChecklistSection({
       {/* Select mode: generate button fixed above bottom nav */}
       {selectMode && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed left-0 right-0 px-4"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', zIndex: 290 }}
+          className="fixed left-0 right-0 flex justify-center"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 80px)', zIndex: 290 }}
         >
           <button
             type="button"
             disabled={selectedIds.size === 0}
             onClick={() => setShowSendSheet(true)}
-            className="w-full py-3.5 rounded-2xl text-base font-semibold text-white shadow-lg active:opacity-80 transition-colors"
-            style={{ background: selectedIds.size === 0 ? '#d1d5db' : '#f97316' }}
+            className="px-8 py-3 rounded-2xl text-sm font-semibold text-white shadow-lg active:opacity-80 transition-colors"
+            style={{ background: selectedIds.size === 0 ? '#d1d5db' : '#f97316', minWidth: 200 }}
           >
-            {selectedIds.size === 0 ? 'Select items above' : `Generate Order (${selectedIds.size} items)`}
+            {selectedIds.size === 0 ? 'Select items above' : `Generate Order (${selectedIds.size})`}
           </button>
         </div>,
         document.body
