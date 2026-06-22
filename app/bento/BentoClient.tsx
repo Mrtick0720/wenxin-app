@@ -92,7 +92,7 @@ export default function BentoClient({
   role: StaffRole
 }) {
   const router = useRouter()
-  const { push } = useNavigation()
+  const { push, currentPath } = useNavigation()
   const isKitchen = role === 'kitchen'
   const isOwner = role === 'owner'
   const canViewFinancialDetails = role !== 'kitchen'
@@ -828,6 +828,20 @@ export default function BentoClient({
         document.body,
       )}
 
+      {/* Sub-page FAB — only visible when a bento sub-page is on top */}
+      {!isKitchen && currentPath !== '/bento' && typeof document !== 'undefined' && createPortal(
+        <button
+          onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder initialDate={selectedDate} /></Suspense>)}
+          aria-label="New order"
+          className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
+          style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+        </button>,
+        document.body
+      )}
     </div>
   )
 }
