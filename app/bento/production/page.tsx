@@ -2,7 +2,7 @@
 
 /* eslint-disable react-hooks/set-state-in-effect */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
@@ -82,9 +82,14 @@ export default function ProductionPage() {
   const [showSummary, setShowSummary] = useState(false)
   const [updatedAt, setUpdatedAt] = useState('')
 
+  const roleRef = useRef(staff?.role)
+  roleRef.current = staff?.role
+  const selectedDateRef = useRef(selectedDate)
+  selectedDateRef.current = selectedDate
+
   const loadData = useCallback(async (date: string) => {
     setLoading(true)
-    const source = staff?.role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
+    const source = roleRef.current === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const { data } = await supabase
       .from(source)
       .select('*')
@@ -95,47 +100,48 @@ export default function ProductionPage() {
     setOrders((data || []) as Order[])
     setUpdatedAt(nowUpdatedStr())
     setLoading(false)
-  }, [staff?.role])
+  }, []) // stable — reads role via ref
 
-  // Initial load whenever date changes
+  // Reload whenever date changes
   useEffect(() => {
     loadData(selectedDate)
   }, [loadData, selectedDate])
 
-  // Single long-lived realtime channel + custom event listener
+  // Single long-lived channel + listeners — never torn down on date change
   useEffect(() => {
     const channel = supabase
       .channel('production-orders')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'bento_orders' },
-        () => { loadData(selectedDate) }
+        () => { loadData(selectedDateRef.current) }
       )
       .subscribe()
 
     function onOrderUpdated(e: Event) {
       const detail = (e as CustomEvent<BentoOrderUpdatedDetail<Order>>).detail
       const dates = detail?.dates ?? (detail?.date ? [detail.date] : [])
+      const cur = selectedDateRef.current
       if (detail?.order) {
-        setOrders(current => applyProductionOrderUpdate(current, selectedDate, detail))
+        setOrders(current => applyProductionOrderUpdate(current, cur, detail))
         setUpdatedAt(nowUpdatedStr())
         return
       }
-      if (dates.length === 0 || dates.includes(selectedDate)) loadData(selectedDate)
+      if (dates.length === 0 || dates.includes(cur)) loadData(cur)
     }
-    function refreshVisibleProduction() {
-      if (document.visibilityState === 'visible') loadData(selectedDate)
+    function refreshVisible() {
+      if (document.visibilityState === 'visible') loadData(selectedDateRef.current)
     }
     window.addEventListener('bento-order-updated', onOrderUpdated)
-    window.addEventListener('focus', refreshVisibleProduction)
-    document.addEventListener('visibilitychange', refreshVisibleProduction)
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
 
     return () => {
       supabase.removeChannel(channel)
       window.removeEventListener('bento-order-updated', onOrderUpdated)
-      window.removeEventListener('focus', refreshVisibleProduction)
-      document.removeEventListener('visibilitychange', refreshVisibleProduction)
+      window.removeEventListener('focus', refreshVisible)
+      document.removeEventListener('visibilitychange', refreshVisible)
     }
-  }, [loadData, selectedDate])
+  }, [loadData]) // runs once on mount
 
   const totalPortions = orders.reduce((s, o) => s + (o.quantity ?? 1), 0)
   const allProductionCards = aggregateProductionCards(orders)

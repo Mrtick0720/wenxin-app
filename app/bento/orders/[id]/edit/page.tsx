@@ -214,8 +214,8 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       const staple  = staples.find(s => s.id === c.staple_id)
       const label   = [
         protein?.name,
-        veg?.description     || veg?.name,
-        staple?.description  || staple?.name,
+        veg?.name,
+        staple?.name,
       ].filter(Boolean).join(' / ') || 'Custom'
       parts.push(`${label} x${c.qty}`)
     }
