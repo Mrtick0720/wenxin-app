@@ -39,7 +39,7 @@ interface DishRecord {
 
 interface ColSpec {
   colIndex: number        // 0-based column index in TSV
-  variantCode: string     // 'light' | 'flavorful' | null (for veg/staples)
+  variantCode: string | null  // 'light' | 'flavorful' | null (for veg/staples)
   componentTable: string  // 'bento_proteins' | 'bento_vegetables' | 'bento_staples'
 }
 
