@@ -993,14 +993,14 @@ export default function ChecklistSection({
         <div className="flex justify-end px-4 py-2 border-b border-gray-100">
           <button
             type="button"
-            className="flex items-center gap-1.5 text-xs text-gray-400 active:opacity-60"
+            className="p-1 text-gray-400 active:opacity-60"
             onClick={() => { setSelectedIds(new Set()); setSelectMode(true); onSelectModeChange?.(true) }}
+            aria-label="Send order"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
             </svg>
-            Send Order
           </button>
         </div>
       ) : null}
@@ -1036,19 +1036,23 @@ export default function ChecklistSection({
         </div>
       )}
 
-      {/* Select mode: generate button inline at bottom of card */}
-      {selectMode && (
-        <div className="px-4 py-3 border-t border-gray-100">
+      {/* Select mode: generate button fixed above bottom nav */}
+      {selectMode && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed left-0 right-0 px-4"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', zIndex: 290 }}
+        >
           <button
             type="button"
             disabled={selectedIds.size === 0}
             onClick={() => setShowSendSheet(true)}
-            className="w-full py-3 rounded-2xl text-sm font-semibold text-white active:opacity-80 transition-opacity"
+            className="w-full py-3.5 rounded-2xl text-base font-semibold text-white shadow-lg active:opacity-80 transition-colors"
             style={{ background: selectedIds.size === 0 ? '#d1d5db' : '#f97316' }}
           >
             {selectedIds.size === 0 ? 'Select items above' : `Generate Order (${selectedIds.size} items)`}
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Toast */}
