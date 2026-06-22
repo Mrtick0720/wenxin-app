@@ -3,9 +3,6 @@ import { canAccessPath } from '@/lib/auth/permissions'
 import type { StaffRole } from '@/lib/auth/types'
 
 const ITEMS: { href: string; label: string; always: boolean; icon: React.ReactNode }[] = [
-  { href: '/tasks', label: 'Approvals', always: false, icon: (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-  ) },
   { href: '/tasks', label: 'Tasks', always: false, icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
   ) },
