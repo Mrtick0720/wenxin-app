@@ -828,8 +828,8 @@ export default function BentoClient({
         document.body,
       )}
 
-      {/* Sub-page FAB — only visible when a bento sub-page is on top */}
-      {!isKitchen && currentPath !== '/bento' && typeof document !== 'undefined' && createPortal(
+      {/* FAB — visible in detail panels and Unpaid page, not on Production/Weekly Menu */}
+      {!isKitchen && (detailOpen || currentPath === '/bento/unpaid') && typeof document !== 'undefined' && createPortal(
         <button
           onClick={() => push('/bento/new', <Suspense fallback={pageFallback}><NewBentoOrder initialDate={selectedDate} /></Suspense>)}
           aria-label="New order"
