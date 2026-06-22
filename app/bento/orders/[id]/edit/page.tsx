@@ -639,15 +639,18 @@ function ComponentSelect({ label, items, value, onChange, groupable = false }: {
         <span className="text-gray-300 flex-shrink-0">▾</span>
       </button>
       {open && (
-        <div className="fixed inset-0 z-[500] flex flex-col" style={{ background: 'rgba(0,0,0,0.4)' }} onClick={() => setOpen(false)}>
-          <div className="mt-auto bg-white rounded-t-2xl flex flex-col" style={{ maxHeight: '45vh' }} onClick={e => e.stopPropagation()}>
-            <div className="px-4 pt-4 pb-2 border-b border-gray-100">
-              <div className="text-sm font-semibold text-gray-700 mb-2">{label}</div>
+        <div className="fixed inset-0 z-[500] flex items-start justify-center px-4" style={{ background: 'rgba(0,0,0,0.5)', paddingTop: '10vh' }} onClick={() => setOpen(false)}>
+          <div className="bg-white rounded-2xl w-full flex flex-col shadow-xl" style={{ maxHeight: '55vh' }} onClick={e => e.stopPropagation()}>
+            <div className="px-4 pt-3 pb-2 border-b border-gray-100 flex items-center gap-2">
+              <div className="text-sm font-semibold text-gray-700 flex-1">{label}</div>
+              <button type="button" onClick={() => { setOpen(false); setSearch('') }} className="text-gray-400 text-lg leading-none px-1">✕</button>
+            </div>
+            <div className="px-4 py-2 border-b border-gray-100">
               <input autoFocus value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Search…"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-orange-400" />
             </div>
-            <div className="flex-1 min-h-0" style={{ overflowY: 'scroll', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+            <div className="flex-1 min-h-0" style={{ overflowY: 'scroll', WebkitOverflowScrolling: 'touch' }}>
               <button type="button" onClick={() => { onChange(null); setOpen(false); setSearch('') }}
                 className="w-full px-4 py-2.5 text-left text-sm text-gray-400 border-b border-gray-50">
                 — None
