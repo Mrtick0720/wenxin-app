@@ -581,12 +581,22 @@ export default function BentoClient({
           {isKitchen ? (
             <div className="grid grid-cols-2 gap-3">
               <button onClick={() => push('/bento/weekly-menu', <Suspense fallback={pageFallback}><WeeklyMenuPage /></Suspense>)}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm active:opacity-80 flex flex-col items-center justify-center py-5 px-3">
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-5 px-3"
+                style={{ transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1)', WebkitTapHighlightColor: 'transparent' }}
+                onPointerDown={e => (e.currentTarget.style.transform = 'scale(0.93)')}
+                onPointerUp={e => (e.currentTarget.style.transform = '')}
+                onPointerLeave={e => (e.currentTarget.style.transform = '')}
+              >
                 <img src="/weekly-menu.webp" alt="" aria-hidden width={158} height={158} className="object-contain" />
                 <span className="text-sm font-semibold text-gray-800 mt-3">Weekly Menu</span>
               </button>
               <button onClick={() => push('/bento/production', <Suspense fallback={pageFallback}><ProductionPage /></Suspense>)}
-                className="bg-white rounded-2xl border border-gray-100 shadow-sm active:opacity-80 flex flex-col items-center justify-center py-5 px-3">
+                className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center justify-center py-5 px-3"
+                style={{ transition: 'transform 0.15s cubic-bezier(0.34,1.56,0.64,1)', WebkitTapHighlightColor: 'transparent' }}
+                onPointerDown={e => (e.currentTarget.style.transform = 'scale(0.93)')}
+                onPointerUp={e => (e.currentTarget.style.transform = '')}
+                onPointerLeave={e => (e.currentTarget.style.transform = '')}
+              >
                 <img src="/production.webp" alt="" aria-hidden width={158} height={158} className="object-contain" />
                 <span className="text-sm font-semibold text-gray-800 mt-3">Production</span>
               </button>
