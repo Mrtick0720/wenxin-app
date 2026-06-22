@@ -86,6 +86,8 @@ export default function ProductionPage() {
   roleRef.current = staff?.role
   const selectedDateRef = useRef(selectedDate)
   selectedDateRef.current = selectedDate
+  // Suppress silentReload briefly after a local toggle to avoid realtime race flicker
+  const suppressReloadUntilRef = useRef(0)
 
   const loadData = useCallback(async (date: string) => {
     setLoading(true)
@@ -104,6 +106,7 @@ export default function ProductionPage() {
 
   // Silent refetch (no loading flash) — used by polling and realtime/event triggers
   const silentReload = useCallback(async (date: string) => {
+    if (Date.now() < suppressReloadUntilRef.current) return
     const source = roleRef.current === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const { data } = await supabase
       .from(source)
@@ -177,6 +180,7 @@ export default function ProductionPage() {
   const summary = allProductionCards.map(card => ({ name: card.label, qty: card.totalQty }))
 
   async function toggleProductionCard(card: ProductionCard) {
+    suppressReloadUntilRef.current = Date.now() + 3000
     const nextDone = !card.done
     const updates = new Map<number, { bento_items: string; status: string }>()
 
