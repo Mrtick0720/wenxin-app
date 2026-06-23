@@ -636,15 +636,14 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
                 </div>
               )
             })}
-            {/* Add combo card */}
+            {/* Add combo card — always shows 0, acts as add trigger */}
             <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm">
               <span className="text-sm font-medium text-gray-400">Custom combos</span>
               <div className="flex items-center gap-2">
-                <button type="button"
-                  onClick={() => setCustomCombos(prev => prev.length > 0 ? prev.slice(0, -1) : prev)}
-                  className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
+                <button type="button" disabled
+                  className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-300 text-sm leading-none"
                 >−</button>
-                <span className="text-sm font-semibold w-6 text-center tabular-nums">{customCombos.length}</span>
+                <span className="text-sm font-semibold w-6 text-center tabular-nums text-gray-400">0</span>
                 <button type="button"
                   onClick={() => setShowComboSheet(true)}
                   className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
