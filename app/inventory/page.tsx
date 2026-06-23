@@ -1,118 +1,250 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
+import { fetchInventoryAction } from './actions'
+import { INVENTORY_CATEGORIES } from '@/lib/inventory/status'
+import type { InventoryView } from '@/lib/inventory/types'
+import type { DisplayStatus } from '@/lib/inventory/types'
 
-type InventoryItem = {
-  id: number
-  name: string
-  category: string
-  stock: number
-  unit: string
-  threshold: number
-  status: 'ok' | 'low' | 'out'
+// ── Status badge config ──────────────────────────────────────────────
+const STATUS_BADGE: Record<DisplayStatus, { label: string; color: string }> = {
+  out:          { label: 'Out of Stock',  color: 'bg-red-100 text-red-600' },
+  low:          { label: 'Low Stock',     color: 'bg-orange-100 text-orange-600' },
+  need_reorder: { label: 'Need Reorder',  color: 'bg-amber-100 text-amber-700' },
+  need_count:   { label: 'Need Count',    color: 'bg-gray-100 text-gray-500' },
+  ok:           { label: 'OK',            color: 'bg-green-100 text-green-600' },
 }
 
-const initialItems: InventoryItem[] = [
-  // Food
-  { id: 1, name: 'Bok Choy', category: 'food', stock: 3, unit: 'kg', threshold: 5, status: 'low' },
-  { id: 2, name: 'Chicken Thigh', category: 'food', stock: 12, unit: 'kg', threshold: 5, status: 'ok' },
-  { id: 3, name: 'White Rice', category: 'food', stock: 25, unit: 'kg', threshold: 10, status: 'ok' },
-  { id: 4, name: 'Cooking Oil', category: 'food', stock: 2, unit: 'bottles', threshold: 3, status: 'low' },
-  { id: 5, name: 'Soy Sauce', category: 'food', stock: 0, unit: 'bottles', threshold: 2, status: 'out' },
-  { id: 6, name: 'Pork Ribs', category: 'food', stock: 6, unit: 'kg', threshold: 4, status: 'ok' },
-  // Supplies
-  { id: 7, name: 'Takeaway Box (L)', category: 'supplies', stock: 45, unit: 'pcs', threshold: 50, status: 'low' },
-  { id: 8, name: 'Napkins', category: 'supplies', stock: 8, unit: 'packs', threshold: 5, status: 'ok' },
-  { id: 9, name: 'Trash Bags', category: 'supplies', stock: 1, unit: 'rolls', threshold: 3, status: 'low' },
-  { id: 10, name: 'Dish Soap', category: 'supplies', stock: 4, unit: 'bottles', threshold: 2, status: 'ok' },
-]
+const ATTENTION_ORDER: DisplayStatus[] = ['out', 'low', 'need_reorder', 'need_count']
 
-const statusConfig: Record<string, { label: string; color: string }> = {
-  ok: { label: 'OK', color: 'bg-green-100 text-green-600' },
-  low: { label: 'Low', color: 'bg-orange-100 text-orange-600' },
-  out: { label: 'Out', color: 'bg-red-100 text-red-600' },
+const SECTION_LABEL: Record<DisplayStatus, string> = {
+  out:          'Out of Stock',
+  low:          'Low Stock',
+  need_reorder: 'Need Reorder',
+  need_count:   'Need Count',
+  ok:           '',
 }
+
+const SECTION_COLOR: Record<DisplayStatus, string> = {
+  out:          'text-red-500',
+  low:          'text-orange-500',
+  need_reorder: 'text-amber-700',
+  need_count:   'text-gray-400',
+  ok:           '',
+}
+
+// ── Standard card ────────────────────────────────────────────────────
+function StandardCard({ item }: { item: InventoryView }) {
+  const badge = STATUS_BADGE[item.displayStatus]
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-gray-900 truncate">{item.name}</div>
+        <div className="text-xs text-gray-400 mt-0.5">
+          Stock: {item.currentQuantity} {item.unit}
+          {item.location && (
+            <span className="ml-2">· {item.location}</span>
+          )}
+        </div>
+        {item.lastCountedAt && (
+          <div className="text-xs text-gray-300 mt-0.5">
+            Counted: {new Date(item.lastCountedAt).toLocaleDateString()}
+          </div>
+        )}
+      </div>
+      <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${badge.color}`}>
+        {badge.label}
+      </span>
+    </div>
+  )
+}
+
+// ── Sauce card ───────────────────────────────────────────────────────
+function SauceCard({ item }: { item: InventoryView }) {
+  const badge = STATUS_BADGE[item.displayStatus]
+  const showReorderWarning =
+    item.reorderPoint != null && item.currentQuantity <= item.reorderPoint
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-gray-900 truncate">{item.name}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            Stock: {item.currentQuantity} {item.unit}
+            {(item.openedQuantity > 0 || item.unopenedQuantity > 0) && (
+              <span className="text-gray-400">
+                {' '}· Opened {item.openedQuantity} · Unopened {item.unopenedQuantity}
+              </span>
+            )}
+          </div>
+        </div>
+        <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${badge.color}`}>
+          {badge.label}
+        </span>
+      </div>
+
+      {showReorderWarning && (
+        <div className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5">
+          Reorder at {item.reorderPoint} {item.unit}
+          {item.leadTimeDays != null && ` · Lead time ${item.leadTimeDays} days`}
+        </div>
+      )}
+
+      {item.onOrderQuantity > 0 && (
+        <div className="text-xs text-blue-600">
+          On order: {item.onOrderQuantity} {item.unit}
+        </div>
+      )}
+
+      {(item.location || item.supplier) && (
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          {item.location && (
+            <span className="text-xs text-gray-400">Location: {item.location}</span>
+          )}
+          {item.supplier && (
+            <span className="text-xs text-gray-400">Supplier: {item.supplier}</span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Card dispatcher ──────────────────────────────────────────────────
+function ItemCard({ item }: { item: InventoryView }) {
+  return item.category === 'Sauces' ? <SauceCard item={item} /> : <StandardCard item={item} />
+}
+
+// ── Page ─────────────────────────────────────────────────────────────
+type Tab = 'Attention' | 'All' | typeof INVENTORY_CATEGORIES[number]
 
 export default function InventoryPage() {
-  const [items] = useState(initialItems)
-  const [activeTab, setActiveTab] = useState<'food' | 'supplies'>('food')
+  const [items, setItems] = useState<InventoryView[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<Tab>('Attention')
 
-  const filtered = items.filter(i => i.category === activeTab)
-  const lowCount = items.filter(i => i.status !== 'ok').length
+  useEffect(() => {
+    fetchInventoryAction().then(result => {
+      if (result.ok) setItems(result.data)
+      else setFetchError(result.error)
+      setLoading(false)
+    })
+  }, [])
+
+  // Summary counts
+  const outCount     = items.filter(i => i.displayStatus === 'out').length
+  const lowCount     = items.filter(i => i.displayStatus === 'low').length
+  const reorderCount = items.filter(i => i.displayStatus === 'need_reorder').length
+  const actionCount  = outCount + lowCount + reorderCount
+
+  // Filtered list for the active tab
+  const tabItems =
+    activeTab === 'Attention' ? items.filter(i => i.displayStatus !== 'ok') :
+    activeTab === 'All'       ? items :
+    items.filter(i => i.category === activeTab)
+
+  // Attention grouped by status priority
+  const attentionGroups = ATTENTION_ORDER
+    .map(status => ({ status, items: tabItems.filter(i => i.displayStatus === status) }))
+    .filter(g => g.items.length > 0)
+
+  const tabs: Tab[] = ['Attention', 'All', ...INVENTORY_CATEGORIES]
 
   return (
     <PageTransition>
-    <main className="bg-gray-50 w-full mx-auto">
-      <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
-        <div className="flex items-center gap-3">
-          <BackButton href="/" />
-          <span className="font-semibold text-base">Inventory</span>
-        </div>
-        <span className="text-xs text-orange-500 font-medium">{lowCount} items low</span>
+    <main className="bg-gray-50 w-full mx-auto min-h-screen pb-32">
+
+      {/* ── Header ── */}
+      <div className="bg-white px-4 py-3 flex items-center gap-3 border-b sticky top-0 z-10">
+        <BackButton href="/" />
+        <span className="font-semibold text-base flex-1">Inventory</span>
       </div>
 
-      <div className="px-4 py-4 pb-8 space-y-4">
+      <div className="px-4 pt-4 space-y-4">
+
+        {/* ── Summary strip ── */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="text-sm text-gray-500 mb-3">Stock Overview</div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900">{items.length}</div>
-              <div className="text-xs text-gray-400 mt-0.5">Total Items</div>
+          <div className="grid grid-cols-4 gap-2 text-center">
+            <div>
+              <div className="text-xl font-bold text-gray-900">{items.length}</div>
+              <div className="text-xs text-gray-400 mt-0.5">Total</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-orange-500">{items.filter(i => i.status === 'low').length}</div>
+            <div>
+              <div className="text-xl font-bold text-orange-500">{lowCount}</div>
               <div className="text-xs text-gray-400 mt-0.5">Low Stock</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-500">{items.filter(i => i.status === 'out').length}</div>
+            <div>
+              <div className="text-xl font-bold text-red-500">{outCount}</div>
               <div className="text-xs text-gray-400 mt-0.5">Out of Stock</div>
+            </div>
+            <div>
+              <div className="text-xl font-bold text-amber-600">{reorderCount}</div>
+              <div className="text-xs text-gray-400 mt-0.5">Need Reorder</div>
             </div>
           </div>
         </div>
 
-        <div className="flex bg-white rounded-2xl p-1 shadow-sm">
-          <button
-            onClick={() => setActiveTab('food')}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
-              activeTab === 'food' ? 'bg-orange-500 text-white' : 'text-gray-500'
-            }`}
-          >
-            🥬 Food
-          </button>
-          <button
-            onClick={() => setActiveTab('supplies')}
-            className={`flex-1 py-2 rounded-xl text-sm font-medium transition-colors ${
-              activeTab === 'supplies' ? 'bg-orange-500 text-white' : 'text-gray-500'
-            }`}
-          >
-            📦 Supplies
-          </button>
+        {/* ── Tab chips ── */}
+        <div
+          className="flex gap-2 overflow-x-auto -mx-4 px-4"
+          style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        >
+          {tabs.map(tab => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setActiveTab(tab)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                activeTab === tab
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-white text-gray-600 border border-gray-200'
+              }`}
+            >
+              {tab}{tab === 'Attention' && actionCount > 0 ? ` ${actionCount}` : ''}
+            </button>
+          ))}
         </div>
 
-        <div className="space-y-2">
-          {filtered.map((item) => {
-            const status = statusConfig[item.status] || statusConfig.ok
-            return (
-              <div key={item.id} className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">
-                    Stock: {item.stock} {item.unit} · Min: {item.threshold} {item.unit}
+        {/* ── Content ── */}
+        {loading ? (
+          <div className="text-center py-16 text-sm text-gray-400">Loading...</div>
+        ) : fetchError ? (
+          <div className="bg-red-50 rounded-2xl p-4 text-sm text-red-500">{fetchError}</div>
+        ) : activeTab === 'Attention' ? (
+          attentionGroups.length === 0 ? (
+            <div className="text-center py-16 text-sm text-gray-400">
+              All inventory looks OK
+            </div>
+          ) : (
+            <div className="space-y-5 pb-4">
+              {attentionGroups.map(group => (
+                <div key={group.status}>
+                  <div className={`text-xs font-semibold mb-2 px-1 uppercase tracking-wide ${SECTION_COLOR[group.status]}`}>
+                    {SECTION_LABEL[group.status]}
+                  </div>
+                  <div className="space-y-2">
+                    {group.items.map(item => <ItemCard key={item.id} item={item} />)}
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full ml-3 flex-shrink-0 ${status.color}`}>
-                  {status.label}
-                </span>
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="space-y-2 pb-4">
+            {tabItems.length === 0 ? (
+              <div className="text-center py-16 text-sm text-gray-400">
+                No items in this category
               </div>
-            )
-          })}
-        </div>
+            ) : (
+              tabItems.map(item => <ItemCard key={item.id} item={item} />)
+            )}
+          </div>
+        )}
 
-        <div className="bg-blue-50 rounded-2xl p-4">
-          <div className="text-xs text-blue-500">Inventory data is currently using sample data. Real data will appear after Supabase integration.</div>
-        </div>
       </div>
     </main>
     </PageTransition>
