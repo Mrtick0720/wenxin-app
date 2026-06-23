@@ -348,8 +348,10 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         style={{ flex: '1 1 0%', minHeight: 0, width: '100%', maxWidth: '100%', overflowX: 'hidden', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehaviorY: 'contain', touchAction: 'pan-y', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 100px)' }}
       >
 
+        {/* ── Name + Phone on one row ── */}
+        <div className="flex gap-3 items-start">
         {/* ── Customer (member picker + free text) ── */}
-        <div>
+        <div className="flex-[3] min-w-0">
           <label className="text-sm text-gray-600 mb-1 block">Customer Name *</label>
           <div className="relative" ref={custRef}>
             <input
@@ -444,12 +446,13 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
             </div>
           )}
         </div>
-
-        <div>
+        {/* ── Phone (right column of the Name+Phone row) ── */}
+        <div className="flex-[2] min-w-0">
           <label className="text-sm text-gray-600 mb-1 block">Phone</label>
-          <input type="tel" name="phone" placeholder="Example: 0123456789"
+          <input type="tel" name="phone" placeholder="0123456789"
             value={form.phone} onChange={handleChange} className={INPUT} />
         </div>
+        </div>{/* end flex row */}
 
         {/* ── Fulfillment (drives which fields show below) ── */}
         <div>
