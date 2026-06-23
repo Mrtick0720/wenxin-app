@@ -23,6 +23,10 @@ function mapItemRow(row: Record<string, unknown>): InventoryItem {
     category: row.category as string,
     unit: row.unit as string,
     reorderLevel: Number(row.reorder_level ?? 0),
+    reorderPoint: row.reorder_point != null ? Number(row.reorder_point) : null,
+    leadTimeDays: row.lead_time_days != null ? Number(row.lead_time_days) : null,
+    location: (row.location as string) ?? null,
+    supplier: (row.supplier as string) ?? null,
     status: row.status as InventoryItem['status'],
     notes: (row.notes as string) ?? null,
     createdAt: row.created_at as string,
@@ -133,6 +137,9 @@ function mapStockLevelRow(row: Record<string, unknown>): InventoryStockLevel {
     itemId: row.item_id as number,
     outletId: row.outlet_id as string,
     currentQuantity: Number(row.current_quantity ?? 0),
+    openedQuantity: Number(row.opened_quantity ?? 0),
+    onOrderQuantity: Number(row.on_order_quantity ?? 0),
+    lastCountedAt: (row.last_counted_at as string) ?? null,
     lastUpdatedAt: row.last_updated_at as string,
   }
 }
@@ -209,6 +216,31 @@ export async function findLowStockItems(
       lastUpdatedAt: (row.inventory_stock_levels as Record<string, unknown>)?.last_updated_at as string ?? '',
     },
   }))
+}
+
+export async function findInventoryWithStock(
+  outletId: string = DEFAULT_OUTLET_ID,
+): Promise<Array<{ item: InventoryItem; stock: InventoryStockLevel | null }>> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*, inventory_stock_levels(*)')
+    .eq('outlet_id', outletId)
+    .eq('status', 'active')
+    .order('category', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) throw error
+
+  return (data ?? []).map(row => {
+    const r = row as Record<string, unknown>
+    const stockRows = r.inventory_stock_levels
+    const stockRow = Array.isArray(stockRows) ? stockRows[0] : stockRows
+    return {
+      item: mapItemRow(r),
+      stock: stockRow ? mapStockLevelRow(stockRow as Record<string, unknown>) : null,
+    }
+  })
 }
 
 // ═══════════════════════════════════════════════════════════════════
