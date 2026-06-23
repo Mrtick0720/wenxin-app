@@ -1426,8 +1426,8 @@ export default function PurchaseClient(props: Props) {
     setRecordsLoading(false)
   }
 
-  // Keep spinner until ctx AND the active tab's data are both ready
-  const dataReady = !!ctx && !checklistLoading && !heroLoading
+  // Keep spinner until ctx, checklist, hero, and catalog (for kitchen) are all ready
+  const dataReady = !!ctx && !checklistLoading && !heroLoading && !catalogLoading
   if (!dataReady && !bootError) {
     return <FullPageSpinner />
   }
