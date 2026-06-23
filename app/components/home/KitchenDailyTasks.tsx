@@ -7,7 +7,7 @@
 // is also a creation property — a small toggle in the composer, not a list-level
 // control. Optimistic updates keep ticking instant.
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import {
   addKitchenTaskAction,
   toggleKitchenTaskAction,
@@ -25,8 +25,10 @@ const u = (lvl: number) => URGENCY[lvl] ?? URGENCY[0]
 
 // canManage: owner/manager surface (publish + delete). Kitchen view is
 // read-only — staff can only tick items done, not create or remove them.
-export default function KitchenDailyTasks({ initialTasks, canManage = false, showComposer = true }: { initialTasks: KitchenTask[]; canManage?: boolean; showComposer?: boolean }) {
+export default function KitchenDailyTasks({ initialTasks, canManage = false, showComposer = true, onOptimisticUpdate }: { initialTasks: KitchenTask[]; canManage?: boolean; showComposer?: boolean; onOptimisticUpdate?: () => void }) {
   const [tasks, setTasks] = useState<KitchenTask[]>(initialTasks)
+  // Sync when parent polls and passes new initialTasks
+  useEffect(() => { setTasks(initialTasks) }, [initialTasks])
   const [draft, setDraft] = useState('')
   const [urgency, setUrgency] = useState(0)
   const [recurring, setRecurring] = useState(false)
@@ -42,6 +44,7 @@ export default function KitchenDailyTasks({ initialTasks, canManage = false, sho
 
   function toggle(task: KitchenTask) {
     const next = !task.done
+    onOptimisticUpdate?.()
     setTasks(prev => prev.map(t => t.id === task.id ? { ...t, done: next } : t))
     startTransition(async () => {
       const res = await toggleKitchenTaskAction(task.id, next)
@@ -56,6 +59,7 @@ export default function KitchenDailyTasks({ initialTasks, canManage = false, sho
       if (!window.confirm(`"${task.title}" is a daily routine. Stop it for good?`)) return
     }
     const snapshot = tasks
+    onOptimisticUpdate?.()
     setTasks(prev => prev.filter(t => t.id !== task.id))
     startTransition(async () => {
       const res = await deleteKitchenTaskAction(task.id)

@@ -17,7 +17,7 @@ import HomeRefresh from '../HomeRefresh'
 import HomePurchaseRealtime from '../HomePurchaseRealtime'
 import HomeBell from '../HomeBell'
 import NavLink from '../NavLink'
-import KitchenDailyTasks from './KitchenDailyTasks'
+import KitchenTasksWithPolling from './KitchenTasksWithPolling'
 import KitchenCostRatioCard from './KitchenCostRatioCard'
 
 async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
@@ -138,7 +138,7 @@ export default async function KitchenHome() {
         </div>
 
         {/* ── Today's work checklist ── */}
-        <KitchenDailyTasks initialTasks={initialTasks} />
+        <KitchenTasksWithPolling initialTasks={initialTasks} />
 
       </div>
     </main>

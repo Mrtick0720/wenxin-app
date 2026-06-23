@@ -2,7 +2,7 @@
 
 import { lazy, Suspense, useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
-import KitchenDailyTasks from '../components/home/KitchenDailyTasks'
+import KitchenTasksWithPolling from '../components/home/KitchenTasksWithPolling'
 import { listKitchenTasksAction, type KitchenTask } from '../kitchen/dailyTasksActions'
 import { useNavigation } from '../components/NavigationStack'
 
@@ -21,13 +21,7 @@ export default function KitchenTasksPage() {
   }
 
   useEffect(() => {
-    let active = true
-    listKitchenTasksAction().then(res => {
-      if (!active) return
-      if (res.ok) setTasks(res.data)
-      setLoading(false)
-    })
-    return () => { active = false }
+    reload()
   }, [])
 
   const done = tasks.filter(t => t.done).length
@@ -67,13 +61,13 @@ export default function KitchenTasksPage() {
           {loading ? (
             <div className="h-32 animate-pulse rounded-2xl bg-white" />
           ) : (
-            <KitchenDailyTasks initialTasks={tasks} canManage showComposer={false} />
+            <KitchenTasksWithPolling initialTasks={tasks} canManage />
           )}
         </div>
       </div>
 
       <button
-        onClick={() => push('/kitchen-tasks/new', <Suspense fallback={null}><NewKitchenTaskPage onSaved={reload} /></Suspense>)}
+        onClick={() => push('/kitchen-tasks/new', <Suspense fallback={null}><NewKitchenTaskPage onSaved={() => reload()} /></Suspense>)}
         aria-label="New kitchen task"
         className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
         style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
