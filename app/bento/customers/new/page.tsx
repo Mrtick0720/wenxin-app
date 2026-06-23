@@ -101,6 +101,21 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
         </div>
 
         <div>
+          <label className="text-xs text-gray-500 mb-1 block">Delivery Frequency</label>
+          <div className="flex gap-2">
+            {DELIVERY_FREQUENCIES.map(f => (
+              <button key={f.value} type="button" onClick={() => set('delivery_frequency', f.value)}
+                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.delivery_frequency === f.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-1">
+            {form.delivery_frequency === 'daily' ? 'Delivers every day, incl. weekends & public holidays' : 'Delivers Mon–Fri only (skips weekends)'}
+          </div>
+        </div>
+
+        <div>
           <label className="text-xs text-gray-500 mb-1 block">Area</label>
           <div className="flex gap-2 flex-wrap">
             {AREAS.map(a => (
