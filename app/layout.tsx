@@ -23,12 +23,13 @@ async function getPendingTaskCount(): Promise<number> {
   }
 }
 
-async function getBentoPending(): Promise<boolean> {
+async function getBentoPending(role?: string): Promise<boolean> {
   try {
     const supabase = await createServerSupabaseClient()
     const today = new Date().toISOString().split('T')[0]
+    const source = role === 'kitchen' ? 'bento_kitchen_orders' : 'bento_orders'
     const { data } = await supabase
-      .from('bento_orders')
+      .from(source)
       .select('id')
       .eq('date', today)
       .neq('status', 'done')
@@ -94,7 +95,7 @@ export default async function RootLayout({
   const staff = await getCurrentStaff().catch(() => null)
   const pendingCount = staff ? await getPendingTaskCount() : 0
   const purchasePending = staff ? await getPurchasePending() : false
-  const bentoPending = staff ? await getBentoPending() : false
+  const bentoPending = staff ? await getBentoPending(staff.role) : false
 
   return (
     <html
