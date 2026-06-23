@@ -125,6 +125,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
   const [variantQtys, setVariantQtys]               = useState<Record<number, number>>({})
   const [customCombos, setCustomCombos]             = useState<CustomCombo[]>([])
   const [showComboSheet, setShowComboSheet]         = useState(false)
+  const [previewVariant, setPreviewVariant]         = useState<{ name: string; a: string|null; b: string|null; c: string|null } | null>(null)
   const [areaOpen, setAreaOpen] = useState(false)
 
   const isDelivery = form.fulfillment_type === 'delivery'
@@ -528,11 +529,8 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         <div className="pt-2 border-t border-gray-200">
           <label className="text-sm text-gray-600 mb-2 block font-medium">Menu *</label>
 
-          {/* Layer 1 — Weekly menu variants */}
+          {/* Layer 1 — Weekly menu variants (no header label) */}
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-400">Weekly menu</span>
-            </div>
             {assignedVariantIds === null ? (
               <div className="text-xs text-gray-400 px-1">Loading…</div>
             ) : !hasWeeklyMenu ? (
@@ -543,18 +541,21 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
               <div className="space-y-2">
                 {activeVariants.map(v => {
                   const qty = variantQtys[v.id] ?? 0
+                  const comp = variantCompartments[v.id]
                   return (
                     <div key={v.id} className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm">
-                      <span className="text-sm font-medium text-gray-800">{v.name}</span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
+                      <button type="button"
+                        className="text-sm font-medium text-gray-800 text-left flex-1 min-w-0 pr-2"
+                        onClick={() => setPreviewVariant({ name: v.name, a: comp?.a ?? null, b: comp?.b ?? null, c: comp?.c ?? null })}>
+                        {v.name}
+                      </button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button type="button"
                           onClick={() => setVariantQtys(prev => ({ ...prev, [v.id]: Math.max(0, (prev[v.id] ?? 0) - 1) }))}
                           className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
                         >−</button>
                         <span className="text-sm font-semibold w-6 text-center tabular-nums">{qty}</span>
-                        <button
-                          type="button"
+                        <button type="button"
                           onClick={() => setVariantQtys(prev => ({ ...prev, [v.id]: (prev[v.id] ?? 0) + 1 }))}
                           className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
                           style={{ background: '#f97316' }}
@@ -566,6 +567,42 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
               </div>
             )}
           </div>
+
+          {/* Variant detail popup */}
+          {previewVariant && (
+            <div className="fixed inset-0 z-[500] flex items-center justify-center px-6" style={{ background: 'rgba(0,0,0,0.4)' }}
+              onClick={() => setPreviewVariant(null)}>
+              <div className="bg-white rounded-2xl w-full shadow-xl p-5" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-semibold text-gray-800">{previewVariant.name}</span>
+                  <button type="button" onClick={() => setPreviewVariant(null)} className="text-gray-400 text-lg leading-none">✕</button>
+                </div>
+                <div className="space-y-3">
+                  {previewVariant.a && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-base">🍖</span>
+                      <span className="text-sm text-gray-700">{previewVariant.a}</span>
+                    </div>
+                  )}
+                  {previewVariant.b && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-base">🥬</span>
+                      <span className="text-sm text-gray-700">{previewVariant.b}</span>
+                    </div>
+                  )}
+                  {previewVariant.c && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-base">🍚</span>
+                      <span className="text-sm text-gray-700">{previewVariant.c}</span>
+                    </div>
+                  )}
+                  {!previewVariant.a && !previewVariant.b && !previewVariant.c && (
+                    <div className="text-sm text-gray-400 text-center py-2">No menu set for this day</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Layer 2 — Custom combos: one card per combo, + opens full picker */}
           <div className="space-y-2">
