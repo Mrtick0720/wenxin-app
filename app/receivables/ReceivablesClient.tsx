@@ -8,6 +8,7 @@ import { useStaff } from '../components/StaffProvider'
 import { fetchReceivablesAction, type Receivable } from './actions'
 import { supabase } from '@/lib/supabase/client'
 import ReceivableDetail from './ReceivableDetail'
+import { FullPageSpinner } from '../components/Spinner'
 import ReceivableForm from './ReceivableForm'
 
 const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
@@ -97,6 +98,8 @@ export default function ReceivablesClient() {
 
   const rowBg = (i: number) => i % 2 === 1 ? '#f9fafb' : '#ffffff'
 
+  if (loading) return <FullPageSpinner />
+
   if (role === 'kitchen') {
     return (
       <PageTransition>
@@ -132,18 +135,14 @@ export default function ReceivablesClient() {
         </div>
 
         <div className="px-4 py-4 pb-28 space-y-4">
-          {!loading && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <div className="text-3xl font-bold text-gray-900">{fmt(totalBalance)}</div>
-              <div className="text-sm text-gray-400 mt-1">
-                {openCount === 0 ? 'No outstanding receivables' : `${openCount} outstanding receivable${openCount !== 1 ? 's' : ''}`}
-              </div>
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="text-3xl font-bold text-gray-900">{fmt(totalBalance)}</div>
+            <div className="text-sm text-gray-400 mt-1">
+              {openCount === 0 ? 'No outstanding receivables' : `${openCount} outstanding receivable${openCount !== 1 ? 's' : ''}`}
             </div>
-          )}
+          </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
-          ) : items.length === 0 && bentoOwed.length === 0 ? (
+          {items.length === 0 && bentoOwed.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm text-sm text-gray-400">
               No receivables yet.
             </div>

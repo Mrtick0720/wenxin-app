@@ -16,6 +16,7 @@ import {
 } from './actions'
 import { useStaff } from '../components/StaffProvider'
 import { createBrowserSupabaseClient } from '@/lib/supabase/client'
+import { FullPageSpinner } from '../components/Spinner'
 
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -316,6 +317,7 @@ export default function ReservationsPage() {
       <div className="px-4 py-4 pb-28 space-y-4">
 
         {/* Hero card — shows active count */}
+        {loading && <FullPageSpinner />}
         {!loading && (
           <div className="relative bg-white rounded-2xl p-6 shadow-sm text-center overflow-hidden">
             {activeCount > 0 && <CelebrationDots />}
@@ -331,9 +333,7 @@ export default function ReservationsPage() {
         )}
 
         {/* List */}
-        {loading ? (
-          <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
-        ) : total === 0 ? (
+        {!loading && total === 0 ? (
           <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
             <div className="text-sm text-gray-400">
               {tab === 'active' ? 'No active reservations for this date' : 'No history for this date'}

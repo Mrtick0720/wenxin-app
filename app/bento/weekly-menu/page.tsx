@@ -6,6 +6,7 @@ import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { toLocalDateStr, addDays } from '@/lib/dateUtils'
 import { useStaff } from '@/app/components/StaffProvider'
+import { FullPageSpinner } from '@/app/components/Spinner'
 
 const DAYS_FULL  = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const DAYS_SHORT = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -206,7 +207,7 @@ export default function WeeklyMenuPage() {
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div className="px-4 pt-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 160px)' }}>
           {loading ? (
-            <div className="text-center text-gray-400 py-16">Loading…</div>
+            <FullPageSpinner />
           ) : isDayOpen ? (
             <>
               <div className="space-y-4">

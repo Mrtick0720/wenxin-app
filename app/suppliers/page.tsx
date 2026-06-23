@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { supabase } from '@/lib/supabase/client'
+import { FullPageSpinner } from '../components/Spinner'
 
 type Supplier = { name: string; purchases: number; total: number; lastDate: string }
 
@@ -32,6 +33,8 @@ export default function SuppliersPage() {
       })
   }, [])
 
+  if (loading) return <FullPageSpinner />
+
   return (
     <PageTransition>
       <main className="bg-gray-50 w-full mx-auto min-h-screen">
@@ -44,9 +47,7 @@ export default function SuppliersPage() {
         </div>
 
         <div className="px-4 py-4 pb-8 space-y-3">
-          {loading && <div className="text-center text-gray-400 py-10">Loading…</div>}
-
-          {!loading && suppliers.length === 0 && (
+          {suppliers.length === 0 && (
             <div className="text-center text-gray-400 py-10 px-6 text-sm">
               No suppliers yet. Suppliers appear here automatically once you record purchases with a supplier name.
             </div>

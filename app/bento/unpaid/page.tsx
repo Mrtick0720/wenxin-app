@@ -8,7 +8,7 @@ import BackButton from '../../components/BackButton'
 import { useNavigation } from '../../components/NavigationStack'
 
 const NewBentoOrder = lazy(() => import('@/app/bento/new/page'))
-import { CenteredSpinner } from '../../components/Spinner'
+import { FullPageSpinner } from '../../components/Spinner'
 import { supabase } from '@/lib/supabase/client'
 import {
   groupUnpaidOrdersByCustomerAndDate,
@@ -169,7 +169,7 @@ export default function UnpaidPage() {
           </div>
         )}
 
-        {loading && <CenteredSpinner />}
+        {loading && <FullPageSpinner />}
 
         {!loading && customerGroups.length === 0 && (
           <div className="text-center text-gray-400 py-12">

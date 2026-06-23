@@ -4,6 +4,7 @@ import { lazy, useRef, useState, useEffect, useCallback } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import DatePicker from '../components/DatePicker'
+import { FullPageSpinner } from '../components/Spinner'
 import { useNavigation } from '../components/NavigationStack'
 
 const StaffAccountsStack = lazy(() => import('./accounts/StaffAccountsStack'))
@@ -259,7 +260,7 @@ export default function StaffPage() {
             </div>
             <div className="divide-y divide-gray-50">
               {rosterLoading ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">Loading…</div>
+                <FullPageSpinner />
               ) : roster.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-gray-400">No staff accounts found.</div>
               ) : (

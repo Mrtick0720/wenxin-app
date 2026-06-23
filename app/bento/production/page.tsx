@@ -7,6 +7,7 @@ import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
 import { useStaff } from '@/app/components/StaffProvider'
+import { FullPageSpinner } from '@/app/components/Spinner'
 import {
   aggregateProductionCards,
   updateProductionLineCompletion,
@@ -315,11 +316,7 @@ export default function ProductionPage({ initialDate }: { initialDate?: string }
 
       {/* Scrollable production list */}
       <div className="flex-1 overflow-y-auto px-3 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }}>
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="text-sm" style={{ color: '#64748b' }}>Loading…</div>
-          </div>
-        )}
+        {loading && <FullPageSpinner />}
 
         {!loading && orders.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20">

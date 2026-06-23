@@ -5,6 +5,7 @@ import BackButton from '../components/BackButton'
 import KitchenTasksWithPolling from '../components/home/KitchenTasksWithPolling'
 import { listKitchenTasksAction, type KitchenTask } from '../kitchen/dailyTasksActions'
 import { useNavigation } from '../components/NavigationStack'
+import { FullPageSpinner } from '../components/Spinner'
 
 const NewKitchenTaskPage = lazy(() => import('./new/page'))
 
@@ -26,6 +27,8 @@ export default function KitchenTasksPage() {
 
   const done = tasks.filter(t => t.done).length
   const urgent = tasks.filter(t => !t.done && t.urgency > 0).length
+
+  if (loading) return <FullPageSpinner />
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
@@ -58,11 +61,7 @@ export default function KitchenTasksPage() {
 
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">Task List</div>
-          {loading ? (
-            <div className="h-32 animate-pulse rounded-2xl bg-white" />
-          ) : (
-            <KitchenTasksWithPolling initialTasks={tasks} canManage />
-          )}
+          <KitchenTasksWithPolling initialTasks={tasks} canManage />
         </div>
       </div>
 

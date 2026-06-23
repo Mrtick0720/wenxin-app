@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
+import { FullPageSpinner } from '../components/Spinner'
 import { fetchPayablesAction, type Payable } from './actions'
 import PayableDetail from './PayableDetail'
 import { usePurchaseRealtime } from '../purchase/usePurchaseRealtime'
@@ -71,6 +72,8 @@ export default function PayablesClient() {
 
   const rowBg = (i: number) => i % 2 === 1 ? '#f9fafb' : '#ffffff'
 
+  if (loading) return <FullPageSpinner />
+
   if (role === 'kitchen') {
     return (
       <PageTransition>
@@ -97,20 +100,16 @@ export default function PayablesClient() {
         </div>
 
         <div className="px-4 py-4 pb-28 space-y-4">
-          {!loading && (
-            <div className="bg-white rounded-2xl p-5 shadow-sm">
-              <div className="text-3xl font-bold text-gray-900">{fmt(totalBalance)}</div>
-              <div className="text-sm mt-1" style={{ color: dueTodayCount > 0 ? '#f97316' : '#9ca3af' }}>
-                {dueTodayCount > 0
-                  ? `${dueTodayCount} due today`
-                  : 'No payables due today'}
-              </div>
+          <div className="bg-white rounded-2xl p-5 shadow-sm">
+            <div className="text-3xl font-bold text-gray-900">{fmt(totalBalance)}</div>
+            <div className="text-sm mt-1" style={{ color: dueTodayCount > 0 ? '#f97316' : '#9ca3af' }}>
+              {dueTodayCount > 0
+                ? `${dueTodayCount} due today`
+                : 'No payables due today'}
             </div>
-          )}
+          </div>
 
-          {loading ? (
-            <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
-          ) : items.length === 0 ? (
+          {items.length === 0 ? (
             <div className="bg-white rounded-2xl p-8 text-center shadow-sm text-sm text-gray-400">
               No payables yet.
             </div>
