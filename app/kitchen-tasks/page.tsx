@@ -31,7 +31,7 @@ export default function KitchenTasksPage() {
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b" style={{ flexShrink: 0 }}>
         <BackButton href="/" />
-        <span className="font-semibold text-base">Kitchen Tasks</span>
+        <span className="font-semibold text-base">Kitchen</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
