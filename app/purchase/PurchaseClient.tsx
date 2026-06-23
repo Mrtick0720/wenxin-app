@@ -1487,18 +1487,8 @@ export default function PurchaseClient(props: Props) {
         </div>
       </div>
 
-      {/* ── Pull-to-refresh indicator ── */}
-      {pullDist > 0 && (
-        <div className="flex items-center justify-center py-2 text-xs text-gray-400 flex-shrink-0"
-          style={{ height: Math.max(pullDist, 0), overflow: 'hidden', transition: 'height 0.1s' }}>
-          {pullDist >= THRESHOLD ? 'Release to refresh…' : 'Pull to refresh…'}
-        </div>
-      )}
-
-      {/* ── Scrollable content ── */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
-
-        {/* ── Hero KPI — always at top; shell renders immediately, numbers fill in last ── */}
+      {/* ── Hero KPI — always at top; shell renders immediately, numbers fill in last ── */}
+      <div className="flex-shrink-0">
         {heroLoading ? (
           <div className="mx-4 mt-4 rounded-2xl overflow-hidden" style={{ backgroundImage: BAND_THEME.danger.gradient }}>
             <div className="relative px-5 pt-3 pb-2">
@@ -1578,9 +1568,10 @@ export default function PurchaseClient(props: Props) {
             </div>
           )
         })() : null}
+      </div>
 
-        {/* ── Stage tabs: Checklist → Verify → Received ── */}
-        <div className="px-4 pt-4 pb-2 flex gap-2 sticky top-0 z-10" style={{ background: '#f9fafb' }}>
+      {/* ── Stage tabs: Checklist → Verify → Received ── */}
+      <div className="px-4 pt-4 pb-2 flex gap-2 flex-shrink-0" style={{ background: '#f9fafb' }}>
           {([
             { key: 'checklist',    label: 'To Buy',    count: checklistPendingCount,        activeBg: '#FF7A1A', inactiveBg: '#FFF3E8', activeText: '#FFFFFF', inactiveText: '#C2410C' },
             { key: 'verification', label: 'To Verify', count: pendingVerification.length,   activeBg: '#2563EB', inactiveBg: '#EFF6FF', activeText: '#FFFFFF', inactiveText: '#1D4ED8' },
@@ -1617,6 +1608,17 @@ export default function PurchaseClient(props: Props) {
             )
           })}
         </div>
+
+      {/* ── Pull-to-refresh indicator ── */}
+      {pullDist > 0 && (
+        <div className="flex items-center justify-center py-2 text-xs text-gray-400 flex-shrink-0"
+          style={{ height: Math.max(pullDist, 0), overflow: 'hidden', transition: 'height 0.1s' }}>
+          {pullDist >= THRESHOLD ? 'Release to refresh…' : 'Pull to refresh…'}
+        </div>
+      )}
+
+      {/* ── Scrollable carousel only ── */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
 
         {/* ── Stage carousel: Checklist | Verify | Received ── */}
         <div ref={carContainerRef} style={{ overflowX: 'clip', overflowY: 'visible', height: carHeight, transition: 'height 0.3s cubic-bezier(0.3,0,0.1,1)' }}>
