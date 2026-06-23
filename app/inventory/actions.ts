@@ -9,7 +9,7 @@ export async function fetchInventoryAction(): Promise<
   { ok: true; data: InventoryView[] } | { ok: false; error: string }
 > {
   try {
-    await requireRole('owner', 'manager', 'kitchen')
+    await requireRole('owner', 'manager', 'kitchen', 'front_desk')
     const rows = await findInventoryWithStock()
 
     const views: InventoryView[] = rows.map(({ item, stock }) => {
