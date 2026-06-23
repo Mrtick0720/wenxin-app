@@ -48,7 +48,7 @@ export default function QuickAccessGrid({ role }: { role: StaffRole }) {
         {visible.map(({ href, label, icon }) => (
           <NavLink key={label} href={href} className="bg-white rounded-xl py-3 px-1 shadow-sm flex flex-col items-center gap-1.5 overflow-hidden">
             <span className="text-orange-500">{icon}</span>
-            <span className="text-[11px] font-medium text-gray-600 truncate max-w-full">{label}</span>
+            <span className="text-[11px] font-medium text-gray-600 text-center leading-tight line-clamp-2 w-full">{label}</span>
           </NavLink>
         ))}
       </div>
