@@ -101,7 +101,7 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Delivery Frequency</label>
+          <label className="text-xs text-gray-500 mb-1 block">Order Frequency</label>
           <div className="flex gap-2">
             {DELIVERY_FREQUENCIES.map(f => (
               <button key={f.value} type="button" onClick={() => set('delivery_frequency', f.value)}
