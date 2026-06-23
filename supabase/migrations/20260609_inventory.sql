@@ -50,12 +50,10 @@ create table if not exists public.inventory_stock_levels (
   unique (item_id, outlet_id)
 );
 
+-- Plain index on (item_id, outlet_id, current_quantity) — supports low-stock
+-- queries efficiently without a subquery in the predicate (not allowed by PG).
 create index if not exists inventory_stock_levels_low_idx
-  on public.inventory_stock_levels(item_id, outlet_id)
-  where current_quantity <= (
-    select reorder_level from public.inventory_items
-    where id = item_id and status = 'active'
-  );
+  on public.inventory_stock_levels(item_id, outlet_id, current_quantity);
 
 -- ── Inventory Movements ──
 create table if not exists public.inventory_movements (
