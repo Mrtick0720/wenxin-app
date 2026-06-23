@@ -23,6 +23,23 @@ async function getPendingTaskCount(): Promise<number> {
   }
 }
 
+async function getBentoPending(): Promise<boolean> {
+  try {
+    const supabase = await createServerSupabaseClient()
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase
+      .from('bento_orders')
+      .select('id')
+      .eq('date', today)
+      .neq('status', 'done')
+      .neq('status', 'canceled')
+      .limit(1)
+    return (data?.length ?? 0) > 0
+  } catch {
+    return false
+  }
+}
+
 async function getPurchasePending(): Promise<boolean> {
   try {
     const supabase = await createServerSupabaseClient()
@@ -77,6 +94,7 @@ export default async function RootLayout({
   const staff = await getCurrentStaff().catch(() => null)
   const pendingCount = staff ? await getPendingTaskCount() : 0
   const purchasePending = staff ? await getPurchasePending() : false
+  const bentoPending = staff ? await getBentoPending() : false
 
   return (
     <html
@@ -96,7 +114,7 @@ export default async function RootLayout({
           <SessionHeartbeat />
           <NavigationProvider>
             {children}
-            {staff && <GlobalBottomNav pendingCount={pendingCount} purchasePending={purchasePending} />}
+            {staff && <GlobalBottomNav pendingCount={pendingCount} purchasePending={purchasePending} bentoPending={bentoPending} />}
           </NavigationProvider>
         </StaffProvider>
       </body>

@@ -59,7 +59,7 @@ const tabs: BottomTab[] = [
   { href: '/profile', label: 'Me', Icon: ProfileIcon },
 ]
 
-export default function BottomNav({ pendingCount = 0, purchasePending = false }: { pendingCount?: number; purchasePending?: boolean }) {
+export default function BottomNav({ pendingCount = 0, purchasePending = false, bentoPending = false }: { pendingCount?: number; purchasePending?: boolean; bentoPending?: boolean }) {
   const { reset, resetTo, popToRoot, canPop, currentPath } = useNavigation()
   const router = useRouter()
   const pathname = usePathname()
@@ -118,6 +118,9 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false }:
             <div className="relative inline-flex">
               <Icon active={active} />
               {href === '/purchase' && purchasePending && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
+              )}
+              {href === '/bento' && bentoPending && (
                 <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white" />
               )}
               {badge && pendingCount > 0 && (
