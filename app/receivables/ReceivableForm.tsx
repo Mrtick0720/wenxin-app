@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createReceivableAction, updateReceivableAction, type ReceivableInput, type Receivable } from './actions'
+import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
 const Z = 2147483647
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 bg-white'
@@ -76,8 +77,11 @@ export default function ReceivableForm({
           </div>
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Due Date</label>
-            <input className={inputCls} style={{ fontSize: 16 }} type="date"
-              value={form.due_date ?? ''} onChange={e => set('due_date', e.target.value)} />
+            <DatePickerField
+              ariaLabel="Due date"
+              value={form.due_date ?? ''}
+              onChange={value => set('due_date', value)}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Notes</label>

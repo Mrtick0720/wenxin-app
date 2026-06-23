@@ -6,6 +6,7 @@ import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useNavigation } from '../../../components/NavigationStack'
 import { DatePickerField } from '@/app/components/DateTimePickerFields'
+import { useToast } from '@/app/components/Toast'
 
 const DELIVERY_METHODS = [
   { value: 'pickup', label: '🏪 Pickup' },
@@ -20,8 +21,8 @@ const DELIVERY_FREQUENCIES = [
 export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
   const router = useRouter()
   const { pop, canPop } = useNavigation()
+  const { show, node: toastNode } = useToast()
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     phone: '',
@@ -44,7 +45,6 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
     e.preventDefault()
     if (!form.name.trim()) return
     setSaving(true)
-    setError(null)
     try {
       const { error: insertError } = await supabase.from('bento_customers').insert({
         name: form.name.trim(),
@@ -64,23 +64,25 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
         active: true,
       })
       if (insertError) {
-        setError(insertError.message || 'Failed to create customer. Please try again.')
+        show(insertError.message || 'Failed to create customer. Please try again.', 'error')
         setSaving(false)
         return
       }
       onSaved?.()
-      // Stack page: pop back to the customers list (router.replace doesn't
-      // unmount a stack layer, which left the button stuck on "Saving…").
-      if (canPop) pop()
-      else router.replace('/bento/customers')
+      show('Customer added', 'success')
+      setTimeout(() => {
+        if (canPop) pop()
+        else router.replace('/bento/customers')
+      }, 600)
     } catch {
-      setError('Network error. Please check your connection.')
+      show('Network error. Please check your connection.', 'error')
       setSaving(false)
     }
   }
 
   return (
     <div className="page-slide-in" style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#f9fafb' }}>
+      {toastNode}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b" style={{ flexShrink: 0 }}>
         <BackButton href="/bento/customers" />
         <span className="font-semibold text-base">New Customer</span>
@@ -196,14 +198,6 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
           {saving ? 'Saving...' : 'Add Customer'}
         </button>
 
-        {error && (
-          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{error}</span>
-          </div>
-        )}
       </form>
     </div>
   )

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '@/app/components/BackButton'
+import { useNavigation } from '@/app/components/NavigationStack'
+import { useToast } from '@/app/components/Toast'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
 
@@ -22,8 +24,9 @@ const PRIORITIES = [
 
 export default function NewTaskPage() {
   const router = useRouter()
+  const { pop } = useNavigation()
+  const { show, node: toastNode } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     title: '',
     task_type: 'other',
@@ -33,9 +36,8 @@ export default function NewTaskPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.title.trim()) { setError('Please enter a task title'); return }
+    if (!form.title.trim()) { show('Please enter a task title', 'error'); return }
     setLoading(true)
-    setError(null)
     const { error: err } = await supabase.from('tasks').insert({
       title: form.title.trim(),
       task_type: form.task_type,
@@ -44,12 +46,14 @@ export default function NewTaskPage() {
       status: 'pending',
     })
     setLoading(false)
-    if (err) { setError(err.message); return }
-    router.push('/tasks')
+    if (err) { show(err.message || 'Failed to create task', 'error'); return }
+    show('Task created', 'success')
+    setTimeout(() => pop(), 600)
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
+      {toastNode}
       <main className="flex-1 overflow-y-auto">
         <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
           <BackButton href="/tasks" />
@@ -57,9 +61,6 @@ export default function NewTaskPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="px-4 py-4 space-y-4">
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>
-          )}
 
           <div>
             <label className="text-sm text-gray-600 mb-1 block">Title *</label>

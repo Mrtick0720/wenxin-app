@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFile } from 'node:fs/promises'
 import {
   getBentoCloseGestureAxis,
   getBentoGestureAxis,
@@ -103,6 +104,35 @@ assert.deepEqual(
   getBentoPullState({ dy: -80, threshold: 70 }),
   { offset: -22, shouldRefresh: false },
   'upward pull is lightly damped and never refreshes'
+)
+
+const bentoClientSource = await readFile(
+  new URL('../app/bento/BentoClient.tsx', import.meta.url),
+  'utf8',
+)
+
+assert.match(
+  bentoClientSource,
+  /transform: detailOpen \? 'translateX\(0\)' : 'translateX\(100%\)'/,
+  'desktop clicks must reveal the detail panel through React-controlled CSS transform',
+)
+
+assert.match(
+  bentoClientSource,
+  /requestAnimationFrame\(\(\) => snapPanel\(true\)\)/,
+  'opening must explicitly commit the visible transform on the next browser frame',
+)
+
+assert.match(
+  bentoClientSource,
+  /requestAnimationFrame\(\(\) => snapPanel\(false\)\)/,
+  'closing must explicitly commit the hidden transform on the next browser frame',
+)
+
+assert.doesNotMatch(
+  bentoClientSource,
+  /\.animate\(/,
+  'detail panel visibility must not depend on the Web Animations API',
 )
 
 console.log('bento interaction tests passed')

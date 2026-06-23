@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import BackButton from '../../../../components/BackButton'
 import { useNavigation } from '../../../../components/NavigationStack'
 import { supabase } from '@/lib/supabase/client'
+import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
 const DELIVERY_METHODS = [
   { value: 'pickup', label: '🏪 Pickup' },
@@ -225,8 +226,11 @@ export default function EditCustomerPage({ customerId }: { customerId?: number |
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Start Date</label>
-            <input type="date" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
-              value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+            <DatePickerField
+              ariaLabel="Subscription start date"
+              value={form.start_date}
+              onChange={value => set('start_date', value)}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Total Portions</label>

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createReservationAction, updateReservationAction, type NewReservationInput } from './actions'
 import { todayLocalStr, addDays } from '@/lib/dateUtils'
+import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
 
 const Z_MAX = 2147483647
 
@@ -117,9 +118,12 @@ export default function NewReservationSheet({
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Date</label>
               <div className="relative">
-                <input className={inputCls} style={{ fontSize: 16 }} type="date"
+                <DatePickerField
+                  ariaLabel="Reservation date"
                   min={todayLocalStr()}
-                  value={form.date} onChange={e => set('date', e.target.value)} />
+                  value={form.date}
+                  onChange={value => set('date', value)}
+                />
                 {form.date === todayLocalStr() && (
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">Today</span>
                 )}
@@ -130,13 +134,21 @@ export default function NewReservationSheet({
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">Start Time *</label>
-              <input className={inputCls} style={{ fontSize: 16 }} type="time"
-                value={form.time_start} onChange={e => set('time_start', e.target.value)} />
+              <TimePickerField
+                ariaLabel="Reservation start time"
+                title="Start Time"
+                value={form.time_start}
+                onChange={value => set('time_start', value)}
+              />
             </div>
             <div>
               <label className="text-xs text-gray-400 mb-1 block">End Time</label>
-              <input className={inputCls} style={{ fontSize: 16 }} type="time"
-                value={form.time_end ?? ''} onChange={e => set('time_end', e.target.value)} />
+              <TimePickerField
+                ariaLabel="Reservation end time"
+                title="End Time"
+                value={form.time_end ?? ''}
+                onChange={value => set('time_end', value)}
+              />
             </div>
           </div>
 

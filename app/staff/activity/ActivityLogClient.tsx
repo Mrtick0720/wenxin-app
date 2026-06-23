@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
 export type AuditRow = {
   id: number
@@ -92,7 +93,7 @@ export default function ActivityLogClient({
           <option value="all">All staff</option>
           {staffOptions.map(value => <option key={value} value={value}>{value}</option>)}
         </select>
-        <input type="date" value={date} onChange={event => setDate(event.target.value)} className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-xs" />
+        <DatePickerField ariaLabel="Filter by date" value={date} onChange={setDate} placeholder="All dates" />
         <select value={action} onChange={event => setAction(event.target.value)} className="h-10 rounded-lg border border-gray-200 bg-white px-2 text-xs">
           <option value="all">All actions</option>
           {actionOptions.map(value => <option key={value} value={value}>{value.replaceAll('_', ' ')}</option>)}

@@ -24,12 +24,21 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   try { return await p } catch { return fallback }
 }
 
-async function getBentoCount(supabase: SupabaseClient): Promise<number> {
+function isBentoTomorrow(): boolean {
+  return new Date().getHours() >= 15
+}
+
+async function getBentoCount(supabase: SupabaseClient): Promise<{ count: number; forTomorrow: boolean }> {
+  const tomorrow = isBentoTomorrow()
+  const date = tomorrow
+    ? (() => { const d = new Date(); d.setDate(d.getDate() + 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` })()
+    : todayLocalStr()
   const { data } = await supabase
     .from('bento_kitchen_orders')
-    .select('id')
-    .eq('date', todayLocalStr())
-  return data?.length ?? 0
+    .select('quantity')
+    .eq('date', date)
+  const count = (data ?? []).reduce((sum, row) => sum + (row.quantity ?? 1), 0)
+  return { count, forTomorrow: tomorrow }
 }
 
 // Complaints still run on seed data app-wide (no real table yet); mirror the
@@ -50,8 +59,8 @@ export default async function KitchenHome() {
   const staff = await requireCurrentStaff()
   const supabase = await createServerSupabaseClient()
 
-  const [bentoCount, pending, lowStock, kpi, complaints, tasksRes] = await Promise.all([
-    safe(getBentoCount(supabase), 0),
+  const [bentoResult, pending, lowStock, kpi, complaints, tasksRes] = await Promise.all([
+    safe(getBentoCount(supabase), { count: 0, forTomorrow: false }),
     safe(svc.listPendingVerification(), []),
     safe(findLowStockItems(), []),
     safe(computeKpi('kitchen'), null),
@@ -60,6 +69,7 @@ export default async function KitchenHome() {
   ])
 
   const initialTasks = tasksRes.ok ? tasksRes.data : []
+  const { count: bentoCount, forTomorrow: bentoForTomorrow } = bentoResult
 
   const now = new Date()
   const todayStr = `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
@@ -70,7 +80,7 @@ export default async function KitchenHome() {
   const squares: {
     title: string; href: string; value: number; status: string; tone: SquareTone; image?: string
   }[] = [
-    { title: 'Bento', href: '/bento', value: bentoCount, status: 'To make today', tone: TONE.blue, image: '/bento-card.webp' },
+    { title: 'Bento', href: '/bento', value: bentoCount, status: bentoForTomorrow ? 'To make tomorrow' : 'To make today', tone: TONE.blue, image: '/bento-card.webp' },
     { title: 'To Verify', href: '/purchase', value: pending.length, status: pending.length > 0 ? 'Check stock' : 'All clear', tone: TONE.amber, image: '/to-verify.webp' },
     { title: 'Low Stock', href: '/inventory', value: lowStock.length, status: lowStock.length > 0 ? 'Restock' : 'All good', tone: TONE.red, image: '/low-stock.webp' },
     { title: 'Complaints', href: '/complaints', value: complaints, status: complaints > 0 ? '! Review' : 'Clear', tone: TONE.red, image: '/complaints.webp' },

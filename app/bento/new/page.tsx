@@ -5,6 +5,7 @@ import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useNavigation } from '@/app/components/NavigationStack'
+import { useToast } from '@/app/components/Toast'
 import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
 import { buildStructuredMenu, type ProductionLine } from '@/lib/bentoProduction'
 
@@ -63,8 +64,8 @@ const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-
 export default function NewBentoOrder({ initialDate }: { initialDate?: string } = {}) {
   const router = useRouter()
   const { pop } = useNavigation()
+  const { show, node: toastNode } = useToast()
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({
     customer_name:    '',
     phone:            '',
@@ -213,13 +214,13 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.customer_name.trim()) { setError('Customer name is required.'); return }
-    if (!form.unit_price || unitPrice <= 0) { setError('Unit price is required.'); return }
+    if (!form.customer_name.trim()) { show('Customer name is required.', 'error'); return }
+    if (!form.unit_price || unitPrice <= 0) { show('Unit price is required.', 'error'); return }
 
     const activeVariantSubmit = activeVariants.filter(v => (variantQtys[v.id] ?? 0) > 0)
     const activeCustomCombos  = customCombos.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
     if (activeVariantSubmit.length === 0 && activeCustomCombos.length === 0) {
-      setError('Please add at least one menu item.'); return
+      show('Please add at least one menu item.', 'error'); return
     }
 
     const parts: string[] = []
@@ -282,7 +283,6 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
     })
 
     setLoading(true)
-    setError(null)
     try {
       const { data: savedOrder, error: err } = await supabase.from('bento_orders').insert({
         date:                    form.delivery_date,
@@ -310,7 +310,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         payment_note:            form.payment_note || '',
       }).select('*').single()
       if (err) {
-        setError(err.message || 'Failed to create order.')
+        show(err.message || 'Failed to create order.', 'error')
         setLoading(false)
         return
       }
@@ -322,9 +322,10 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         detail: { date: form.delivery_date, order: savedOrder },
       }))
       router.refresh()
-      setTimeout(() => { pop() }, 100)
+      show('Order created', 'success')
+      setTimeout(() => { pop() }, 600)
     } catch {
-      setError('Network error. Please check your connection.')
+      show('Network error. Please check your connection.', 'error')
       setLoading(false)
     }
   }
@@ -337,6 +338,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
       className="page-slide-in flex min-h-0 w-full max-w-full flex-col overflow-hidden"
       style={{ position: 'relative', flex: '1 1 0%', minHeight: 0, width: '100%', height: '100dvh', maxHeight: '100dvh', overflowX: 'hidden', overflowY: 'hidden', background: '#f9fafb' }}
     >
+      {toastNode}
       <div className="flex-none bg-white px-4 py-3 flex items-center gap-3 border-b">
         <BackButton href="/bento" />
         <span className="font-semibold text-base">New Bento Order</span>
@@ -767,14 +769,6 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         </div>
 
         {/* ── Submit ── */}
-        {error && (
-          <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="flex-shrink-0">
-              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <span>{error}</span>
-          </div>
-        )}
         <button type="submit" disabled={loading}
           className="w-full bg-orange-500 text-white py-3 rounded-xl font-medium text-sm active:opacity-80">
           {loading ? 'Submitting...' : 'Create Order'}

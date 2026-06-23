@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import BackButton from '@/app/components/BackButton'
 import { addKitchenTaskAction } from '@/app/kitchen/dailyTasksActions'
+import { useNavigation } from '@/app/components/NavigationStack'
+import { useToast, Toast } from '@/app/components/Toast'
 
 type UrgencyStyle = { label: string; mark: string; sel: string; pillBg: string; pillFg: string }
 const URGENCY: Record<number, UrgencyStyle> = {
@@ -12,25 +14,28 @@ const URGENCY: Record<number, UrgencyStyle> = {
 }
 
 export default function NewKitchenTaskPage({ onSaved }: { onSaved?: () => void }) {
+  const { pop } = useNavigation()
+  const { show, node: toastNode } = useToast()
   const [title, setTitle] = useState('')
   const [urgency, setUrgency] = useState(0)
   const [recurring, setRecurring] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim()) { setError('Please enter a task title'); return }
+    if (!title.trim()) { show('Please enter a task title', 'error'); return }
     setSaving(true)
-    setError(null)
     const res = await addKitchenTaskAction(title.trim(), recurring, urgency)
     setSaving(false)
-    if (!res.ok) { setError('Failed to add task'); return }
+    if (!res.ok) { show('Failed to add task, please try again', 'error'); return }
     onSaved?.()
+    show('Task added', 'success')
+    setTimeout(() => pop(), 600)
   }
 
   return (
     <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
+      {toastNode}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b" style={{ flexShrink: 0 }}>
         <BackButton href="/kitchen-tasks" />
         <span className="font-semibold text-base">New Kitchen Task</span>
@@ -38,9 +43,6 @@ export default function NewKitchenTaskPage({ onSaved }: { onSaved?: () => void }
 
       <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 32px)' }}>
-        {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3">{error}</div>
-        )}
 
         <div>
           <label className="text-sm text-gray-600 mb-1 block">Title *</label>
@@ -78,7 +80,7 @@ export default function NewKitchenTaskPage({ onSaved }: { onSaved?: () => void }
         <div>
           <label className="text-sm text-gray-600 mb-2 block">Repeat</label>
           <div className="flex gap-2">
-            {[false, true].map(v => (
+            {([false, true] as const).map(v => (
               <button key={String(v)} type="button" onClick={() => setRecurring(v)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium border"
                 style={recurring === v

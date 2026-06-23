@@ -118,8 +118,8 @@ function StackLayer({
       if (!tracking) return
       const dx = e.touches[0].clientX - sx
       const dy = e.touches[0].clientY - sy
-      if (!axis && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-        axis = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v'
+      if (!axis && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        axis = Math.abs(dx) > Math.abs(dy) * 2 ? 'h' : 'v'
       }
       if (axis !== 'h' || dx <= 0) return
       if (animRef.current) { animRef.current.cancel(); animRef.current = null }
