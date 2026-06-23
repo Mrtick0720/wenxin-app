@@ -724,7 +724,8 @@ export default function PurchaseClient(props: Props) {
   type TabKey = (typeof TAB_KEYS)[number]
   const SLIDE_COUNT = 3
   const pctPerSlide = 100 / SLIDE_COUNT
-  const [tabIndex, setTabIndex] = useState(0)
+  const isKitchenRole = props.role === 'kitchen'
+  const [tabIndex, setTabIndex] = useState(isKitchenRole ? 1 : 0)
   const activeTab: TabKey = TAB_KEYS[tabIndex]
   const [carHeight, setCarHeight] = useState<number | undefined>(undefined)
   const carContainerRef = useRef<HTMLDivElement>(null)
