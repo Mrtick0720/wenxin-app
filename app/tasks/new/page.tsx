@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '@/app/components/BackButton'
-import PageTransition from '@/app/components/PageTransition'
 import { supabase } from '@/lib/supabase/client'
 import { todayLocalStr } from '@/lib/dateUtils'
 
@@ -50,8 +49,8 @@ export default function NewTaskPage() {
   }
 
   return (
-    <PageTransition>
-      <main className="bg-gray-50 min-h-screen">
+    <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', background: '#f9fafb', overflow: 'hidden' }}>
+      <main className="flex-1 overflow-y-auto">
         <div className="bg-white px-4 py-3 flex items-center gap-3 border-b">
           <BackButton href="/tasks" />
           <span className="font-semibold text-base">New Task</span>
@@ -122,6 +121,6 @@ export default function NewTaskPage() {
           </button>
         </form>
       </main>
-    </PageTransition>
+    </div>
   )
 }

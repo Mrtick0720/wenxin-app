@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import { useNavigation } from '../components/NavigationStack'
+
+const NewTaskPage = lazy(() => import('./new/page'))
 
 interface Task {
   id: number
@@ -38,6 +41,7 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 export default function TasksPage() {
   const staff = useStaff()
   const router = useRouter()
+  const { push } = useNavigation()
   const [tasks, setTasks] = useState<Task[]>([])
 
   useEffect(() => {
@@ -116,7 +120,7 @@ export default function TasksPage() {
       </div>
     </main>
       <button
-        onClick={() => router.push('/tasks/new')}
+        onClick={() => push('/tasks/new', <Suspense fallback={null}><NewTaskPage /></Suspense>)}
         aria-label="New task"
         className="fixed z-[290] w-14 h-14 rounded-full flex items-center justify-center shadow-lg active:opacity-80"
         style={{ background: '#f97316', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)', left: '50%', transform: 'translateX(-50%)' }}
