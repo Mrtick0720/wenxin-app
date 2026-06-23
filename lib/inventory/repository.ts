@@ -206,16 +206,13 @@ export async function findLowStockItems(
     return result
   }
 
-  return (data as Array<Record<string, unknown>>).map(row => ({
-    item: mapItemRow(row),
-    stock: {
-      id: (row.inventory_stock_levels as Record<string, unknown>)?.id as number ?? 0,
-      itemId: row.id as number,
-      outletId: row.outlet_id as string,
-      currentQuantity: Number((row.inventory_stock_levels as Record<string, unknown>)?.current_quantity ?? 0),
-      lastUpdatedAt: (row.inventory_stock_levels as Record<string, unknown>)?.last_updated_at as string ?? '',
-    },
-  }))
+  return (data as Array<Record<string, unknown>>).map(row => {
+    const sl = (row.inventory_stock_levels as Record<string, unknown>) ?? {}
+    return {
+      item: mapItemRow(row),
+      stock: mapStockLevelRow({ ...sl, item_id: row.id, outlet_id: row.outlet_id }),
+    }
+  })
 }
 
 export async function findInventoryWithStock(
