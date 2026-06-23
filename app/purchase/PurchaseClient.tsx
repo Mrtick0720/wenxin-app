@@ -1580,7 +1580,7 @@ export default function PurchaseClient(props: Props) {
         })() : null}
 
         {/* ── Stage tabs: Checklist → Verify → Received ── */}
-        <div className="mx-4 mt-4 flex gap-2">
+        <div className="px-4 pt-4 pb-2 flex gap-2 sticky top-0 z-10" style={{ background: '#f9fafb' }}>
           {([
             { key: 'checklist',    label: 'To Buy',    count: checklistPendingCount,        activeBg: '#FF7A1A', inactiveBg: '#FFF3E8', activeText: '#FFFFFF', inactiveText: '#C2410C' },
             { key: 'verification', label: 'To Verify', count: pendingVerification.length,   activeBg: '#2563EB', inactiveBg: '#EFF6FF', activeText: '#FFFFFF', inactiveText: '#1D4ED8' },
