@@ -809,51 +809,23 @@ function ComboPickerSheet({ proteins, vegetables, staples, onConfirm, onClose }:
     protein_id: null, vegetable_id: null, staple_id: null,
   })
   return (
-    <div className="fixed inset-0 z-[500] flex items-start justify-center px-4" style={{ background: 'rgba(0,0,0,0.5)', paddingTop: '8vh' }}
+    <div className="fixed inset-0 z-[500] flex items-center justify-center px-4" style={{ background: 'rgba(0,0,0,0.5)' }}
       onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full flex flex-col shadow-xl" style={{ maxHeight: '70vh' }}
-        onClick={e => e.stopPropagation()}>
-        <div className="px-4 pt-3 pb-2 border-b border-gray-100 flex items-center gap-2">
-          <span className="text-sm font-semibold text-gray-700 flex-1">Add custom combo</span>
+      <div className="bg-white rounded-2xl w-full shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-700 flex-1">Custom combo</span>
           <button type="button" onClick={onClose} className="text-gray-400 text-lg leading-none px-1">✕</button>
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {/* Protein */}
-          <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Main dish</div>
-          {groupItems(proteins).map(({ group, items }) => (
-            <div key={group || 'all'}>
-              {group && <div className="px-4 py-1 text-[10px] font-semibold text-gray-300 uppercase tracking-wide">{group}</div>}
-              {items.map(p => (
-                <button key={p.id} type="button"
-                  className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-50 ${draft.protein_id === p.id ? 'text-orange-500 font-medium bg-orange-50' : 'text-gray-800'}`}
-                  onClick={() => setDraft(d => ({ ...d, protein_id: d.protein_id === p.id ? null : p.id }))}>
-                  {p.description || p.name}
-                </button>
-              ))}
-            </div>
-          ))}
-          {/* Vegetable */}
-          <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Vegetable</div>
-          {vegetables.map(v => (
-            <button key={v.id} type="button"
-              className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-50 ${draft.vegetable_id === v.id ? 'text-orange-500 font-medium bg-orange-50' : 'text-gray-800'}`}
-              onClick={() => setDraft(d => ({ ...d, vegetable_id: d.vegetable_id === v.id ? null : v.id }))}>
-              {v.name}
-            </button>
-          ))}
-          {/* Staple */}
-          <div className="px-4 py-1.5 text-[11px] font-semibold text-gray-400 uppercase tracking-wide bg-gray-50">Staple</div>
-          {staples.map(s => (
-            <button key={s.id} type="button"
-              className={`w-full px-4 py-2.5 text-left text-sm border-b border-gray-50 ${draft.staple_id === s.id ? 'text-orange-500 font-medium bg-orange-50' : 'text-gray-800'}`}
-              onClick={() => setDraft(d => ({ ...d, staple_id: d.staple_id === s.id ? null : s.id }))}>
-              {s.name}
-            </button>
-          ))}
+        <div className="px-4 py-4 space-y-3">
+          <ComponentSelect label="荤菜" items={proteins} value={draft.protein_id}
+            onChange={v => setDraft(d => ({ ...d, protein_id: v }))} groupable />
+          <ComponentSelect label="素菜" items={vegetables} value={draft.vegetable_id}
+            onChange={v => setDraft(d => ({ ...d, vegetable_id: v }))} />
+          <ComponentSelect label="主食" items={staples} value={draft.staple_id}
+            onChange={v => setDraft(d => ({ ...d, staple_id: v }))} />
         </div>
-        <div className="px-4 py-3 border-t border-gray-100">
-          <button type="button"
-            onClick={() => onConfirm(draft)}
+        <div className="px-4 pb-4">
+          <button type="button" onClick={() => onConfirm(draft)}
             className="w-full py-3 rounded-xl text-white text-sm font-semibold"
             style={{ background: '#f97316' }}>
             Confirm
