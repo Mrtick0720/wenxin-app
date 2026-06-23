@@ -468,25 +468,25 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
           </div>
         </div>
 
-        {/* ── Date ── */}
-        <div>
-          <label className="text-sm text-gray-600 mb-1 block">{isDelivery ? 'Delivery Date *' : 'Pickup Date *'}</label>
-          <DatePickerField
-            ariaLabel={isDelivery ? 'Delivery date' : 'Pickup date'}
-            value={form.delivery_date}
-            onChange={value => setForm(prev => ({ ...prev, delivery_date: value }))}
-          />
-        </div>
-
-        {/* ── Single time (delivery or pickup) ── */}
-        <div>
-          <label className="text-sm text-gray-600 mb-1 block">{timeLabel}</label>
-          <TimePickerField
-            ariaLabel={timeLabel}
-            title={timeLabel}
-            value={form.order_time}
-            onChange={value => setForm(prev => ({ ...prev, order_time: value }))}
-          />
+        {/* ── Date + Time on one row ── */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">{isDelivery ? 'Delivery Date *' : 'Pickup Date *'}</label>
+            <DatePickerField
+              ariaLabel={isDelivery ? 'Delivery date' : 'Pickup date'}
+              value={form.delivery_date}
+              onChange={value => setForm(prev => ({ ...prev, delivery_date: value }))}
+            />
+          </div>
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">{timeLabel}</label>
+            <TimePickerField
+              ariaLabel={timeLabel}
+              title={timeLabel}
+              value={form.order_time}
+              onChange={value => setForm(prev => ({ ...prev, order_time: value }))}
+            />
+          </div>
         </div>
 
         {/* ── Delivery-only: Area + Address ── */}
