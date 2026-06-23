@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import BackButton from '../../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useNavigation } from '../../../components/NavigationStack'
+import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
 const DELIVERY_METHODS = [
   { value: 'pickup', label: '🏪 Pickup' },
@@ -100,52 +101,22 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Delivery / Pickup</label>
-          <div className="flex gap-2">
-            {DELIVERY_METHODS.map(m => (
-              <button key={m.value} type="button" onClick={() => set('delivery_method', m.value)}
-                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.delivery_method === m.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                {m.label}
+          <label className="text-xs text-gray-500 mb-1 block">Area</label>
+          <div className="flex gap-2 flex-wrap">
+            {AREAS.map(a => (
+              <button key={a} type="button" onClick={() => set('area', a)}
+                className={`px-4 py-2 rounded-xl text-sm border ${form.area === a ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
+                {a}
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <label className="text-xs text-gray-500 mb-1 block">Delivery Frequency</label>
-          <div className="flex gap-2">
-            {DELIVERY_FREQUENCIES.map(f => (
-              <button key={f.value} type="button" onClick={() => set('delivery_frequency', f.value)}
-                className={`flex-1 py-2.5 rounded-xl text-sm border font-medium ${form.delivery_frequency === f.value ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-          <div className="text-[11px] text-gray-400 mt-1">
-            {form.delivery_frequency === 'daily' ? 'Delivers every day, incl. weekends & public holidays' : 'Delivers Mon–Fri only (skips weekends)'}
-          </div>
+          <label className="text-xs text-gray-500 mb-1 block">Address</label>
+          <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
+            placeholder="Full address" value={form.delivery_address} onChange={e => set('delivery_address', e.target.value)} />
         </div>
-
-        {form.delivery_method === 'delivery' && (
-          <>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Area</label>
-              <div className="flex gap-2 flex-wrap">
-                {AREAS.map(a => (
-                  <button key={a} type="button" onClick={() => set('area', a)}
-                    className={`px-4 py-2 rounded-xl text-sm border ${form.area === a ? 'bg-orange-500 text-white border-orange-500' : 'bg-white text-gray-600 border-gray-200'}`}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 mb-1 block">Delivery Address</label>
-              <input className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
-                placeholder="Full address" value={form.delivery_address} onChange={e => set('delivery_address', e.target.value)} />
-            </div>
-          </>
-        )}
 
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Menu Preference</label>
@@ -185,8 +156,11 @@ export default function NewCustomerPage({ onSaved }: { onSaved?: () => void }) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Start Date</label>
-            <input type="date" className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400"
-              value={form.start_date} onChange={e => set('start_date', e.target.value)} />
+            <DatePickerField
+              ariaLabel="Subscription start date"
+              value={form.start_date}
+              onChange={value => set('start_date', value)}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-500 mb-1 block">Total Portions</label>
