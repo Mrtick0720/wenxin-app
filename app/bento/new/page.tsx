@@ -124,6 +124,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
   const [variantCompartments, setVariantCompartments] = useState<Record<number, { a: string|null; b: string|null; c: string|null }>>({})
   const [variantQtys, setVariantQtys]               = useState<Record<number, number>>({})
   const [customCombos, setCustomCombos]             = useState<CustomCombo[]>([])
+  const [showComboSheet, setShowComboSheet]         = useState(false)
   const [areaOpen, setAreaOpen] = useState(false)
 
   const isDelivery = form.fulfillment_type === 'delivery'
@@ -571,67 +572,77 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
             <span className="text-xs text-gray-400">Custom combos</span>
             <button
               type="button"
-              onClick={() => setCustomCombos(prev => [...prev, { protein_id: null, vegetable_id: null, staple_id: null, qty: 1 }])}
+              onClick={() => setShowComboSheet(true)}
               className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
               style={{ background: '#9ca3af' }}
               aria-label="Add combo"
             >+</button>
           </div>
           <div className="space-y-2">
-            {customCombos.map((c, idx) => (
-              <div key={idx} className="bg-white rounded-xl px-3 pt-2 pb-2.5 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Combo #{idx + 1}</span>
-                  <button
-                    type="button"
-                    onClick={() => setCustomCombos(prev => prev.filter((_, i) => i !== idx))}
-                    className="text-gray-300 active:text-red-400 p-0.5 -mr-0.5"
-                    aria-label="Remove combo"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                  </button>
-                </div>
-                <ComponentSelect
-                  label="荤菜"
-                  items={proteins}
-                  value={c.protein_id}
-                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, protein_id: val } : x))}
-                  groupable
-                />
-                <ComponentSelect
-                  label="素菜"
-                  items={vegetables}
-                  value={c.vegetable_id}
-                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, vegetable_id: val } : x))}
-                />
-                <ComponentSelect
-                  label="主食"
-                  items={staples}
-                  value={c.staple_id}
-                  onChange={val => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, staple_id: val } : x))}
-                />
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[11px] text-gray-400">Qty</span>
-                  <div className="flex items-center gap-1.5">
+            {customCombos.map((c, idx) => {
+              const protein = proteins.find(p => p.id === c.protein_id)
+              const displayName = protein?.description || protein?.name || 'Custom'
+              return (
+                <div key={idx} className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between shadow-sm">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
                     <button
                       type="button"
+                      onClick={() => setCustomCombos(prev => prev.filter((_, i) => i !== idx))}
+                      className="text-gray-300 active:text-red-400 flex-shrink-0"
+                      aria-label="Remove"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                    <span className="text-sm font-medium text-gray-800 truncate">{displayName}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button type="button"
                       onClick={() => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, qty: Math.max(1, x.qty - 1) } : x))}
-                      className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
+                      className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 text-sm leading-none active:bg-gray-200"
                     >−</button>
-                    <span className="text-xs font-semibold w-5 text-center tabular-nums">{c.qty}</span>
-                    <button
-                      type="button"
+                    <span className="text-sm font-semibold w-6 text-center tabular-nums">{c.qty}</span>
+                    <button type="button"
                       onClick={() => setCustomCombos(prev => prev.map((x, i) => i === idx ? { ...x, qty: x.qty + 1 } : x))}
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm leading-none active:opacity-70"
                       style={{ background: '#f97316' }}
                     >+</button>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
+
+          {/* Protein picker sheet */}
+          {showComboSheet && (
+            <div className="fixed inset-0 z-[400] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.4)' }}
+              onClick={() => setShowComboSheet(false)}>
+              <div className="bg-gray-50 rounded-t-2xl max-h-[70vh] overflow-y-auto"
+                onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                  <span className="font-semibold text-gray-800">Select main dish</span>
+                  <button type="button" onClick={() => setShowComboSheet(false)} className="text-gray-400 p-1">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                <div className="px-4 pb-6 space-y-2">
+                  {proteins.map(p => (
+                    <button key={p.id} type="button"
+                      className="w-full bg-white rounded-xl px-4 py-3 text-left shadow-sm active:opacity-70"
+                      onClick={() => {
+                        setCustomCombos(prev => [...prev, { protein_id: p.id, vegetable_id: null, staple_id: null, qty: 1 }])
+                        setShowComboSheet(false)
+                      }}>
+                      <span className="text-sm font-medium text-gray-800">{p.description || p.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Ready by (kitchen) ── */}
