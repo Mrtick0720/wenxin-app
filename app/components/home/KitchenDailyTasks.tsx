@@ -25,7 +25,7 @@ const u = (lvl: number) => URGENCY[lvl] ?? URGENCY[0]
 
 // canManage: owner/manager surface (publish + delete). Kitchen view is
 // read-only — staff can only tick items done, not create or remove them.
-export default function KitchenDailyTasks({ initialTasks, canManage = false }: { initialTasks: KitchenTask[]; canManage?: boolean }) {
+export default function KitchenDailyTasks({ initialTasks, canManage = false, showComposer = true }: { initialTasks: KitchenTask[]; canManage?: boolean; showComposer?: boolean }) {
   const [tasks, setTasks] = useState<KitchenTask[]>(initialTasks)
   const [draft, setDraft] = useState('')
   const [urgency, setUrgency] = useState(0)
@@ -152,7 +152,7 @@ export default function KitchenDailyTasks({ initialTasks, canManage = false }: {
       </div>
 
       {/* Composer — owner/manager only. Attributes set at creation: urgency + repeat-daily. */}
-      {canManage && (
+      {canManage && showComposer && (
       <>
       <div className="flex items-center gap-1.5 mb-2">
         {[0, 1, 2].map(lvl => {
