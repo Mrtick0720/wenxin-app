@@ -775,6 +775,7 @@ export default function PurchaseClient(props: Props) {
 
   const [catalog, setCatalog]               = useState<CatalogItem[]>([])
   const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogSettled, setCatalogSettled] = useState(false) // true once first fetch completes
   const [catalogError, setCatalogError]     = useState<string | null>(null)
   const catalogLoadStarted = useRef(false)
   const ensureCatalogLoaded = useCallback(async () => {
@@ -790,6 +791,7 @@ export default function PurchaseClient(props: Props) {
       setCatalogError(error instanceof Error ? error.message : 'Failed to load catalog')
     } finally {
       setCatalogLoading(false)
+      setCatalogSettled(true)
     }
   }, [])
 
@@ -1426,8 +1428,11 @@ export default function PurchaseClient(props: Props) {
     setRecordsLoading(false)
   }
 
-  // Keep spinner until ctx, checklist, hero, and catalog (for kitchen) are all ready
-  const dataReady = !!ctx && !checklistLoading && !heroLoading && !catalogLoading
+  // For kitchen (no cost view), catalog must finish before we show anything.
+  // We check catalogSettled (not !catalogLoading) to avoid the timing gap where
+  // catalogLoading is still false before the useEffect kicks it off.
+  const needsCatalog = ctx !== null && !ctx.perms.canViewCosts
+  const dataReady = !!ctx && !checklistLoading && !heroLoading && (!needsCatalog || catalogSettled)
   if (!dataReady && !bootError) {
     return <FullPageSpinner />
   }
