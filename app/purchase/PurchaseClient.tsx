@@ -724,8 +724,8 @@ export default function PurchaseClient(props: Props) {
   type TabKey = (typeof TAB_KEYS)[number]
   const SLIDE_COUNT = 3
   const pctPerSlide = 100 / SLIDE_COUNT
-  const isKitchenRole = props.role === 'kitchen'
-  const [tabIndex, setTabIndex] = useState(isKitchenRole ? 1 : 0)
+  const [tabIndex, setTabIndex] = useState(0)
+  const didSetKitchenTab = useRef(false)
   const activeTab: TabKey = TAB_KEYS[tabIndex]
   const [carHeight, setCarHeight] = useState<number | undefined>(undefined)
   const carContainerRef = useRef<HTMLDivElement>(null)
@@ -761,6 +761,15 @@ export default function PurchaseClient(props: Props) {
     }, 320)
   }
   const goToTab = (key: TabKey) => goToIndex(TAB_KEYS.indexOf(key))
+
+  // Kitchen role defaults to To Verify — applied once when ctx loads (role is async)
+  useEffect(() => {
+    if (didSetKitchenTab.current) return
+    if (ctx?.role === 'kitchen') {
+      didSetKitchenTab.current = true
+      goToIndex(1)
+    }
+  }, [ctx])
 
   const [filters, setFilters] = useState({ category: '', from: '', to: '', supplier: '', purchaser: '' })
 
