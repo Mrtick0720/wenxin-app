@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { createItemAction, updateItemAction, archiveItemAction } from './manage-actions'
+import { createItemAction, updateItemAction, archiveItemAction, deleteItemAction } from './manage-actions'
 import type { InventoryView, ItemCreateData, ItemUpdateData } from '@/lib/inventory/types'
 
 const CATEGORIES = ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies']
@@ -75,6 +75,8 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
   const [toast, setToast] = useState<string | null>(null)
   const [archiveConfirm, setArchiveConfirm] = useState(false)
   const [archiving, setArchiving] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -84,6 +86,8 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
       setToast(null)
       setArchiveConfirm(false)
       setArchiving(false)
+      setDeleteConfirm(false)
+      setDeleting(false)
     }
   }, [isOpen, mode, item])
 
@@ -177,6 +181,24 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
     } else {
       setError(result.error)
       setArchiveConfirm(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!item || deleting) return
+    setDeleting(true)
+    const result = await deleteItemAction(item.id)
+    setDeleting(false)
+    if (result.ok) {
+      setToast('Item deleted')
+      onSaved()
+      setTimeout(() => {
+        setToast(null)
+        onClose()
+      }, 1200)
+    } else {
+      setError(result.error)
+      setDeleteConfirm(false)
     }
   }
 
@@ -446,9 +468,11 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
           />
         </section>
 
-        {/* ── Archive (edit only) ────────────────────────────── */}
+        {/* ── Archive + Delete (edit only) ───────────────────── */}
         {mode === 'edit' && (
-          <section className="border-t pt-4">
+          <section className="border-t pt-4 space-y-4">
+
+            {/* Archive */}
             {archiveConfirm ? (
               <div className="bg-red-50 rounded-xl p-4 space-y-3">
                 <p className="text-sm font-medium text-red-600">Archive this item?</p>
@@ -482,6 +506,42 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
                 Archive Item
               </button>
             )}
+
+            {/* Delete — visually separated, more destructive */}
+            <div className="border-t pt-4">
+              {deleteConfirm ? (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+                  <p className="text-sm font-semibold text-red-700">Permanently delete this item?</p>
+                  <p className="text-xs text-red-500">This cannot be undone.</p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirm(false)}
+                      className="flex-1 py-2 rounded-xl text-sm border border-gray-200 text-gray-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="flex-1 py-2 rounded-xl text-sm bg-red-700 text-white font-medium disabled:opacity-50"
+                    >
+                      {deleting ? 'Deleting…' : 'Delete Forever'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirm(true)}
+                  className="text-sm text-red-700 hover:text-red-800 font-medium"
+                >
+                  Delete Item
+                </button>
+              )}
+            </div>
+
           </section>
         )}
 

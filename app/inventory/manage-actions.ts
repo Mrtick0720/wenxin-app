@@ -108,6 +108,41 @@ export async function updateItemAction(
   }
 }
 
+export async function deleteItemAction(
+  id: number,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await requireRole('owner', 'manager')
+    const supabase = await createServerSupabaseClient()
+
+    // Block delete if any movement history exists
+    const { count, error: countError } = await supabase
+      .from('inventory_movements')
+      .select('id', { count: 'exact', head: true })
+      .eq('item_id', id)
+
+    if (countError) return { ok: false, error: countError.message }
+    if ((count ?? 0) > 0) {
+      return {
+        ok: false,
+        error: 'This item has history and cannot be deleted. Archive it instead.',
+      }
+    }
+
+    // Hard delete — cascade removes stock_levels and adjustments rows
+    const { error } = await supabase
+      .from('inventory_items')
+      .delete()
+      .eq('id', id)
+      .eq('outlet_id', OUTLET_ID)
+
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Unauthorised' }
+  }
+}
+
 export async function archiveItemAction(
   id: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
