@@ -42,6 +42,7 @@ export async function fetchInventoryAction(): Promise<
           lastCountedAt: stock?.lastCountedAt ?? null,
           category: item.category,
         }),
+        openReports: [],
       }
     })
 

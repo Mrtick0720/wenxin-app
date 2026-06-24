@@ -14,6 +14,34 @@ export type MovementType =
 
 export type DisplayStatus = 'out' | 'low' | 'need_reorder' | 'need_count' | 'ok'
 
+export type LowStockReportType = 'running_low' | 'out_of_stock' | 'needed_tomorrow' | 'unusual_usage' | 'other'
+export type LowStockReportUrgency = 'normal' | 'urgent'
+export type LowStockReportStatus = 'open' | 'resolved'
+
+export type LowStockReport = {
+  id: string
+  itemId: number
+  outletId: string
+  reportedBy: string
+  reportType: LowStockReportType
+  urgency: LowStockReportUrgency
+  note: string | null
+  suggestedQuantity: number | null
+  status: LowStockReportStatus
+  createdAt: string
+  resolvedAt: string | null
+  resolvedBy: string | null
+  resolutionNote: string | null
+}
+
+export type LowStockReportInput = {
+  itemId: number
+  reportType: LowStockReportType
+  urgency: LowStockReportUrgency
+  note?: string | null
+  suggestedQuantity?: number | null
+}
+
 export type InventoryItem = {
   id: number
   outletId: string
@@ -68,6 +96,7 @@ export type InventoryView = {
   // derived
   unopenedQuantity: number
   displayStatus: DisplayStatus
+  openReports: LowStockReport[]
 }
 
 export type InventoryMovement = {
