@@ -24,9 +24,11 @@ function mapItemRow(row: Record<string, unknown>): InventoryItem {
     unit: row.unit as string,
     reorderLevel: Number(row.reorder_level ?? 0),
     reorderPoint: row.reorder_point != null ? Number(row.reorder_point) : null,
+    parLevel: row.par_level != null ? Number(row.par_level) : null,
     leadTimeDays: row.lead_time_days != null ? Number(row.lead_time_days) : null,
     location: (row.location as string) ?? null,
     supplier: (row.supplier as string) ?? null,
+    trackOpened: Boolean(row.track_opened),
     status: row.status as InventoryItem['status'],
     notes: (row.notes as string) ?? null,
     createdAt: row.created_at as string,
@@ -39,7 +41,15 @@ export async function createInventoryItem(data: {
   category: string
   unit: string
   reorderLevel?: number
+  reorderPoint?: number | null
+  parLevel?: number | null
+  leadTimeDays?: number | null
+  location?: string | null
+  supplier?: string | null
+  trackOpened?: boolean
   notes?: string | null
+  initialQuantity?: number
+  initialOpenedQuantity?: number
 }): Promise<InventoryItem> {
   const supabase = await createServerSupabaseClient()
   const { data: created, error } = await supabase
@@ -50,6 +60,12 @@ export async function createInventoryItem(data: {
       category: data.category,
       unit: data.unit.trim(),
       reorder_level: data.reorderLevel ?? 0,
+      reorder_point: data.reorderPoint ?? null,
+      par_level: data.parLevel ?? null,
+      lead_time_days: data.leadTimeDays ?? null,
+      location: data.location ?? null,
+      supplier: data.supplier ?? null,
+      track_opened: data.trackOpened ?? false,
       notes: data.notes ?? null,
     })
     .select('*')
@@ -57,11 +73,15 @@ export async function createInventoryItem(data: {
 
   if (error) throw error
 
-  // Initialize stock level to zero
+  const initialQty = data.initialQuantity ?? 0
+  const initialOpened = data.initialOpenedQuantity ?? 0
+
   await supabase.from('inventory_stock_levels').insert({
     item_id: created.id,
     outlet_id: DEFAULT_OUTLET_ID,
-    current_quantity: 0,
+    current_quantity: initialQty,
+    opened_quantity: initialOpened,
+    last_counted_at: initialQty > 0 ? new Date().toISOString() : null,
   })
 
   return mapItemRow(created)
@@ -74,18 +94,30 @@ export async function updateInventoryItem(
     category?: string
     unit?: string
     reorderLevel?: number
+    reorderPoint?: number | null
+    parLevel?: number | null
+    leadTimeDays?: number | null
+    location?: string | null
+    supplier?: string | null
+    trackOpened?: boolean
     status?: string
     notes?: string | null
   },
 ): Promise<InventoryItem> {
   const supabase = await createServerSupabaseClient()
   const db: Record<string, unknown> = {}
-  if (updates.name !== undefined) db.name = updates.name
-  if (updates.category !== undefined) db.category = updates.category
-  if (updates.unit !== undefined) db.unit = updates.unit
+  if (updates.name !== undefined)         db.name = updates.name
+  if (updates.category !== undefined)     db.category = updates.category
+  if (updates.unit !== undefined)         db.unit = updates.unit
   if (updates.reorderLevel !== undefined) db.reorder_level = updates.reorderLevel
-  if (updates.status !== undefined) db.status = updates.status
-  if (updates.notes !== undefined) db.notes = updates.notes
+  if (updates.reorderPoint !== undefined) db.reorder_point = updates.reorderPoint
+  if (updates.parLevel !== undefined)     db.par_level = updates.parLevel
+  if (updates.leadTimeDays !== undefined) db.lead_time_days = updates.leadTimeDays
+  if (updates.location !== undefined)     db.location = updates.location
+  if (updates.supplier !== undefined)     db.supplier = updates.supplier
+  if (updates.trackOpened !== undefined)  db.track_opened = updates.trackOpened
+  if (updates.status !== undefined)       db.status = updates.status
+  if (updates.notes !== undefined)        db.notes = updates.notes
 
   const { data, error } = await supabase
     .from('inventory_items')
