@@ -61,7 +61,7 @@ export default async function KitchenHome() {
 
   const [bentoResult, pending, lowStock, kpi, complaints, tasksRes] = await Promise.all([
     safe(getBentoCount(supabase), { count: 0, forTomorrow: false }),
-    safe(svc.listPendingVerification(), []),
+    safe(svc.listPendingVerification(staff.role), []),
     safe(findLowStockItems(), []),
     safe(computeKpi('kitchen'), null),
     safe(getComplaintCount(), 0),
