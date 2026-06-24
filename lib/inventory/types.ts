@@ -1,3 +1,4 @@
+// lib/inventory/types.ts
 // ── Inventory Domain Types ──
 
 export type InventoryItemStatus = 'active' | 'inactive' | 'discontinued'
@@ -19,11 +20,13 @@ export type InventoryItem = {
   name: string
   category: string
   unit: string
-  reorderLevel: number        // = min stock / dangerous threshold (existing col: reorder_level)
-  reorderPoint: number | null // = sea-freight reorder trigger (new col: reorder_point)
+  reorderLevel: number        // min stock / low-stock threshold (col: reorder_level)
+  reorderPoint: number | null // sea-freight reorder trigger (col: reorder_point)
+  parLevel: number | null     // target/ideal stock level (col: par_level)
   leadTimeDays: number | null
   location: string | null
   supplier: string | null
+  trackOpened: boolean        // whether to show opened-qty tracking (col: track_opened)
   status: InventoryItemStatus
   notes: string | null
   createdAt: string
@@ -51,9 +54,11 @@ export type InventoryView = {
   // item config
   reorderLevel: number
   reorderPoint: number | null
+  parLevel: number | null
   leadTimeDays: number | null
   location: string | null
   supplier: string | null
+  trackOpened: boolean
   // stock
   currentQuantity: number
   openedQuantity: number
@@ -61,7 +66,7 @@ export type InventoryView = {
   lastCountedAt: string | null
   lastUpdatedAt: string | null
   // derived
-  unopenedQuantity: number  // = currentQuantity - openedQuantity
+  unopenedQuantity: number
   displayStatus: DisplayStatus
 }
 
@@ -96,3 +101,53 @@ export type InventoryAction =
   | 'edit_items'
   | 'record_movement'
   | 'record_adjustment'
+
+// Count Sheet types
+
+export type CountItem = {
+  id: number
+  name: string
+  unit: string
+  category: string
+  currentQuantity: number
+  openedQuantity: number
+  trackOpened: boolean  // drives Opened input visibility in CountSheet
+}
+
+export type CountEntry = {
+  item_id: number
+  new_quantity: number
+  opened_quantity: number  // 0 for non-trackOpened items; RPC uses item's track_opened flag
+}
+
+// Item management types
+
+export type ItemCreateData = {
+  name: string
+  category: string
+  unit: string
+  trackOpened: boolean
+  reorderLevel: number
+  reorderPoint: number | null
+  parLevel: number | null
+  leadTimeDays: number | null
+  location: string | null
+  supplier: string | null
+  notes: string | null
+  initialQuantity: number
+  initialOpenedQuantity: number
+}
+
+export type ItemUpdateData = {
+  name: string
+  category: string
+  unit: string
+  trackOpened: boolean
+  reorderLevel: number
+  reorderPoint: number | null
+  parLevel: number | null
+  leadTimeDays: number | null
+  location: string | null
+  supplier: string | null
+  notes: string | null
+}
