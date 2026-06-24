@@ -32,3 +32,25 @@ export function getInventoryActionsForRole(role: StaffRole): InventoryAction[] {
     canPerformInventoryAction(role, action)
   )
 }
+
+// ── Count Sheet permission map ────────────────────────────────────
+// Defines which categories each role may count.
+// Enforced in: saveCountAction (server action) AND save_inventory_count RPC (DB).
+// Used by UI to show/hide "Count Stock" and "Count This Category" buttons.
+
+export const CATEGORY_COUNT_PERMISSIONS: Record<string, string[]> = {
+  owner:      ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
+  manager:    ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
+  kitchen:    ['Fresh', 'Sauces', 'Dry Goods', 'Packaging', 'Supplies'],
+  front_desk: ['Drinks', 'Packaging'],
+}
+
+export function canCountCategory(role: string, category: string): boolean {
+  return (CATEGORY_COUNT_PERMISSIONS[role] ?? []).includes(category)
+}
+
+// owner and manager can create, edit, and archive inventory items.
+// kitchen and front_desk are count-only.
+export function canManageInventory(role: string): boolean {
+  return role === 'owner' || role === 'manager'
+}
