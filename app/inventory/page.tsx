@@ -47,7 +47,7 @@ function StandardCard({ item, onEdit }: { item: InventoryView; onEdit?: () => vo
     <div className="bg-white rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold text-gray-900 truncate">{item.name}</div>
-        <div className="text-xs text-gray-400 mt-0.5">
+        <div className="text-xs text-gray-400 mt-0.5 truncate">
           Stock: {item.currentQuantity} {item.unit}
           {item.location && (
             <span className="ml-2">· {item.location}</span>
@@ -86,7 +86,7 @@ function SauceCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void 
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-gray-900 truncate">{item.name}</div>
-          <div className="text-xs text-gray-500 mt-0.5">
+          <div className="text-xs text-gray-500 mt-0.5 truncate">
             Stock: {item.currentQuantity} {item.unit}
             {(item.openedQuantity > 0 || item.unopenedQuantity > 0) && (
               <span className="text-gray-400">
@@ -228,7 +228,7 @@ export default function InventoryPage() {
 
   return (
     <PageTransition>
-    <main className="bg-gray-50 w-full mx-auto min-h-screen pb-32">
+    <main className="bg-gray-50 w-full mx-auto min-h-screen pb-32 overflow-x-hidden">
 
       {/* ── Header ── */}
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b sticky top-0 z-10">
@@ -238,9 +238,10 @@ export default function InventoryPage() {
           <button
             type="button"
             onClick={openAddItem}
-            className="text-orange-500 text-sm font-medium"
+            aria-label="Add item"
+            className="w-9 h-9 rounded-full bg-orange-500 text-white flex items-center justify-center text-xl leading-none shadow-md active:bg-orange-600"
           >
-            + Add
+            +
           </button>
         )}
       </div>
