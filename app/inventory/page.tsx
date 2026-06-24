@@ -7,6 +7,11 @@ import { fetchInventoryAction } from './actions'
 import { INVENTORY_CATEGORIES } from '@/lib/inventory/status'
 import type { InventoryView } from '@/lib/inventory/types'
 import type { DisplayStatus } from '@/lib/inventory/types'
+import { useStaff } from '../components/StaffProvider'
+import { CATEGORY_COUNT_PERMISSIONS, canCountCategory } from '@/lib/inventory/permissions'
+import CountSheet from './CountSheet'
+import { canManageInventory } from '@/lib/inventory/permissions'
+import ItemSheet from './ItemSheet'
 
 // ── Status badge config ──────────────────────────────────────────────
 const STATUS_BADGE: Record<DisplayStatus, { label: string; color: string }> = {
@@ -36,7 +41,7 @@ const SECTION_COLOR: Record<DisplayStatus, string> = {
 }
 
 // ── Standard card ────────────────────────────────────────────────────
-function StandardCard({ item }: { item: InventoryView }) {
+function StandardCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
   const badge = STATUS_BADGE[item.displayStatus]
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
@@ -53,6 +58,15 @@ function StandardCard({ item }: { item: InventoryView }) {
             Counted: {new Date(item.lastCountedAt).toLocaleDateString()}
           </div>
         )}
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="text-xs text-gray-400 hover:text-orange-500 mt-1.5"
+          >
+            Edit
+          </button>
+        )}
       </div>
       <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${badge.color}`}>
         {badge.label}
@@ -62,7 +76,7 @@ function StandardCard({ item }: { item: InventoryView }) {
 }
 
 // ── Sauce card ───────────────────────────────────────────────────────
-function SauceCard({ item }: { item: InventoryView }) {
+function SauceCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
   const badge = STATUS_BADGE[item.displayStatus]
   const showReorderWarning =
     item.reorderPoint != null && item.currentQuantity <= item.reorderPoint
@@ -109,13 +123,25 @@ function SauceCard({ item }: { item: InventoryView }) {
           )}
         </div>
       )}
+
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-xs text-gray-400 hover:text-orange-500"
+        >
+          Edit
+        </button>
+      )}
     </div>
   )
 }
 
 // ── Card dispatcher ──────────────────────────────────────────────────
-function ItemCard({ item }: { item: InventoryView }) {
-  return item.category === 'Sauces' ? <SauceCard item={item} /> : <StandardCard item={item} />
+function ItemCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
+  return item.category === 'Sauces'
+    ? <SauceCard item={item} onEdit={onEdit} />
+    : <StandardCard item={item} onEdit={onEdit} />
 }
 
 // ── Page ─────────────────────────────────────────────────────────────
@@ -134,6 +160,52 @@ export default function InventoryPage() {
       setLoading(false)
     })
   }, [])
+
+  // Count Sheet state
+  const staff = useStaff()
+  const role = staff?.role ?? ''
+
+  const [countSheetOpen, setCountSheetOpen] = useState(false)
+  const [countSheetCategory, setCountSheetCategory] = useState<string | undefined>(undefined)
+
+  const [itemSheetOpen, setItemSheetOpen] = useState(false)
+  const [itemSheetMode, setItemSheetMode] = useState<'add' | 'edit'>('add')
+  const [editingItem, setEditingItem] = useState<InventoryView | undefined>(undefined)
+
+  function handleItemSaved() {
+    setLoading(true)
+    fetchInventoryAction().then(result => {
+      if (result.ok) setItems(result.data)
+      else setFetchError(result.error)
+      setLoading(false)
+    })
+  }
+
+  function openAddItem() {
+    setItemSheetMode('add')
+    setEditingItem(undefined)
+    setItemSheetOpen(true)
+  }
+
+  function openEditItem(itemToEdit: InventoryView) {
+    setItemSheetMode('edit')
+    setEditingItem(itemToEdit)
+    setItemSheetOpen(true)
+  }
+
+  function openCountSheet(category?: string) {
+    setCountSheetCategory(category)
+    setCountSheetOpen(true)
+  }
+
+  function handleCountSaved() {
+    setLoading(true)
+    fetchInventoryAction().then(result => {
+      if (result.ok) setItems(result.data)
+      else setFetchError(result.error)
+      setLoading(false)
+    })
+  }
 
   // Summary counts
   const outCount     = items.filter(i => i.displayStatus === 'out').length
@@ -162,6 +234,15 @@ export default function InventoryPage() {
       <div className="bg-white px-4 py-3 flex items-center gap-3 border-b sticky top-0 z-10">
         <BackButton href="/" />
         <span className="font-semibold text-base flex-1">Inventory</span>
+        {canManageInventory(role) && (
+          <button
+            type="button"
+            onClick={openAddItem}
+            className="text-orange-500 text-sm font-medium"
+          >
+            + Add
+          </button>
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -227,7 +308,13 @@ export default function InventoryPage() {
                     {SECTION_LABEL[group.status]}
                   </div>
                   <div className="space-y-2">
-                    {group.items.map(item => <ItemCard key={item.id} item={item} />)}
+                    {group.items.map(item => (
+                      <ItemCard
+                        key={item.id}
+                        item={item}
+                        onEdit={canManageInventory(role) ? () => openEditItem(item) : undefined}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
@@ -235,18 +322,64 @@ export default function InventoryPage() {
           )
         ) : (
           <div className="space-y-2 pb-4">
+            {/* Count This Category shortcut — only for real category tabs, not Attention/All */}
+            {activeTab !== 'All' && tabItems.length > 0 && canCountCategory(role, activeTab) && (
+              <button
+                type="button"
+                onClick={() => openCountSheet(activeTab)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-white rounded-xl border border-orange-200 text-orange-600 text-sm font-medium mb-1"
+              >
+                <span>Count {activeTab}</span>
+                <span className="text-orange-300 text-base">›</span>
+              </button>
+            )}
             {tabItems.length === 0 ? (
               <div className="text-center py-16 text-sm text-gray-400">
                 No items in this category
               </div>
             ) : (
-              tabItems.map(item => <ItemCard key={item.id} item={item} />)
+              tabItems.map(item => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  onEdit={canManageInventory(role) ? () => openEditItem(item) : undefined}
+                />
+              ))
             )}
           </div>
         )}
 
       </div>
     </main>
+
+    {/* Floating Count Stock button — shown for any role with at least one countable category */}
+    {(CATEGORY_COUNT_PERMISSIONS[role]?.length ?? 0) > 0 && (
+      <button
+        type="button"
+        onClick={() => openCountSheet(undefined)}
+        className="fixed bottom-24 right-4 z-50 bg-orange-500 text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-lg active:bg-orange-600 transition-colors"
+      >
+        Count Stock
+      </button>
+    )}
+
+    {/* Count Sheet overlay */}
+    <CountSheet
+      isOpen={countSheetOpen}
+      role={role}
+      initialCategory={countSheetCategory}
+      onClose={() => setCountSheetOpen(false)}
+      onSaved={handleCountSaved}
+    />
+
+    <ItemSheet
+      mode={itemSheetMode}
+      item={editingItem}
+      isOpen={itemSheetOpen}
+      onClose={() => setItemSheetOpen(false)}
+      onSaved={handleItemSaved}
+    />
+
     </PageTransition>
   )
 }
