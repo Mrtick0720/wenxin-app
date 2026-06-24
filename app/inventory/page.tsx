@@ -12,6 +12,9 @@ import { CATEGORY_COUNT_PERMISSIONS, canCountCategory } from '@/lib/inventory/pe
 import CountSheet from './CountSheet'
 import { canManageInventory } from '@/lib/inventory/permissions'
 import ItemSheet from './ItemSheet'
+import ReportLowSheet from './ReportLowSheet'
+import { resolveLowStockReportAction } from './report-actions'
+import type { LowStockReport } from '@/lib/inventory/types'
 
 // ── Status badge config ──────────────────────────────────────────────
 const STATUS_BADGE: Record<DisplayStatus, { label: string; color: string }> = {
@@ -40,8 +43,28 @@ const SECTION_COLOR: Record<DisplayStatus, string> = {
   ok:           '',
 }
 
+const REPORT_TYPE_LABEL: Record<string, string> = {
+  running_low: 'Running Low',
+  out_of_stock: 'Out of Stock',
+  needed_tomorrow: 'Needed Tomorrow',
+  unusual_usage: 'Unusual Usage',
+  other: 'Other',
+}
+
+function canReportItem(role: string, category: string): boolean {
+  return canManageInventory(role) || canCountCategory(role, category)
+}
+
 // ── Standard card ────────────────────────────────────────────────────
-function StandardCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
+function StandardCard({
+  item, onEdit, onReport, canResolve, onResolve,
+}: {
+  item: InventoryView
+  onEdit?: () => void
+  onReport?: () => void
+  canResolve?: boolean
+  onResolve?: (reportId: string) => void
+}) {
   const badge = STATUS_BADGE[item.displayStatus]
   return (
     <div className="bg-white rounded-2xl p-4 shadow-sm flex items-start justify-between gap-3">
@@ -67,6 +90,38 @@ function StandardCard({ item, onEdit }: { item: InventoryView; onEdit?: () => vo
             Edit
           </button>
         )}
+        {/* Open reports badge + resolve */}
+        {item.openReports.length > 0 && (
+          <div className="mt-1.5 space-y-1">
+            {item.openReports.map(r => (
+              <div key={r.id} className="flex items-center gap-2">
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                  r.urgency === 'urgent' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                }`}>
+                  {r.urgency === 'urgent' ? '🚨' : '⚠️'} {REPORT_TYPE_LABEL[r.reportType]}
+                </span>
+                {canResolve && onResolve && (
+                  <button
+                    type="button"
+                    onClick={() => onResolve(r.id)}
+                    className="text-xs text-green-600 hover:text-green-700"
+                  >
+                    ✓ Resolve
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {onReport && (
+          <button
+            type="button"
+            onClick={onReport}
+            className="text-xs text-amber-600 hover:text-amber-700 mt-1"
+          >
+            Report Low
+          </button>
+        )}
       </div>
       <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${badge.color}`}>
         {badge.label}
@@ -76,7 +131,15 @@ function StandardCard({ item, onEdit }: { item: InventoryView; onEdit?: () => vo
 }
 
 // ── Sauce card ───────────────────────────────────────────────────────
-function SauceCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
+function SauceCard({
+  item, onEdit, onReport, canResolve, onResolve,
+}: {
+  item: InventoryView
+  onEdit?: () => void
+  onReport?: () => void
+  canResolve?: boolean
+  onResolve?: (reportId: string) => void
+}) {
   const badge = STATUS_BADGE[item.displayStatus]
   const showReorderWarning =
     item.reorderPoint != null && item.currentQuantity <= item.reorderPoint
@@ -133,15 +196,55 @@ function SauceCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void 
           Edit
         </button>
       )}
+      {/* Open reports badge + resolve */}
+      {item.openReports.length > 0 && (
+        <div className="mt-1.5 space-y-1">
+          {item.openReports.map(r => (
+            <div key={r.id} className="flex items-center gap-2">
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                r.urgency === 'urgent' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {r.urgency === 'urgent' ? '🚨' : '⚠️'} {REPORT_TYPE_LABEL[r.reportType]}
+              </span>
+              {canResolve && onResolve && (
+                <button
+                  type="button"
+                  onClick={() => onResolve(r.id)}
+                  className="text-xs text-green-600 hover:text-green-700"
+                >
+                  ✓ Resolve
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {onReport && (
+        <button
+          type="button"
+          onClick={onReport}
+          className="text-xs text-amber-600 hover:text-amber-700 mt-1"
+        >
+          Report Low
+        </button>
+      )}
     </div>
   )
 }
 
 // ── Card dispatcher ──────────────────────────────────────────────────
-function ItemCard({ item, onEdit }: { item: InventoryView; onEdit?: () => void }) {
+function ItemCard({
+  item, onEdit, onReport, canResolve, onResolve,
+}: {
+  item: InventoryView
+  onEdit?: () => void
+  onReport?: () => void
+  canResolve?: boolean
+  onResolve?: (reportId: string) => void
+}) {
   return item.category === 'Sauces'
-    ? <SauceCard item={item} onEdit={onEdit} />
-    : <StandardCard item={item} onEdit={onEdit} />
+    ? <SauceCard item={item} onEdit={onEdit} onReport={onReport} canResolve={canResolve} onResolve={onResolve} />
+    : <StandardCard item={item} onEdit={onEdit} onReport={onReport} canResolve={canResolve} onResolve={onResolve} />
 }
 
 // ── Page ─────────────────────────────────────────────────────────────
@@ -171,6 +274,23 @@ export default function InventoryPage() {
   const [itemSheetOpen, setItemSheetOpen] = useState(false)
   const [itemSheetMode, setItemSheetMode] = useState<'add' | 'edit'>('add')
   const [editingItem, setEditingItem] = useState<InventoryView | undefined>(undefined)
+
+  const [reportSheetOpen, setReportSheetOpen] = useState(false)
+  const [reportingItem, setReportingItem] = useState<InventoryView | undefined>(undefined)
+
+  function openReportSheet(itemToReport: InventoryView) {
+    setReportingItem(itemToReport)
+    setReportSheetOpen(true)
+  }
+
+  async function handleResolveReport(reportId: string) {
+    const result = await resolveLowStockReportAction(reportId)
+    if (result.ok) {
+      fetchInventoryAction().then(r => {
+        if (r.ok) setItems(r.data)
+      })
+    }
+  }
 
   function handleItemSaved() {
     setLoading(true)
@@ -215,9 +335,11 @@ export default function InventoryPage() {
 
   // Filtered list for the active tab
   const tabItems =
-    activeTab === 'Attention' ? items.filter(i => i.displayStatus !== 'ok') :
-    activeTab === 'All'       ? items :
-    items.filter(i => i.category === activeTab)
+    activeTab === 'Attention'
+      ? items.filter(i => i.displayStatus !== 'ok' || i.openReports.some(r => r.urgency === 'urgent'))
+      : activeTab === 'All'
+      ? items
+      : items.filter(i => i.category === activeTab)
 
   // Attention grouped by status priority
   const attentionGroups = ATTENTION_ORDER
@@ -314,11 +436,40 @@ export default function InventoryPage() {
                         key={item.id}
                         item={item}
                         onEdit={canManageInventory(role) ? () => openEditItem(item) : undefined}
+                        onReport={canReportItem(role, item.category) ? () => openReportSheet(item) : undefined}
+                        canResolve={canManageInventory(role)}
+                        onResolve={canManageInventory(role) ? handleResolveReport : undefined}
                       />
                     ))}
                   </div>
                 </div>
               ))}
+              {/* Urgent reports section — items that are OK stock but have urgent reports */}
+              {(() => {
+                const urgentReportOnly = tabItems.filter(
+                  i => i.displayStatus === 'ok' && i.openReports.some(r => r.urgency === 'urgent')
+                )
+                if (urgentReportOnly.length === 0) return null
+                return (
+                  <div>
+                    <div className="text-xs font-semibold mb-2 px-1 uppercase tracking-wide text-red-500">
+                      Urgent Reports
+                    </div>
+                    <div className="space-y-2">
+                      {urgentReportOnly.map(item => (
+                        <ItemCard
+                          key={item.id}
+                          item={item}
+                          onEdit={canManageInventory(role) ? () => openEditItem(item) : undefined}
+                          onReport={canReportItem(role, item.category) ? () => openReportSheet(item) : undefined}
+                          canResolve={canManageInventory(role)}
+                          onResolve={canManageInventory(role) ? handleResolveReport : undefined}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           )
         ) : (
@@ -344,6 +495,9 @@ export default function InventoryPage() {
                   key={item.id}
                   item={item}
                   onEdit={canManageInventory(role) ? () => openEditItem(item) : undefined}
+                  onReport={canReportItem(role, item.category) ? () => openReportSheet(item) : undefined}
+                  canResolve={canManageInventory(role)}
+                  onResolve={canManageInventory(role) ? handleResolveReport : undefined}
                 />
               ))
             )}
@@ -378,6 +532,13 @@ export default function InventoryPage() {
       item={editingItem}
       isOpen={itemSheetOpen}
       onClose={() => setItemSheetOpen(false)}
+      onSaved={handleItemSaved}
+    />
+
+    <ReportLowSheet
+      isOpen={reportSheetOpen}
+      item={reportingItem ? { id: reportingItem.id, name: reportingItem.name, category: reportingItem.category } : undefined}
+      onClose={() => setReportSheetOpen(false)}
       onSaved={handleItemSaved}
     />
 
