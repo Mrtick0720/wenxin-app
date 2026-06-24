@@ -17,6 +17,7 @@ type QuickRecord = {
   category: string
   unit: string
   quantity: number
+  status?: string | null
   unit_price?: number | null
   supplier?: string | null
   purchaser?: string | null
@@ -31,9 +32,11 @@ type QuickRecord = {
 type Props = {
   record: QuickRecord
   showCosts: boolean
+  canRollback?: boolean
   onClose: () => void
   onOptimisticSave: (optimistic: LedgerRecord) => void
   onSaveFailed: (original: QuickRecord) => void
+  onRollback?: () => void
 }
 
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -46,7 +49,7 @@ function rm(n: number) { return `RM ${n.toFixed(2)}` }
 
 const Z_MAX = 2147483647
 
-export default function QuickEditSheet({ record, showCosts, onClose, onOptimisticSave, onSaveFailed }: Props) {
+export default function QuickEditSheet({ record, showCosts, canRollback, onClose, onOptimisticSave, onSaveFailed, onRollback }: Props) {
   const [quantity, setQuantity] = useState(String(record.quantity || ''))
   const [unit, setUnit] = useState(record.unit)
   const [unitPrice, setUnitPrice] = useState(record.unit_price != null ? String(record.unit_price) : '')
@@ -55,8 +58,17 @@ export default function QuickEditSheet({ record, showCosts, onClose, onOptimisti
   const [paymentMethod, setPaymentMethod] = useState(record.purchase_method ?? '')
   const [paymentStatus, setPaymentStatus] = useState(record.payment_status ?? 'Unpaid')
   const [saving, setSaving] = useState(false)
+  const [showRollbackConfirm, setShowRollbackConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [unitOpen, setUnitOpen] = useState(false)
+
+  const showRollbackButton = canRollback && record.status === 'verified' && !!onRollback
+
+  function handleRollback() {
+    if (!onRollback) return
+    // Parent handles everything synchronously: closes sheet, optimistic state, server call
+    onRollback()
+  }
 
   const qty = parseFloat(quantity) || 0
   const up = parseFloat(unitPrice) || 0
@@ -252,6 +264,44 @@ export default function QuickEditSheet({ record, showCosts, onClose, onOptimisti
             </>
           )}
         </div>
+
+        {/* Back to Verify rollback — owner only, verified items only */}
+        {showRollbackButton && (
+          <div className="flex-shrink-0 px-4 pt-3">
+            {!showRollbackConfirm ? (
+              <button
+                type="button"
+                onClick={() => setShowRollbackConfirm(true)}
+                className="w-full py-3 rounded-2xl text-sm font-medium text-orange-500 border border-orange-100 bg-orange-50 active:opacity-70"
+              >
+                ↩ Back to Verify
+              </button>
+            ) : (
+              <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4">
+                <div className="text-sm text-orange-700 font-medium mb-3 text-center">
+                  Move &ldquo;{record.name}&rdquo; back to To Verify?
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowRollbackConfirm(false)}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-white border border-orange-200 text-orange-500 active:opacity-70"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleRollback}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white active:opacity-90"
+                    style={{ background: '#f97316' }}
+                  >
+                    Confirm
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-3">

@@ -92,6 +92,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
+
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {

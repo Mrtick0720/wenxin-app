@@ -19,10 +19,13 @@ export type PendingVerificationItem = PurchaseRecord
 type Props = {
   items: PendingVerificationItem[]
   canVerify: boolean
+  canCancel: boolean
+  onAccepting?: (item: PendingVerificationItem, receivedQty: number) => void
   onAccepted: (record: PurchaseRecord) => void
   onAcceptFailed: (id: number) => void
   onRejected: (id: number) => void
   onRejectFailed: (id: number) => void
+  onCancelling?: (item: PendingVerificationItem) => void
   onCancelled: (id: number) => void
   onCancelFailed: (id: number) => void
 }
@@ -38,13 +41,14 @@ type SheetProps = {
   item: PendingVerificationItem
   displayName: string
   canVerify: boolean
+  canCancel: boolean
   onAccept: (receivedQty: number) => Promise<void>
   onReject: (reason: string) => Promise<void>
   onCancel: () => Promise<void>
   onClose: () => void
 }
 
-function VerificationSheet({ item, displayName, canVerify, onAccept, onReject, onCancel, onClose }: SheetProps) {
+function VerificationSheet({ item, displayName, canVerify, canCancel, onAccept, onReject, onCancel, onClose }: SheetProps) {
   const [receivedQty, setReceivedQty] = useState(String(item.quantity))
   const [rejectReason, setRejectReason] = useState('')
   const [mode, setMode] = useState<'main' | 'reject'>('main')
@@ -130,7 +134,7 @@ function VerificationSheet({ item, displayName, canVerify, onAccept, onReject, o
             )}
 
             {/* Buttons */}
-            {canVerify && (
+            {canCancel && (
               <div className="flex flex-col gap-2">
                 <button
                   type="button"
@@ -253,12 +257,18 @@ function PendingRow({ item, displayName, isFirst, isLast, onTap }: RowProps) {
 
 // ── Section ──────────────────────────────────────────────────────────────────
 
-export default function PendingVerificationSection({ items, canVerify, onAccepted, onAcceptFailed, onRejected, onRejectFailed, onCancelled, onCancelFailed }: Props) {
+export default function PendingVerificationSection({ items, canVerify, canCancel, onAccepting, onAccepted, onAcceptFailed, onRejected, onRejectFailed, onCancelling, onCancelled, onCancelFailed }: Props) {
   const staff = useStaff()
   const latinOnly = staff?.role === 'kitchen'
   const [catalog, setCatalog] = useState<CatalogItem[]>([])
   const [catalogLoaded, setCatalogLoaded] = useState(false)
   const [activeItem, setActiveItem] = useState<PendingVerificationItem | null>(null)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  function showError(msg: string) {
+    setErrorMsg(msg)
+    setTimeout(() => setErrorMsg(null), 3000)
+  }
 
   useEffect(() => {
     if (!latinOnly) return
@@ -286,10 +296,12 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
   async function handleAccept(receivedQty: number) {
     if (!activeItem) return
     const id = activeItem.id
+    const item = activeItem
     setActiveItem(null)
+    onAccepting?.(item, receivedQty)
     const res = await acceptVerificationAction(id, receivedQty)
     if (res.ok) onAccepted(res.data)
-    else onAcceptFailed(id)
+    else { showError(res.error ?? 'Verification failed. Please try again.'); onAcceptFailed(id) }
   }
 
   async function handleReject(reason: string) {
@@ -298,13 +310,15 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
     setActiveItem(null)
     const res = await rejectVerificationAction(id, reason)
     if (res.ok) onRejected(id)
-    else onRejectFailed(id)
+    else { showError(res.error ?? 'Rejection failed. Please try again.'); onRejectFailed(id) }
   }
 
   async function handleCancel() {
     if (!activeItem) return
     const id = activeItem.id
+    const item = activeItem
     setActiveItem(null)
+    onCancelling?.(item)
     const res = await cancelPurchaseAction(id)
     if (res.ok) onCancelled(id)
     else onCancelFailed(id)
@@ -332,11 +346,22 @@ export default function PendingVerificationSection({ items, canVerify, onAccepte
           item={activeItem}
           displayName={displayName(activeItem)}
           canVerify={canVerify}
+          canCancel={canCancel}
           onAccept={handleAccept}
           onReject={handleReject}
           onCancel={handleCancel}
           onClose={() => setActiveItem(null)}
         />
+      )}
+
+      {errorMsg && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', background: '#ef4444' }}
+        >
+          {errorMsg}
+        </div>,
+        document.body,
       )}
     </div>
   )

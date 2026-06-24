@@ -74,9 +74,17 @@ function permsFor(role: StaffRole): Perms {
   }
 }
 
-const ROLES = ['owner', 'manager', 'kitchen'] as const
+const READ_ROLES = ['owner', 'manager', 'kitchen', 'front_desk'] as const
+const RECORD_WRITE_ROLES = ['owner', 'manager', 'kitchen'] as const
 
 function fail(error: unknown): ActionResult<never> {
+  // Re-throw Next.js navigation errors (redirect, notFound) so they propagate correctly.
+  // Catching them here would show 'NEXT_REDIRECT' as a string error in the UI instead
+  // of actually navigating the user to /login or /access-denied.
+  if (error != null && typeof error === 'object' && 'digest' in error) {
+    const digest = String((error as { digest: unknown }).digest)
+    if (digest.startsWith('NEXT_REDIRECT') || digest.startsWith('NEXT_NOT_FOUND')) throw error
+  }
   let message: string
   if (error instanceof Error) {
     message = error.message
@@ -93,7 +101,7 @@ function fail(error: unknown): ActionResult<never> {
 /** Return all active catalog items ordered by seq. Readable by all authenticated staff. */
 export async function fetchCatalogAction(): Promise<ActionResult<CatalogItem[]>> {
   try {
-    await requireRole(...ROLES)
+    await requireRole(...READ_ROLES)
     const supabase = await createServerSupabaseClient()
     const { data, error } = await supabase
       .from('purchase_catalog')
@@ -110,7 +118,7 @@ export async function fetchCatalogAction(): Promise<ActionResult<CatalogItem[]>>
 /** Bootstrap everything the client needs when rendered via the navigation stack. */
 export async function fetchPurchaseContextAction(): Promise<ActionResult<PurchaseContext>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     const [records, summary, kpi] = await Promise.all([
       svc.listRecords(staff.role, {}),
       svc.getSummary(staff.role),
@@ -128,7 +136,7 @@ export async function fetchPurchaseContextAction(): Promise<ActionResult<Purchas
 /** First bootstrap stage: enough data to render the page shell and hero card. */
 export async function fetchPurchaseHeroAction(): Promise<ActionResult<PurchaseHeroContext>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     return {
       ok: true,
       data: {
@@ -149,7 +157,7 @@ export async function fetchPurchaseRecordsAction(): Promise<ActionResult<{
   summary: PurchaseSummary | null
 }>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     const [records, summary] = await Promise.all([
       svc.listRecords(staff.role, {}),
       svc.getSummary(staff.role),
@@ -163,7 +171,7 @@ export async function fetchPurchaseRecordsAction(): Promise<ActionResult<{
 /** Recompute the KPI alone (used after add/edit/delete and on refresh). */
 export async function fetchKpiAction(): Promise<ActionResult<PurchaseKpi>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     return { ok: true, data: await computeKpi(staff.role) }
   } catch (error) {
     return fail(error)
@@ -174,7 +182,7 @@ export async function fetchRecordsAction(
   filters: PurchaseFilters = {},
 ): Promise<ActionResult<PurchaseRecord[]>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     const data = await svc.listRecords(staff.role, filters)
     return { ok: true, data }
   } catch (error) {
@@ -184,8 +192,8 @@ export async function fetchRecordsAction(
 
 export async function fetchPendingVerificationAction(): Promise<ActionResult<PurchaseRecord[]>> {
   try {
-    await requireRole(...ROLES)
-    const data = await svc.listPendingVerification()
+    const staff = await requireRole(...READ_ROLES)
+    const data = await svc.listPendingVerification(staff.role)
     return { ok: true, data }
   } catch (error) {
     return fail(error)
@@ -194,7 +202,7 @@ export async function fetchPendingVerificationAction(): Promise<ActionResult<Pur
 
 export async function fetchSummaryAction(): Promise<ActionResult<PurchaseSummary | null>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     const data = await svc.getSummary(staff.role)
     return { ok: true, data }
   } catch (error) {
@@ -206,7 +214,7 @@ export async function fetchRecordContextAction(
   id: number,
 ): Promise<ActionResult<RecordContext>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...READ_ROLES)
     const record = await svc.getRecord(staff.role, id)
     if (!record) return { ok: false, error: 'Record not found.' }
     const names = await enteredByNames([record.created_by])
@@ -229,7 +237,7 @@ export async function createRecordAction(
   input: PurchaseRecordInput,
 ): Promise<ActionResult<PurchaseRecord>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...RECORD_WRITE_ROLES)
     const data = await svc.createRecord(staff.role, staff.id, staff.displayName, input)
     return { ok: true, data }
   } catch (error) {
@@ -242,7 +250,7 @@ export async function updateRecordAction(
   input: PurchaseRecordInput,
 ): Promise<ActionResult<PurchaseRecord>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...RECORD_WRITE_ROLES)
     const data = await svc.updateRecord(staff.role, staff.id, id, input)
     return { ok: true, data }
   } catch (error) {
@@ -252,7 +260,7 @@ export async function updateRecordAction(
 
 export async function deleteRecordAction(id: number): Promise<ActionResult<true>> {
   try {
-    const staff = await requireRole(...ROLES)
+    const staff = await requireRole(...RECORD_WRITE_ROLES)
     await svc.deleteRecord(staff.role, id)
     return { ok: true, data: true }
   } catch (error) {

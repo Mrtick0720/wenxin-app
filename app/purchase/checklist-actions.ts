@@ -3,13 +3,15 @@
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import * as svc from '@/lib/purchaseLedger/service'
+import { canViewPurchaseCosts } from '@/lib/purchaseLedger/permissions'
+import type { StaffRole } from '@/lib/auth/types'
 import type { ActionResult, PurchaseRecord, PurchaseSummary } from '@/lib/purchaseLedger/types'
 
 export type ChecklistEntry = {
   id: number
   name: string
   specification: string | null
-  supplier: string | null
+  supplier?: string | null
   category: string
   unit: string
   quantity: number
@@ -32,12 +34,23 @@ export type ChecklistItemInput = {
   note?: string | null
 }
 
-const ROLES = ['owner', 'manager', 'kitchen'] as const
+const ROLES = ['owner', 'manager', 'kitchen', 'front_desk'] as const
+const PURCHASE_EXECUTION_ROLES = ['owner', 'manager'] as const
 // unit_price omitted until migration 20260617_checklist_unit_price.sql is applied
-const SELECT_COLS =
+const FULL_SELECT_COLS =
   'id, name, specification, supplier, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
+const STAFF_SELECT_COLS =
+  'id, name, specification, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
+
+function checklistColumnsForRole(role: StaffRole): string {
+  return canViewPurchaseCosts(role) ? FULL_SELECT_COLS : STAFF_SELECT_COLS
+}
 
 function fail(error: unknown): ActionResult<never> {
+  if (error != null && typeof error === 'object' && 'digest' in error) {
+    const digest = String((error as { digest: unknown }).digest)
+    if (digest.startsWith('NEXT_REDIRECT') || digest.startsWith('NEXT_NOT_FOUND')) throw error
+  }
   const message =
     error instanceof Error
       ? error.message
@@ -66,6 +79,7 @@ export async function fetchPurchaseContentAction(): Promise<ActionResult<Purchas
   try {
     const staff = await requireRole(...ROLES)
     const supabase = await createServerSupabaseClient()
+    const columns = checklistColumnsForRole(staff.role)
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -74,17 +88,17 @@ export async function fetchPurchaseContentAction(): Promise<ActionResult<Purchas
     const [pendingChecklistRes, doneChecklistRes, pending, records, summary] = await Promise.all([
       supabase
         .from('purchase_checklist')
-        .select(SELECT_COLS)
+        .select(columns)
         .eq('status', 'pending')
         .order('id', { ascending: false }),
       supabase
         .from('purchase_checklist')
-        .select(SELECT_COLS)
+        .select(columns)
         .eq('status', 'done')
         .gte('created_at', sevenDaysAgo)
         .order('completed_at', { ascending: false })
         .limit(30),
-      svc.listPendingVerification(),
+      svc.listPendingVerification(staff.role),
       svc.listRecords(staff.role, {}),
       svc.getSummary(staff.role),
     ])
@@ -95,7 +109,7 @@ export async function fetchPurchaseContentAction(): Promise<ActionResult<Purchas
     const checklist = [
       ...(pendingChecklistRes.data ?? []),
       ...(doneChecklistRes.data ?? []),
-    ] as ChecklistEntry[]
+    ] as unknown as ChecklistEntry[]
 
     return { ok: true, data: { checklist, pending, records, summary } }
   } catch (error) {
@@ -106,8 +120,9 @@ export async function fetchPurchaseContentAction(): Promise<ActionResult<Purchas
 /** Fetch all checklist items: all pending + last 7 days of completed. */
 export async function fetchChecklistAction(): Promise<ActionResult<ChecklistEntry[]>> {
   try {
-    await requireRole(...ROLES)
+    const staff = await requireRole(...ROLES)
     const supabase = await createServerSupabaseClient()
+    const columns = checklistColumnsForRole(staff.role)
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
       .toISOString()
@@ -116,12 +131,12 @@ export async function fetchChecklistAction(): Promise<ActionResult<ChecklistEntr
     const [pendingRes, doneRes] = await Promise.all([
       supabase
         .from('purchase_checklist')
-        .select(SELECT_COLS)
+        .select(columns)
         .eq('status', 'pending')
         .order('id', { ascending: false }),
       supabase
         .from('purchase_checklist')
-        .select(SELECT_COLS)
+        .select(columns)
         .eq('status', 'done')
         .gte('created_at', sevenDaysAgo)
         .order('completed_at', { ascending: false })
@@ -134,7 +149,7 @@ export async function fetchChecklistAction(): Promise<ActionResult<ChecklistEntr
     const data = [
       ...(pendingRes.data ?? []),
       ...(doneRes.data ?? []),
-    ] as ChecklistEntry[]
+    ] as unknown as ChecklistEntry[]
 
     return { ok: true, data }
   } catch (error) {
@@ -153,7 +168,7 @@ export async function addChecklistItemAction(
     const insertPayload: Record<string, unknown> = {
       name: input.name.trim(),
       specification: input.specification?.trim() || null,
-      supplier: input.supplier?.trim() || null,
+      supplier: canViewPurchaseCosts(staff.role) ? input.supplier?.trim() || null : null,
       category: input.category,
       unit: input.unit,
       quantity: input.quantity,
@@ -165,11 +180,11 @@ export async function addChecklistItemAction(
     const { data, error } = await supabase
       .from('purchase_checklist')
       .insert(insertPayload)
-      .select(SELECT_COLS)
+      .select(checklistColumnsForRole(staff.role))
       .single()
 
     if (error) throw error
-    return { ok: true, data: data as ChecklistEntry }
+    return { ok: true, data: data as unknown as ChecklistEntry }
   } catch (error) {
     return fail(error)
   }
@@ -181,13 +196,13 @@ export async function editChecklistItemAction(
   input: ChecklistItemInput,
 ): Promise<ActionResult<ChecklistEntry>> {
   try {
-    await requireRole(...ROLES)
+    const staff = await requireRole(...ROLES)
     const supabase = await createServerSupabaseClient()
 
     const updatePayload: Record<string, unknown> = {
       name: input.name.trim(),
       specification: input.specification?.trim() || null,
-      supplier: input.supplier?.trim() || null,
+      supplier: canViewPurchaseCosts(staff.role) ? input.supplier?.trim() || null : null,
       category: input.category,
       unit: input.unit,
       quantity: input.quantity,
@@ -199,12 +214,12 @@ export async function editChecklistItemAction(
       .update(updatePayload)
       .eq('id', id)
       .eq('status', 'pending')
-      .select(SELECT_COLS)
+      .select(checklistColumnsForRole(staff.role))
       .single()
 
     if (error) throw error
     if (!data) return { ok: false, error: 'Item not found or already completed.' }
-    return { ok: true, data: data as ChecklistEntry }
+    return { ok: true, data: data as unknown as ChecklistEntry }
   } catch (error) {
     return fail(error)
   }
@@ -236,7 +251,7 @@ export async function uncompleteChecklistItemAction(
   id: number,
 ): Promise<ActionResult<ChecklistEntry>> {
   try {
-    await requireRole('owner', 'manager')
+    await requireRole(...PURCHASE_EXECUTION_ROLES)
     const supabase = await createServerSupabaseClient()
 
     const { data: item, error: fetchErr } = await supabase
@@ -257,7 +272,7 @@ export async function uncompleteChecklistItemAction(
       .from('purchase_checklist')
       .update({ status: 'pending', purchase_record_id: null, completed_at: null })
       .eq('id', id)
-      .select(SELECT_COLS)
+      .select(FULL_SELECT_COLS)
       .single()
 
     if (error) throw error
@@ -276,7 +291,7 @@ export async function moveRecordToChecklistAction(
   purchaseRecordId: number,
 ): Promise<ActionResult<ChecklistEntry>> {
   try {
-    await requireRole('owner', 'manager')
+    await requireRole(...PURCHASE_EXECUTION_ROLES)
     const supabase = await createServerSupabaseClient()
 
     // Look for a linked checklist item (reverse of purchase_record_id FK)
@@ -300,7 +315,7 @@ export async function moveRecordToChecklistAction(
         .from('purchase_checklist')
         .update({ status: 'pending', purchase_record_id: null, completed_at: null })
         .eq('id', linked.id)
-        .select(SELECT_COLS)
+        .select(FULL_SELECT_COLS)
         .single()
       if (resetErr) throw resetErr
       if (!restored) return { ok: false, error: 'Failed to restore checklist item.' }
@@ -326,7 +341,7 @@ export async function moveRecordToChecklistAction(
           quantity: record.quantity,
           note: record.note ?? null,
         })
-        .select(SELECT_COLS)
+        .select(FULL_SELECT_COLS)
         .single()
       if (insertErr) throw insertErr
 
@@ -352,7 +367,7 @@ export async function completeChecklistItemAction(
   completion: { unit_price: number; supplier: string | null },
 ): Promise<ActionResult<{ purchaseRecordId: number; record: PurchaseRecord }>> {
   try {
-    const staff = await requireRole('owner', 'manager')
+    const staff = await requireRole(...PURCHASE_EXECUTION_ROLES)
     const supabase = await createServerSupabaseClient()
 
     const { data: item, error: fetchErr } = await supabase

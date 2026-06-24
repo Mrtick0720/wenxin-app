@@ -621,6 +621,7 @@ export default function ChecklistSection({
   triggerCancelSelectRef,
   purchasedChecklistIds,
   updateItemsRef,
+  cancelGuardsRef,
   onItemsChange,
   onSelectModeChange,
   onSelectionChange,
@@ -642,6 +643,7 @@ export default function ChecklistSection({
   triggerCancelSelectRef?: React.MutableRefObject<(() => void) | null>
   purchasedChecklistIds?: Set<number>
   updateItemsRef?: React.MutableRefObject<((freshItems: ChecklistEntry[]) => void) | null>
+  cancelGuardsRef?: React.MutableRefObject<Set<number>>
   onItemsChange?: (items: ChecklistEntry[]) => void
   onSelectModeChange?: (active: boolean) => void
   onSelectionChange?: (count: number, allSelected: boolean) => void
@@ -793,7 +795,13 @@ export default function ChecklistSection({
     if (updateItemsRef) {
       updateItemsRef.current = (freshItems: ChecklistEntry[]) => {
         setItems(prev => {
-          const protected_ = new Set([...pendingCompletes.current, ...pendingDeletes.current])
+          // protected_: items whose in-flight operations must not be overwritten by
+          // a stale refresh. Includes completions, deletions, and cancel-restorations.
+          const protected_ = new Set([
+            ...pendingCompletes.current,
+            ...pendingDeletes.current,
+            ...(cancelGuardsRef?.current ?? []),
+          ])
           const tempItems = prev.filter(i => i.id < 0)
           const fresh = protected_.size > 0
             ? freshItems.filter(i => !protected_.has(i.id))

@@ -6,15 +6,22 @@
 import 'server-only'
 
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import type { StaffRole } from '@/lib/auth/types'
+import { canViewPurchaseCosts } from './permissions'
 import type { PurchaseFilters, PurchaseRecord } from './types'
 
-const BASE_COLUMNS =
-  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, purchase_method, payment_status, status, created_by, created_by_name, purchased_by_user_id, purchased_by_name, created_at, checklist_item_id, verified_by_name, verified_at, received_quantity, rejected_by_name, rejected_at, rejection_reason'
+const STAFF_COLUMNS =
+  'id, date, name, specification, category, unit, quantity, purchaser, receiver, note, status, created_by, created_by_name, purchased_by_user_id, purchased_by_name, created_at, checklist_item_id, verified_by_name, verified_at, received_quantity, rejected_by_name, rejected_at, rejection_reason'
+const BASE_COLUMNS = `${STAFF_COLUMNS}, purchase_method, payment_status`
 const COST_COLUMNS = 'unit_price, total_price, supplier'
 const FULL_COLUMNS = `${BASE_COLUMNS}, ${COST_COLUMNS}`
 
 function columns(withCosts: boolean): string {
-  return withCosts ? FULL_COLUMNS : BASE_COLUMNS
+  return withCosts ? FULL_COLUMNS : STAFF_COLUMNS
+}
+
+export function purchaseRecordColumnsForRole(role: StaffRole): string {
+  return canViewPurchaseCosts(role) ? FULL_COLUMNS : STAFF_COLUMNS
 }
 
 export async function queryRecords(opts: {
@@ -96,11 +103,11 @@ export async function updateRecordRow(
 }
 
 /** Fetch all records awaiting kitchen verification. */
-export async function queryPendingVerification(): Promise<PurchaseRecord[]> {
+export async function queryPendingVerification(role: StaffRole): Promise<PurchaseRecord[]> {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
     .from('purchase_items')
-    .select(columns(true))
+    .select(purchaseRecordColumnsForRole(role))
     .eq('status', 'pending_verification')
     .order('created_at', { ascending: false })
     .limit(100)

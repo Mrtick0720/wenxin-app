@@ -211,8 +211,8 @@ export async function updateRecord(
 }
 
 /** Pending verification records — readable by all roles with purchase access. */
-export async function listPendingVerification(): Promise<PurchaseRecord[]> {
-  return queryPendingVerification()
+export async function listPendingVerification(role: StaffRole): Promise<PurchaseRecord[]> {
+  return queryPendingVerification(role)
 }
 
 export async function deleteRecord(role: StaffRole, id: number): Promise<void> {

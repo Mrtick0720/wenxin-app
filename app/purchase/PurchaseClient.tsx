@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect, lazy } from 'react'
 import { FullPageSpinner } from '@/app/components/Spinner'
 import { createPortal } from 'react-dom'
 import type { StaffRole } from '@/lib/auth/types'
+import { useStaff } from '@/app/components/StaffProvider'
 import {
   PURCHASE_CATEGORIES,
   categoryColor,
@@ -47,8 +48,8 @@ import {
   getMutationId,
 } from './optimistic'
 import { usePurchaseSync } from './usePurchaseSync'
-import { useChecklistRealtime } from './useChecklistRealtime'
 import { usePurchaseRealtime } from './usePurchaseRealtime'
+import { rollbackVerifiedToVerifyAction } from './verification-actions'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
 const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
@@ -498,6 +499,7 @@ const emptyForm = {
 
 type Ctx = { role: StaffRole; today: string; perms: Perms }
 
+
 // ── Module-level cache — survives component unmount between navigations ───────
 type PurchaseCache = {
   ctx: Ctx
@@ -518,6 +520,7 @@ const Z_MAX = 2147483647
 export default function PurchaseClient(props: Props) {
   const hasInitial = !!(props.role && props.today && props.perms)
   const { push, pop } = useNavigation()
+  const staff = useStaff()
 
   // Snapshot cache at mount time so useState initializers are stable
   const initCache = hasInitial ? null : purchaseCache
@@ -546,6 +549,7 @@ export default function PurchaseClient(props: Props) {
     props.initialChecklist ?? initCache?.checklist
   )
   const [checklistRefreshKey, setChecklistRefreshKey] = useState(0)
+  const refreshGen = useRef(0)
   const nextTempRecordId = useRef(-1)
   const optimisticRecords = useRef<Map<number, LedgerRecord>>(new Map())
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -560,6 +564,23 @@ export default function PurchaseClient(props: Props) {
   const updateChecklistRef = useRef<((items: ChecklistEntry[]) => void) | null>(null)
   const breakdownRef = useRef<HTMLDivElement>(null)
   const pendingUnchecks = useRef<Set<number>>(new Set())
+  const [rollbackErrMsg, setRollbackErrMsg] = useState<string | null>(null)
+
+  // ── Optimistic transition guards ──
+  // Tracks items actively moving between stages. During any refresh, items in this
+  // map are filtered out of the bucket they're LEAVING so a stale poll cannot flash
+  // them back to the old stage before the server action completes.
+  // Key: purchase item id.  Value: the bucket the item is moving INTO.
+  type TransitionTarget = 'pending_verification' | 'verified' | 'checklist'
+  const optimisticTransitions = useRef<Map<number, TransitionTarget>>(new Map())
+
+  // Set of checklist item ids optimistically restored during To Verify → To Buy cancels.
+  // Passed to ChecklistSection so its updateItemsRef handler doesn't overwrite them
+  // while the server action is still in flight.
+  const cancelChecklistGuards = useRef<Set<number>>(new Set())
+
+  const pendingAcceptSnapshot = useRef<{ records: LedgerRecord[]; pending: LedgerRecord[] } | null>(null)
+  const pendingCancelSnapshot = useRef<{ pending: LedgerRecord[]; purchaseItemId: number; checklistItemId?: number } | null>(null)
   const pendingRecordDeletes = useRef<Set<number>>(new Set())
 
   const [bootError, setBootError]     = useState<string | null>(null)
@@ -724,6 +745,7 @@ export default function PurchaseClient(props: Props) {
   type TabKey = (typeof TAB_KEYS)[number]
   const SLIDE_COUNT = 3
   const pctPerSlide = 100 / SLIDE_COUNT
+  const carouselPanelStyle = { width: `${pctPerSlide}%`, flexShrink: 0, alignSelf: 'flex-start' as const, height: 'max-content' }
   const [tabIndex, setTabIndex] = useState(0)
   const didSetKitchenTab = useRef(false)
   const activeTab: TabKey = TAB_KEYS[tabIndex]
@@ -740,9 +762,9 @@ export default function PurchaseClient(props: Props) {
   const carAnimating = useRef(false)
   const tabIndexRef = useRef(0)
   tabIndexRef.current = tabIndex
-  // showCosts is async (depends on ctx); mirror into a ref so the once-bound native
-  // touch listeners always know the latest swipe upper bound (kitchen can't reach Received).
-  const showCostsRef = useRef(false)
+  // canViewReceived tracks roles that unlock the Received tab (owner/manager/kitchen/front_desk).
+  // The native swipe listeners read this ref so front_desk can swipe to Received.
+  const canViewReceivedRef = useRef(false)
 
   const goToIndex = (next: number) => {
     if (carAnimating.current || next === tabIndexRef.current || next < 0 || next >= SLIDE_COUNT) return
@@ -821,15 +843,23 @@ export default function PurchaseClient(props: Props) {
     setTimeout(() => setNoPermToast(false), 2500)
   }
 
-  // ── Refresh function (used by pull-to-refresh, filters, and sync) ──
+  // ── Canonical refresh function (used by pull-to-refresh, realtime, and sync) ──
   // silent=true: background poll — no visible "Refreshing…" indicator
-  const refresh = useCallback(async (f = filters, silent = false) => {
+  // replaceMode=true: fully replace pending verification from server (used by background refresh
+  //   to evict stale items that were verified on another device). User pull-to-refresh uses the
+  //   additive merge to preserve in-flight optimistic adds during the DB commit race window.
+  const refreshAllPurchaseState = useCallback(async (
+    f = filters,
+    silent = false,
+    replaceMode = false,
+  ) => {
+    const thisGen = ++refreshGen.current
     if (!silent) setRefreshing(true)
     const canViewCosts = ctx?.perms.canViewCosts ?? false
     const activeFilters = canViewCosts
       ? { category: f.category || undefined, from: f.from || undefined, to: f.to || undefined, supplier: f.supplier || undefined, purchaser: f.purchaser || undefined }
       : {}
-      // Fetch records, summary, KPI, and checklist in a single parallel batch.
+    // Fetch records, summary, KPI, and checklist in a single parallel batch.
     // This makes the cross-device sync atomic: both sections update together
     // in one React render, eliminating the dual-display window that would occur
     // if checklist was fetched sequentially after records.
@@ -840,10 +870,21 @@ export default function PurchaseClient(props: Props) {
       fetchChecklistAction(),
       fetchPendingVerificationAction(),
     ])
+    // If a newer refresh started while this one was in flight, discard results.
+    // Prevents a stale poll (started before a DB write) from overwriting fresh
+    // state that a realtime-triggered refresh already applied.
+    if (refreshGen.current !== thisGen) {
+      if (!silent) setRefreshing(false)
+      return
+    }
+
     if (recRes.ok) {
-      // Filter out records with in-flight optimistic mutations so background
-      // polling never re-adds a row that was just removed from the UI.
+      // Exclude records that are in-flight moving AWAY from Received so a stale
+      // poll cannot flash them back while the server action is pending.
       const blocked = new Set([...pendingUnchecks.current, ...pendingRecordDeletes.current])
+      for (const [id, target] of optimisticTransitions.current) {
+        if (target === 'pending_verification') blocked.add(id)
+      }
       setRecords(blocked.size > 0
         ? (recRes.data as LedgerRecord[]).filter(r => !blocked.has(r.id))
         : recRes.data as LedgerRecord[]
@@ -859,32 +900,66 @@ export default function PurchaseClient(props: Props) {
     // and the race window between the two DB writes (checklist_item_id match).
     if (checkRes.ok) {
       const freshRecords = recRes.ok ? (recRes.data as LedgerRecord[]) : records
-      updateChecklistRef.current?.(reconcileChecklist(checkRes.data, freshRecords))
+      const freshChecklist = reconcileChecklist(checkRes.data, freshRecords)
+      setChecklistSeed(freshChecklist)
+      updateChecklistRef.current?.(freshChecklist)
+      if (purchaseCache) {
+        purchaseCache = {
+          ...purchaseCache,
+          checklist: freshChecklist,
+          checklistLoaded: true,
+          cachedAt: Date.now(),
+        }
+      }
     }
     if (pendingRes.ok) setPendingVerification(prev => {
       const serverData = pendingRes.data as LedgerRecord[]
-      const serverIds = new Set(serverData.map(r => r.id))
-      // Keep items that are NOT yet in the server response (optimistic or in-flight).
-      // This prevents a background poll from wiping an item that was just added
-      // but hasn't been committed to DB yet (or the UPDATE is still in progress).
-      const localOnly = prev.filter(r => !serverIds.has(r.id))
-      return [...localOnly, ...serverData]
+      if (purchaseCache) {
+        purchaseCache = {
+          ...purchaseCache,
+          pendingVerification: serverData,
+          cachedAt: Date.now(),
+        }
+      }
+      // Guard: filter server data to exclude items that are optimistically moving
+      // AWAY from To Verify (to Received or to checklist). Without this, a stale
+      // poll returning while a server action is in flight would flash the item
+      // back to To Verify before the action completes.
+      const tr = optimisticTransitions.current
+      const guarded = tr.size > 0
+        ? serverData.filter(r => { const t = tr.get(r.id); return t !== 'verified' && t !== 'checklist' })
+        : serverData
+      // Preserve in-flight temp rows (negative IDs — To Buy → To Verify) ONLY if
+      // the server hasn't returned a real row for the same checklist item yet.
+      // Once the server confirms the write (matching checklist_item_id), drop the
+      // temp row to prevent a persistent duplicate row in To Verify.
+      const serverIds = new Set(guarded.map(r => r.id))
+      const serverChecklistIds = new Set(
+        guarded.map(r => r.checklist_item_id).filter((id): id is number => id != null),
+      )
+      const isSuperseded = (r: LedgerRecord) =>
+        r.checklist_item_id != null && serverChecklistIds.has(r.checklist_item_id)
+      const tempInFlight = prev.filter(r => r.id < 0 && !serverIds.has(r.id) && !isSuperseded(r))
+      if (replaceMode) {
+        return [...tempInFlight, ...guarded]
+      }
+      // User-triggered (pull-to-refresh): same preservation, merge semantics.
+      const localOnly = prev.filter(r => r.id < 0 && !serverIds.has(r.id) && !isSuperseded(r))
+      return [...localOnly, ...guarded]
     })
     if (!silent) setRefreshing(false)
-  }, [filters, ctx])
+  }, [filters, ctx, records])
 
   // Silent background refresh — used by polling/visibility/reconnect so no "Refreshing…" shows
   const backgroundRefresh = useCallback(() => {
-    setChecklistRefreshKey(k => k + 1)
-    return refresh(filters, true)
-  }, [refresh, filters])
+    return refreshAllPurchaseState(filters, true, true)
+  }, [refreshAllPurchaseState, filters])
 
   // ── Cross-device sync: polling, visibility, reconnect ──
   usePurchaseSync(backgroundRefresh)
 
   // ── Realtime subscriptions ──
-  useChecklistRealtime(() => setChecklistRefreshKey(k => k + 1))
-  // purchase_items changes (from any device) → refresh pending verification + records
+  // purchase_items / purchase_checklist changes (from any device) → refresh every Purchase section
   usePurchaseRealtime(backgroundRefresh)
 
   // ── Pull-to-refresh touch handlers ──
@@ -920,7 +995,7 @@ export default function PurchaseClient(props: Props) {
     }
     function onTouchEnd() {
       if (pullDistRef.current >= THRESHOLD) {
-        refresh()
+        refreshAllPurchaseState(filters, false, false)
       }
       pulling.current = false
       pullDistRef.current = 0
@@ -934,14 +1009,16 @@ export default function PurchaseClient(props: Props) {
       el.removeEventListener('touchmove', onTouchMove)
       el.removeEventListener('touchend', onTouchEnd)
     }
-    // refresh is intentionally excluded — it changes on every filters/ctx change
+    // refreshAllPurchaseState is intentionally excluded — it changes on every filters/ctx change
     // and re-creating listeners mid-gesture breaks pull-to-refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const showCosts = ctx?.perms.canViewCosts ?? false
   const canViewReceived = showCosts || ctx?.role === 'kitchen' || ctx?.role === 'front_desk'
-  showCostsRef.current = showCosts
+  useEffect(() => {
+    canViewReceivedRef.current = canViewReceived
+  }, [canViewReceived])
 
   // ── Carousel: native touch listeners (passive:false so a classified horizontal
   // swipe can preventDefault and claim the gesture from the vertical scroller —
@@ -970,7 +1047,7 @@ export default function PurchaseClient(props: Props) {
       const cw = carWidth.current
       if (!track || cw <= 0) return
       const idx = tabIndexRef.current
-      const maxIdx = (showCostsRef.current ? 3 : 2) - 1
+      const maxIdx = (canViewReceivedRef.current ? 3 : 2) - 1
       const basePx = -(idx * cw)
       let offset = basePx + dx
       const maxPx = 0
@@ -988,7 +1065,7 @@ export default function PurchaseClient(props: Props) {
       const idx = tabIndexRef.current
       const dx = e.changedTouches[0].clientX - carTouchX.current
       const threshold = 50
-      const maxIdx = (showCostsRef.current ? 3 : 2) - 1
+      const maxIdx = (canViewReceivedRef.current ? 3 : 2) - 1
       const track = carTrackRef.current
       if (!track) return
       if (idx > 0 && dx > threshold) goToIndex(idx - 1)
@@ -1013,12 +1090,25 @@ export default function PurchaseClient(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Carousel height tracks the active panel's natural height so shorter tabs
-  // don't leave empty space below (panels off-screen are clipped horizontally).
+  // Keep the carousel height aligned with the active panel even when a child
+  // updates its own rows without immediately re-rendering this parent.
   useEffect(() => {
     const panel = panelRefs.current[tabIndex]
-    if (panel) setCarHeight(panel.offsetHeight)
-  })
+    if (!panel) return
+
+    const measureActivePanel = () => setCarHeight(panel.offsetHeight)
+    measureActivePanel()
+
+    const observer = new ResizeObserver(measureActivePanel)
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [tabIndex])
+
+  // Each tab owns an independent content height. Do not carry a deep scroll
+  // position from a taller tab into a shorter one.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 })
+  }, [tabIndex])
 
   // ── Open add sheet ──
   function openAdd() {
@@ -1132,7 +1222,7 @@ export default function PurchaseClient(props: Props) {
   // ── Navigation ──
   function openDetail(r: LedgerRecord) {
     if (!showCosts) { showNoPermToast(); return }
-    push('/purchase/' + r.id, <DetailClient />)
+    push('/purchase/' + r.id, <DetailClient onChanged={() => { pop(); backgroundRefresh() }} />)
   }
 
   function openKpiDetails() {
@@ -1229,17 +1319,13 @@ export default function PurchaseClient(props: Props) {
     })
     const mutationId = nextClientMutationId()
     setMutationId(optimistic, mutationId)
-    console.log('[PV] handleItemCompleting', item.name, 'tempId=', tempId)
     setPendingVerification((prev) => {
-      const next = prependOptimisticRecord(prev, optimistic as LedgerRecord, mutationId)
-      console.log('[PV] after optimistic add, pendingVerification.length=', next.length)
-      return next
+      return prependOptimisticRecord(prev, optimistic as LedgerRecord, mutationId)
     })
     return tempId
   }
 
   function handleItemCompleted(record: PurchaseRecord, optimisticId?: number) {
-    console.log('[PV] handleItemCompleted', record.name, 'optimisticId=', optimisticId, 'status=', record.status)
     if (optimisticId !== undefined) {
       setPendingVerification((prev) => reconcileOptimisticRecord(prev, optimisticId, record as LedgerRecord))
     } else {
@@ -1251,46 +1337,130 @@ export default function PurchaseClient(props: Props) {
   }
 
   function handleItemCompleteFailed(optimisticId?: number) {
-    console.log('[PV] handleItemCompleteFailed optimisticId=', optimisticId)
     if (optimisticId !== undefined) {
       setPendingVerification((prev) => removeOptimisticRecord(prev, optimisticId))
     }
   }
 
+  function showActionError(msg: string) {
+    setRollbackErrMsg(msg)
+    setTimeout(() => setRollbackErrMsg(null), 3000)
+  }
+
   // ── Verification accept/reject callbacks ──
-  function handleVerificationAccepted(record: PurchaseRecord) {
-    setPendingVerification((prev) => prev.filter((r) => r.id !== record.id))
-    const ledger = record as LedgerRecord
+
+  // Called immediately before server round-trip — optimistic move to Received
+  function handleVerificationAccepting(item: PurchaseRecord, receivedQty: number) {
+    optimisticTransitions.current.set(item.id, 'verified')
+    pendingAcceptSnapshot.current = { records, pending: pendingVerification }
+    const optimistic: LedgerRecord = {
+      ...(item as LedgerRecord),
+      status: 'verified',
+      received_quantity: receivedQty,
+      verified_by_name: staff?.displayName ?? null,
+      verified_at: new Date().toISOString(),
+    }
+    setPendingVerification((prev) => prev.filter((r) => r.id !== item.id))
     setRecords((prev) => {
-      if (prev.some((r) => r.id === ledger.id)) return prev
+      if (prev.some((r) => r.id === optimistic.id)) return updateRecordInList(prev, optimistic.id, optimistic)
+      return [optimistic, ...prev]
+    })
+    setSummary((prev) => prev ? applyRecordToSummary(prev, optimistic, 1, ctx!.today) : prev)
+    setKpi((prev) => prev ? applyRecordToKpi(prev, optimistic, 1, ctx!.today) : prev)
+  }
+
+  // Called after server succeeds — replace optimistic row with authoritative server data
+  function handleVerificationAccepted(record: PurchaseRecord) {
+    const ledger = record as LedgerRecord
+    optimisticTransitions.current.delete(ledger.id)
+    // Update the optimistic row in place with server-authoritative fields
+    setRecords((prev) => {
+      if (prev.some((r) => r.id === ledger.id)) return updateRecordInList(prev, ledger.id, ledger)
       return [ledger, ...prev]
     })
-    setSummary((prev) => prev ? applyRecordToSummary(prev, ledger, 1, ctx!.today) : prev)
-    setKpi((prev) => prev ? applyRecordToKpi(prev, ledger, 1, ctx!.today) : prev)
+    setPendingVerification((prev) => prev.filter((r) => r.id !== ledger.id))
+    pendingAcceptSnapshot.current = null
+    backgroundRefresh()
   }
 
   function handleVerificationRejected(id: number) {
     setPendingVerification((prev) => prev.filter((r) => r.id !== id))
-    // Server-side restores the checklist item; trigger a checklist refresh
-    setChecklistRefreshKey((k) => k + 1)
+    backgroundRefresh()
   }
 
-  function handleVerificationAcceptFailed(_id: number) {
-    // Card stays visible — user can retry
+  function handleVerificationAcceptFailed(id: number) {
+    optimisticTransitions.current.delete(id)
+    const snap = pendingAcceptSnapshot.current
+    if (snap) {
+      setRecords(snap.records)
+      setPendingVerification(snap.pending)
+      pendingAcceptSnapshot.current = null
+      backgroundRefresh()
+    }
+    showActionError('Verification failed. Please try again.')
   }
 
   function handleVerificationRejectFailed(_id: number) {
     // Sheet is closed — user can re-open via Reject button
   }
 
-  function handleVerificationCancelled(id: number) {
-    // Remove from pendingVerification; server already restored the checklist item
-    setPendingVerification((prev) => prev.filter((r) => r.id !== id))
-    setChecklistRefreshKey((k) => k + 1)
+  // Called immediately before server round-trip — optimistic remove from To Verify + restore checklist
+  function handleVerificationCancelling(item: PurchaseRecord) {
+    optimisticTransitions.current.set(item.id, 'checklist')
+    pendingCancelSnapshot.current = {
+      pending: pendingVerification,
+      purchaseItemId: item.id,
+      checklistItemId: item.checklist_item_id ?? undefined,
+    }
+    setPendingVerification((prev) => prev.filter((r) => r.id !== item.id))
+    // Optimistically restore linked checklist item if available, and guard it
+    // from being overwritten by a stale backgroundRefresh while the action is pending.
+    if (item.checklist_item_id) {
+      cancelChecklistGuards.current.add(item.checklist_item_id)
+      const entry: ChecklistEntry = {
+        id: item.checklist_item_id,
+        name: item.name,
+        specification: item.specification ?? null,
+        supplier: null,
+        category: item.category,
+        unit: item.unit,
+        quantity: item.quantity,
+        note: item.note ?? null,
+        status: 'pending',
+        purchase_record_id: null,
+        created_at: item.created_at ?? new Date().toISOString(),
+        completed_at: null,
+        created_by: item.created_by ?? null,
+        created_by_name: item.created_by_name ?? null,
+      }
+      restoreChecklistRef.current?.({ type: 'add', item: entry })
+    }
+  }
+
+  // Called after server succeeds — clear guards and full reconcile
+  function handleVerificationCancelled(_id: number) {
+    const snap = pendingCancelSnapshot.current
+    if (snap) {
+      optimisticTransitions.current.delete(snap.purchaseItemId)
+      if (snap.checklistItemId) cancelChecklistGuards.current.delete(snap.checklistItemId)
+      pendingCancelSnapshot.current = null
+    }
+    backgroundRefresh()
   }
 
   function handleVerificationCancelFailed(_id: number) {
-    // Item stays in pendingVerification — user can retry
+    const snap = pendingCancelSnapshot.current
+    if (snap) {
+      optimisticTransitions.current.delete(snap.purchaseItemId)
+      if (snap.checklistItemId) {
+        cancelChecklistGuards.current.delete(snap.checklistItemId)
+        restoreChecklistRef.current?.({ type: 'remove', id: snap.checklistItemId })
+      }
+      setPendingVerification(snap.pending)
+      pendingCancelSnapshot.current = null
+      backgroundRefresh()
+    }
+    showActionError('Failed to return item. Please try again.')
   }
 
   // ── Uncheck: move record back to checklist ──
@@ -1461,6 +1631,17 @@ export default function PurchaseClient(props: Props) {
   }
 
   // ── Main UI ──
+  // Inactive panels must not stretch the flex track's cross-axis height.
+  // Each panel uses alignSelf:flex-start, but the track height = max(all panels).
+  // Clamping inactive panels to the active height (or 0 before first measure) prevents
+  // the tallest inactive tab from expanding the carousel container via auto height.
+  const inactivePanelStyle = {
+    ...carouselPanelStyle,
+    overflow: 'hidden' as const,
+    maxHeight: 0,
+    pointerEvents: 'none' as const,
+  }
+
   return (
     <div className="flex flex-col h-dvh bg-gray-50">
       {/* ── Header ── */}
@@ -1487,8 +1668,19 @@ export default function PurchaseClient(props: Props) {
         </div>
       </div>
 
-      {/* ── Hero KPI — always at top; shell renders immediately, numbers fill in last ── */}
-      <div className="flex-shrink-0">
+      {/* ── Scrollable area: hero scrolls away; tabs become sticky below header ── */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(88px + env(safe-area-inset-bottom, 0px))' }}>
+
+      {/* ── Pull-to-refresh indicator ── */}
+      {pullDist > 0 && (
+        <div className="flex items-center justify-center py-2 text-xs text-gray-400"
+          style={{ height: Math.max(pullDist, 0), overflow: 'hidden', transition: 'height 0.1s' }}>
+          {pullDist >= THRESHOLD ? 'Release to refresh…' : 'Pull to refresh…'}
+        </div>
+      )}
+
+      {/* ── Hero KPI — scrolls with content ── */}
+      <div>
         {heroLoading ? (
           <div className="mx-4 mt-4 rounded-2xl overflow-hidden" style={{ backgroundImage: BAND_THEME.danger.gradient }}>
             <div className="relative px-5 pt-3 pb-2">
@@ -1570,8 +1762,8 @@ export default function PurchaseClient(props: Props) {
         })() : null}
       </div>
 
-      {/* ── Stage tabs: Checklist → Verify → Received ── */}
-      <div className="px-4 pt-4 pb-2 flex gap-2 flex-shrink-0" style={{ background: '#f9fafb' }}>
+      {/* ── Stage tabs: sticky below page header ── */}
+      <div className="px-4 pt-4 pb-2 flex gap-2 sticky top-0 z-[50]" style={{ background: '#f9fafb' }}>
           {([
             { key: 'checklist',    label: 'To Buy',    count: checklistPendingCount,        activeBg: '#FF7A1A', inactiveBg: '#FFF3E8', activeText: '#FFFFFF', inactiveText: '#C2410C' },
             { key: 'verification', label: 'To Verify', count: pendingVerification.length,   activeBg: '#2563EB', inactiveBg: '#EFF6FF', activeText: '#FFFFFF', inactiveText: '#1D4ED8' },
@@ -1609,23 +1801,13 @@ export default function PurchaseClient(props: Props) {
           })}
         </div>
 
-      {/* ── Pull-to-refresh indicator ── */}
-      {pullDist > 0 && (
-        <div className="flex items-center justify-center py-2 text-xs text-gray-400 flex-shrink-0"
-          style={{ height: Math.max(pullDist, 0), overflow: 'hidden', transition: 'height 0.1s' }}>
-          {pullDist >= THRESHOLD ? 'Release to refresh…' : 'Pull to refresh…'}
-        </div>
-      )}
-
-      {/* ── Scrollable carousel only ── */}
-      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
 
         {/* ── Stage carousel: Checklist | Verify | Received ── */}
-        <div ref={carContainerRef} style={{ overflowX: 'clip', overflowY: 'visible', height: carHeight, transition: 'height 0.3s cubic-bezier(0.3,0,0.1,1)' }}>
-          <div ref={carTrackRef} className="flex items-start" style={{ width: '300%', transform: `translateX(${-(tabIndex * pctPerSlide)}%)`, willChange: 'transform' }}>
+        <div ref={carContainerRef} style={{ overflowX: 'clip', overflowY: 'hidden', height: carHeight, transition: 'height 0.3s cubic-bezier(0.3,0,0.1,1)' }}>
+          <div ref={carTrackRef} className="flex" style={{ width: '300%', alignItems: 'flex-start', transform: `translateX(${-(tabIndex * pctPerSlide)}%)`, willChange: 'transform' }}>
 
             {/* Panel 0: Checklist */}
-            <div ref={(el) => { panelRefs.current[0] = el }} style={{ width: `${pctPerSlide}%` }}>
+            <div ref={(el) => { panelRefs.current[0] = el }} style={tabIndex === 0 ? carouselPanelStyle : inactivePanelStyle}>
         <div className="mx-4 mt-4">
           {/* Send icon (outside card, top-right) OR select controls */}
           {showCosts && (checklistSeed?.filter(i => i.status === 'pending' && i.purchase_record_id === null).length ?? 0) > 0 && (
@@ -1681,6 +1863,7 @@ export default function PurchaseClient(props: Props) {
                 triggerCancelSelectRef={triggerCancelSelectRef}
                 purchasedChecklistIds={purchasedChecklistIds}
                 updateItemsRef={updateChecklistRef}
+                cancelGuardsRef={cancelChecklistGuards}
                 onItemsChange={setChecklistSeed}
                 onSelectModeChange={setChecklistSelectMode}
                 onSelectionChange={(count, all) => { setChecklistSelectedCount(count); setChecklistAllSelected(all) }}
@@ -1692,7 +1875,7 @@ export default function PurchaseClient(props: Props) {
             </div>
 
             {/* Panel 1: Verify */}
-            <div ref={(el) => { panelRefs.current[1] = el }} style={{ width: `${pctPerSlide}%` }}>
+            <div ref={(el) => { panelRefs.current[1] = el }} style={tabIndex === 1 ? carouselPanelStyle : inactivePanelStyle}>
           {showCosts && pendingVerification.length > 0 && (
             <div className="mx-4 mt-4">
               <button type="button" onClick={() => setShowVerifyFilters((o) => !o)}
@@ -1734,10 +1917,13 @@ export default function PurchaseClient(props: Props) {
             <PendingVerificationSection
               items={(verifyFilters.category || verifyFilters.supplier ? filteredPending : pendingRecords) as unknown as import('@/lib/purchaseLedger/types').PurchaseRecord[]}
               canVerify={ctx?.perms.canViewCosts || ctx?.role === 'kitchen' || ctx?.role === 'front_desk'}
+              canCancel={ctx?.role === 'owner'}
+              onAccepting={handleVerificationAccepting}
               onAccepted={handleVerificationAccepted}
               onAcceptFailed={handleVerificationAcceptFailed}
               onRejected={handleVerificationRejected}
               onRejectFailed={handleVerificationRejectFailed}
+              onCancelling={handleVerificationCancelling}
               onCancelled={handleVerificationCancelled}
               onCancelFailed={handleVerificationCancelFailed}
             />
@@ -1749,7 +1935,7 @@ export default function PurchaseClient(props: Props) {
             </div>
 
             {/* Panel 2: Received (owner/manager only; kitchen sees a lock) */}
-            <div ref={(el) => { panelRefs.current[2] = el }} style={{ width: `${pctPerSlide}%` }}>
+            <div ref={(el) => { panelRefs.current[2] = el }} style={tabIndex === 2 ? carouselPanelStyle : inactivePanelStyle}>
           {!canViewReceived ? (
             <div className="mx-4 mt-4 bg-white rounded-2xl border border-gray-100 px-4 py-12 flex flex-col items-center gap-2 text-sm text-gray-400">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1946,8 +2132,6 @@ export default function PurchaseClient(props: Props) {
           </div>
         </div>
 
-        {/* ── Bottom spacer — tall enough for expanded Category Breakdown to clear the nav bar ── */}
-        <div style={{ height: 'calc(env(safe-area-inset-bottom, 0px) + 80px)' }} />
       </div>
 
       {/* ── Checklist FAB — hidden when in select-to-send mode ── */}
@@ -2072,6 +2256,7 @@ export default function PurchaseClient(props: Props) {
         <QuickEditSheet
           record={editingRecord}
           showCosts={showCosts}
+          canRollback={ctx?.perms.canDelete ?? false}
           onClose={() => setEditingRecord(null)}
           onOptimisticSave={(optimistic) => {
             setEditingRecord(null)
@@ -2082,7 +2267,56 @@ export default function PurchaseClient(props: Props) {
             setRecords((prev) => updateRecordInList(prev, original.id, original as unknown as LedgerRecord))
             refreshKpiAndSummaryAsync()
           }}
+          onRollback={() => {
+            // Capture snapshot before any state mutation for rollback-on-error
+            const target = editingRecord
+            const prevRecords = records
+            const prevPending = pendingVerification
+
+            // Build pending_verification version of the record
+            const pendingRecord: LedgerRecord = {
+              ...target,
+              status: 'pending_verification',
+              verified_by_name: null,
+              verified_at: null,
+              received_quantity: null,
+            }
+
+            // Guard: prevent any in-flight refresh from re-adding to Received
+            optimisticTransitions.current.set(target.id, 'pending_verification')
+
+            // Optimistic update: close sheet and move item immediately
+            setEditingRecord(null)
+            setRecords((prev) => prev.filter((r) => r.id !== target.id))
+            setPendingVerification((prev) => [pendingRecord, ...prev.filter((p) => p.id !== target.id)])
+
+            // Server action in background
+            rollbackVerifiedToVerifyAction(target.id).then((res) => {
+              if (res.ok) {
+                optimisticTransitions.current.delete(target.id)
+                backgroundRefresh()
+              } else {
+                optimisticTransitions.current.delete(target.id)
+                // Restore state and show error
+                setRecords(prevRecords)
+                setPendingVerification(prevPending)
+                setRollbackErrMsg(res.error ?? 'Failed to move item. Please try again.')
+                setTimeout(() => setRollbackErrMsg(null), 3000)
+              }
+            })
+          }}
         />
+      )}
+
+      {/* ── Rollback error toast ── */}
+      {rollbackErrMsg && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
+          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', background: '#ef4444' }}
+        >
+          {rollbackErrMsg}
+        </div>,
+        document.body,
       )}
 
       {/* ── Delete confirm — portaled to body ── */}

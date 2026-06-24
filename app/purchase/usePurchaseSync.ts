@@ -17,7 +17,10 @@ type RefreshFn = () => Promise<void> | void
  */
 export function usePurchaseSync(refresh: RefreshFn) {
   const refreshRef = useRef<RefreshFn>(refresh)
-  refreshRef.current = refresh
+
+  useEffect(() => {
+    refreshRef.current = refresh
+  }, [refresh])
 
   const refreshingRef = useRef(false)
   const safeRefresh = useCallback(async () => {
@@ -31,23 +34,14 @@ export function usePurchaseSync(refresh: RefreshFn) {
   }, [])
 
   useEffect(() => {
-    // ── Polling ──
-    const interval = setInterval(() => {
-      safeRefresh()
-    }, 8_000)
+    const interval = setInterval(() => { safeRefresh() }, 8_000)
 
-    // ── Visibility change ──
     function onVisibility() {
-      if (document.visibilityState === 'visible') {
-        safeRefresh()
-      }
+      if (document.visibilityState === 'visible') safeRefresh()
     }
     document.addEventListener('visibilitychange', onVisibility)
 
-    // ── Online / reconnect ──
-    function onOnline() {
-      safeRefresh()
-    }
+    function onOnline() { safeRefresh() }
     window.addEventListener('online', onOnline)
 
     return () => {
