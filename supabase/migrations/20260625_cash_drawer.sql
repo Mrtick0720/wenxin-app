@@ -5,6 +5,8 @@
 -- cash_adjustments      — Wenxin-managed, soft-deleted
 -- ═══════════════════════════════════════════════════════════════════
 
+begin;
+
 -- ── cash_drawer_sessions ─────────────────────────────────────────────
 create table if not exists public.cash_drawer_sessions (
   id                    bigserial        primary key,
@@ -127,6 +129,9 @@ drop policy if exists cash_adjustments_update on public.cash_adjustments;
 create policy cash_adjustments_update
   on public.cash_adjustments
   for update to authenticated
-  using (public.staff_role_is(array['owner', 'manager']));
+  using (public.staff_role_is(array['owner', 'manager']))
+  with check (public.staff_role_is(array['owner', 'manager']));
 
 -- DELETE: nobody (hard delete disabled; soft delete only)
+
+commit;
