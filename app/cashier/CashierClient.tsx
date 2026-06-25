@@ -6,6 +6,8 @@ import BackButton from '@/app/components/BackButton'
 import PageTransition from '@/app/components/PageTransition'
 import type { CashDrawerSession, CashAdjustment } from '@/lib/cashDrawer/types'
 import { deleteCashDrawerSessionAction, softDeleteCashAdjustmentAction } from './actions'
+import ImportSessionSheet from './ImportSessionSheet'
+import AddAdjustmentSheet from './AddAdjustmentSheet'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -419,6 +421,20 @@ export default function CashierClient({
             </div>
           </div>
         )}
+
+        <ImportSessionSheet
+          isOpen={importSheetOpen}
+          onClose={() => setImportSheetOpen(false)}
+          onImported={() => router.refresh()}
+        />
+
+        <AddAdjustmentSheet
+          isOpen={addAdjSheetOpen}
+          businessDate={businessDate}
+          sessionId={activeSession?.id ?? null}
+          onClose={() => setAddAdjSheetOpen(false)}
+          onSaved={() => router.refresh()}
+        />
 
       </main>
     </PageTransition>
