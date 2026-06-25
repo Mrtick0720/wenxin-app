@@ -47,6 +47,8 @@ export type CashAdjustment = {
   approvedAt: string | null
   createdBy: string
   createdAt: string
+  deletedAt: string | null
+  deletedBy: string | null
 }
 
 export type ImportSessionInput = {
