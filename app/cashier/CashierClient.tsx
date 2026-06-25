@@ -192,9 +192,6 @@ export default function CashierClient({
       ]
     : []
 
-  void importSheetOpen
-  void addAdjSheetOpen
-
   return (
     <PageTransition>
       <main className="min-h-screen bg-gray-50">
