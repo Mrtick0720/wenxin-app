@@ -50,13 +50,24 @@ function parseNum(s: string): number | null {
   return isNaN(v) ? null : v
 }
 
+function safeIso(s: string): string | null {
+  if (!s) return null
+  const d = new Date(s)
+  return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+function fmtReviewNum(s: string): string {
+  const v = parseNum(s)
+  return v != null ? `RM ${v.toFixed(2)}` : '—'
+}
+
 function buildInput(f: FormState): ImportSessionInput {
   return {
     businessDate: f.businessDate,
     counter:      f.counter.trim(),
     outletName:   f.outletName.trim() || null,
-    openTime:     f.openTime  ? new Date(f.openTime).toISOString()  : null,
-    closeTime:    f.closeTime ? new Date(f.closeTime).toISOString() : null,
+    openTime:     safeIso(f.openTime),
+    closeTime:    safeIso(f.closeTime),
     openedBy:     f.openedBy.trim()  || null,
     closedBy:     f.closedBy.trim()  || null,
     openingFloat: parseNum(f.openingFloat),
@@ -82,7 +93,6 @@ function expectedCash(f: FormState): string {
   return `RM ${v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-// [ADDED] Validate Step 1 before advancing: date must not be future, counter required.
 function validateStep1(f: FormState): string | null {
   if (!f.businessDate) return 'Please select a business date'
   if (f.businessDate > today()) return 'Business date cannot be in the future'
@@ -100,7 +110,7 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
   const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState<Step>(1)
   const [form, setForm] = useState<FormState>(emptyForm)
-  const [stepError, setStepError] = useState<string | null>(null)  // [ADDED] inline step validation error
+  const [stepError, setStepError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -117,7 +127,7 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
 
   function set(key: keyof FormState, value: string) {
     setForm(prev => ({ ...prev, [key]: value }))
-    setStepError(null)  // [ADDED] clear inline error on any field change
+    setStepError(null)
   }
 
   function handleNext() {
@@ -181,7 +191,6 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
         {/* Step 1: Business Date */}
         {step === 1 && (
           <div className="space-y-4">
-            {/* [ADDED] Brief context subtitle */}
             <div className="text-xs text-gray-400 mb-3">Import your FeedMe POS report for this business day.</div>
             <div>
               <label className={labelClass}>Business Date</label>
@@ -195,7 +204,6 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
               <label className={labelClass}>Outlet Name</label>
               <input type="text" value={form.outletName} onChange={e => set('outletName', e.target.value)} className={inputClass} />
             </div>
-            {/* [ADDED] Inline validation error for Step 1 */}
             {stepError && (
               <div className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{stepError}</div>
             )}
@@ -274,19 +282,19 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
               <ReviewRow label="Close Time"    value={form.closeTime ? new Date(form.closeTime).toLocaleString('en-MY') : '—'} onEdit={() => setStep(2)} />
               <ReviewRow label="Opened By"     value={form.openedBy  || '—'} onEdit={() => setStep(2)} />
               <ReviewRow label="Closed By"     value={form.closedBy  || '—'} onEdit={() => setStep(2)} />
-              <ReviewRow label="Opening Float" value={form.openingFloat ? `RM ${form.openingFloat}` : '—'} onEdit={() => setStep(2)} />
-              <ReviewRow label="Closing Float" value={form.closingFloat ? `RM ${form.closingFloat}` : '—'} onEdit={() => setStep(2)} />
+              <ReviewRow label="Opening Float" value={fmtReviewNum(form.openingFloat)} onEdit={() => setStep(2)} />
+              <ReviewRow label="Closing Float" value={fmtReviewNum(form.closingFloat)} onEdit={() => setStep(2)} />
             </div>
             <div className="bg-gray-50 rounded-xl p-3 space-y-1">
               <div className="text-[10px] text-gray-400 uppercase tracking-wide font-medium mb-2">Payments</div>
-              <ReviewRow label="Cash Sales"  value={form.cashSales  ? `RM ${form.cashSales}`  : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="Pay In"      value={form.payIn      ? `RM ${form.payIn}`      : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="Pay Out"     value={form.payOut     ? `RM ${form.payOut}`     : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="Alipay"      value={form.alipay     ? `RM ${form.alipay}`     : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="DuitNow"     value={form.duitnow    ? `RM ${form.duitnow}`    : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="Maybank QR"  value={form.maybankQr  ? `RM ${form.maybankQr}`  : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="Touch'n Go"  value={form.touchngo   ? `RM ${form.touchngo}`   : '—'} onEdit={() => setStep(3)} />
-              <ReviewRow label="WeChat"      value={form.wechat     ? `RM ${form.wechat}`     : '—'} onEdit={() => setStep(3)} />
+              <ReviewRow label="Cash Sales"  value={fmtReviewNum(form.cashSales)}  onEdit={() => setStep(3)} />
+              <ReviewRow label="Pay In"      value={fmtReviewNum(form.payIn)}      onEdit={() => setStep(3)} />
+              <ReviewRow label="Pay Out"     value={fmtReviewNum(form.payOut)}     onEdit={() => setStep(3)} />
+              <ReviewRow label="Alipay"      value={fmtReviewNum(form.alipay)}     onEdit={() => setStep(3)} />
+              <ReviewRow label="DuitNow"     value={fmtReviewNum(form.duitnow)}    onEdit={() => setStep(3)} />
+              <ReviewRow label="Maybank QR"  value={fmtReviewNum(form.maybankQr)}  onEdit={() => setStep(3)} />
+              <ReviewRow label="Touch'n Go"  value={fmtReviewNum(form.touchngo)}   onEdit={() => setStep(3)} />
+              <ReviewRow label="WeChat"      value={fmtReviewNum(form.wechat)}     onEdit={() => setStep(3)} />
             </div>
             <div className="bg-orange-50 rounded-xl p-3">
               <div className="flex items-center justify-between">
@@ -348,7 +356,7 @@ function ReviewRow({ label, value, onEdit }: { label: string; value: string; onE
       <span className="text-xs text-gray-500">{label}</span>
       <div className="flex items-center gap-2">
         <span className="text-xs text-gray-800 tabular-nums">{value}</span>
-        <button onClick={onEdit} className="text-[10px] text-orange-500 font-medium">Edit</button>
+        <button onClick={onEdit} className="text-[10px] text-orange-500 font-medium px-2 py-1 -mr-2">Edit</button>
       </div>
     </div>
   )
