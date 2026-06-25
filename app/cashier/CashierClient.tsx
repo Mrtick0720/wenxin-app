@@ -296,18 +296,23 @@ export default function CashierClient({
           {/* ── Cash Summary ── */}
           <div className="bg-white rounded-2xl shadow-sm px-4">
             <SectionTitle label="Cash Summary" />
-            <Row label="Opening Float" value={activeSession?.openingFloat != null ? fmtAmount(activeSession.openingFloat) : '—'} dim={!activeSession?.openingFloat} />
+            <Row label="Opening Float" value={activeSession?.openingFloat != null ? fmtAmount(activeSession.openingFloat) : '—'} dim={activeSession?.openingFloat == null} />
             <Row label="Cash Sales"    value={activeSession?.cashSales != null ? fmtAmount(activeSession.cashSales) : (feedMeCashSales != null ? fmtAmount(feedMeCashSales) : '—')} dim={activeSession?.cashSales == null && feedMeCashSales == null} />
-            <Row label="Pay In"        value={activeSession?.payIn    != null ? fmtAmount(activeSession.payIn)    : '—'} dim={!activeSession?.payIn} />
-            <Row label="Pay Out"       value={activeSession?.payOut   != null ? fmtAmount(activeSession.payOut)   : '—'} dim={!activeSession?.payOut} />
-            <Row label="Closing Float" value={activeSession?.closingFloat != null ? fmtAmount(activeSession.closingFloat) : '—'} dim={!activeSession?.closingFloat} />
+            <Row label="Pay In"        value={activeSession?.payIn    != null ? fmtAmount(activeSession.payIn)    : '—'} dim={activeSession?.payIn == null} />
+            <Row label="Pay Out"       value={activeSession?.payOut   != null ? fmtAmount(activeSession.payOut)   : '—'} dim={activeSession?.payOut == null} />
+            <Row label="Closing Float" value={activeSession?.closingFloat != null ? fmtAmount(activeSession.closingFloat) : '—'} dim={activeSession?.closingFloat == null} />
             <div className="h-px bg-gray-100 -mx-4 my-1" />
-            <Row
-              label="Expected Cash"
-              value={activeSession ? (computeCurrentCash(activeSession) != null ? fmtAmount(computeCurrentCash(activeSession)!) : '—') : '—'}
-              highlight={activeSession !== null && computeCurrentCash(activeSession) !== null}
-              noBorder
-            />
+            {(() => {
+              const expectedCash = activeSession ? computeCurrentCash(activeSession) : null
+              return (
+                <Row
+                  label="Expected Cash"
+                  value={expectedCash != null ? fmtAmount(expectedCash) : '—'}
+                  highlight={expectedCash !== null}
+                  noBorder
+                />
+              )
+            })()}
             <div className="pb-2" />
           </div>
 
