@@ -4,6 +4,11 @@
 
 import { createClient } from '@supabase/supabase-js'
 
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
+  process.exit(1)
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
@@ -51,7 +56,13 @@ async function run() {
     const TEST_DATE = '2000-01-01'
     const TEST_COUNTER = '__test_counter__'
 
-    // Insert first row (use service role to bypass RLS)
+    // Pre-clean any residue from a prior aborted run
+    await supabase.from('cash_drawer_sessions')
+      .delete()
+      .eq('business_date', TEST_DATE)
+      .eq('counter', TEST_COUNTER)
+      .eq('outlet_id', OUTLET)
+
     const { data: first, error: e1 } = await supabase
       .from('cash_drawer_sessions')
       .insert({ business_date: TEST_DATE, counter: TEST_COUNTER, outlet_id: OUTLET, source: 'manual_import' })
@@ -61,18 +72,18 @@ async function run() {
     if (e1) {
       fail('unique constraint test: insert first row', e1.message)
     } else {
-      // Insert duplicate — must fail
-      const { error: e2 } = await supabase
-        .from('cash_drawer_sessions')
-        .insert({ business_date: TEST_DATE, counter: TEST_COUNTER, outlet_id: OUTLET, source: 'manual_import' })
-        .select('id')
-        .single()
+      try {
+        const { error: e2 } = await supabase
+          .from('cash_drawer_sessions')
+          .insert({ business_date: TEST_DATE, counter: TEST_COUNTER, outlet_id: OUTLET, source: 'manual_import' })
+          .select('id')
+          .single()
 
-      if (e2?.code === '23505') ok('unique (business_date, counter, outlet_id) constraint enforced')
-      else fail('unique constraint', `expected 23505 but got ${e2?.code ?? 'no error'}`)
-
-      // Cleanup
-      await supabase.from('cash_drawer_sessions').delete().eq('id', first.id)
+        if (e2?.code === '23505') ok('unique (business_date, counter, outlet_id) constraint enforced')
+        else fail('unique constraint', `expected 23505 but got ${e2?.code ?? 'no error'}`)
+      } finally {
+        await supabase.from('cash_drawer_sessions').delete().eq('id', first.id)
+      }
     }
   }
 
@@ -84,7 +95,7 @@ async function run() {
       .is('deleted_at', null)
       .limit(1)
     if (error) fail('soft-delete filter works', error.message)
-    else ok('soft-delete filter (deleted_at IS NULL) works')
+    else ok('soft-delete filter (deleted_at column and IS NULL filter work)')
   }
 
   console.log(`\n${passed} passed, ${failed} failed\n`)
