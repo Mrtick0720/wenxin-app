@@ -1808,7 +1808,7 @@ export default function PurchaseClient(props: Props) {
 
             {/* Panel 0: Checklist */}
             <div ref={(el) => { panelRefs.current[0] = el }} style={tabIndex === 0 ? carouselPanelStyle : inactivePanelStyle}>
-        <div className="mx-4 mt-4">
+        <div className="mx-4 mt-4" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 72px)' }}>
           {/* Send icon (outside card, top-right) OR select controls */}
           {showCosts && (checklistSeed?.filter(i => i.status === 'pending' && i.purchase_record_id === null).length ?? 0) > 0 && (
             checklistSelectMode ? (
