@@ -46,7 +46,7 @@ function rowToAdjustment(row: Record<string, unknown>): CashAdjustment {
     id:             row.id as number,
     businessDate:   row.business_date as string,
     outletId:       row.outlet_id as string,
-    sessionId:      (row.session_id as number) ?? null,
+    sessionId:      row.session_id != null ? Number(row.session_id) : null,
     adjustmentType: row.adjustment_type as CashAdjustment['adjustmentType'],
     amount:         Number(row.amount),
     quantity:       (row.quantity as number) ?? null,
@@ -128,6 +128,7 @@ export async function importCashDrawerSessionAction(
       return { ok: false, error: error.message }
     }
 
+    if (!data) return { ok: false, error: 'Session was created but could not be read back' }
     return { ok: true, data: rowToSession(data) }
   } catch {
     return { ok: false, error: 'Unauthorised' }
@@ -204,6 +205,7 @@ export async function createCashAdjustmentAction(
       .single()
 
     if (error) return { ok: false, error: error.message }
+    if (!data) return { ok: false, error: 'Adjustment was created but could not be read back' }
     return { ok: true, data: rowToAdjustment(data) }
   } catch {
     return { ok: false, error: 'Unauthorised' }
