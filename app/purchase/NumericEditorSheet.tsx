@@ -17,13 +17,19 @@ function DigitKey({ k, onKey }: { k: string; onKey: (k: string) => void }) {
   return <button type="button" className={digitCls} onClick={() => onKey(k)}>{k}</button>
 }
 
-function NumKeypad({ onKey }: { onKey: (k: string) => void }) {
+function NumKeypad({ onKey, dotDisabled }: { onKey: (k: string) => void; dotDisabled: boolean }) {
   return (
     <div className="grid grid-cols-3 gap-2">
       <DigitKey k="1" onKey={onKey} /><DigitKey k="2" onKey={onKey} /><DigitKey k="3" onKey={onKey} />
       <DigitKey k="4" onKey={onKey} /><DigitKey k="5" onKey={onKey} /><DigitKey k="6" onKey={onKey} />
       <DigitKey k="7" onKey={onKey} /><DigitKey k="8" onKey={onKey} /><DigitKey k="9" onKey={onKey} />
-      <button type="button" className={dotCls} onClick={() => onKey('.')}>.</button>
+      <button
+        type="button"
+        className={dotDisabled ? `${DIGIT_BASE} bg-gray-100 text-gray-300 cursor-not-allowed` : dotCls}
+        onClick={() => { if (!dotDisabled) onKey('.') }}
+        aria-label="Decimal point"
+        aria-disabled={dotDisabled}
+      >.</button>
       <DigitKey k="0" onKey={onKey} />
       <button type="button" className={delCls} onClick={() => onKey('⌫')} aria-label="Delete">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -92,8 +98,12 @@ export default function NumericEditorSheet({
   const [qtyStr, setQtyStr] = useState(
     initialQuantity > 0 ? String(initialQuantity) : '',
   )
-  const [priceStr, setPriceStr] = useState(
-    initialUnitPrice != null && initialUnitPrice > 0 ? String(initialUnitPrice) : '',
+  // Price uses money/cents mode: stored as integer cents, displayed as 2-decimal amount.
+  // No decimal key needed — digits shift left like a Touch 'n Go terminal.
+  const [priceCents, setPriceCents] = useState(
+    initialUnitPrice != null && initialUnitPrice > 0
+      ? Math.round((initialUnitPrice + Number.EPSILON) * 100)
+      : 0,
   )
   const [supplier, setSupplier] = useState(initialSupplier)
   const [saving, setSaving] = useState(false)
@@ -112,13 +122,29 @@ export default function NumericEditorSheet({
 
   const isQtyActive = active === 'quantity'
   const qtyNum   = parseFloat(qtyStr) || 0
-  const priceNum = parseFloat(priceStr) || 0
+  const priceNum = priceCents / 100
 
   function handleKey(k: string) {
     setError(null)
-    const value = isQtyActive ? qtyStr : priceStr
-    const setValue = isQtyActive ? setQtyStr : setPriceStr
-    const maxDecimals = isQtyActive ? 3 : 2
+
+    // ── Price field: Touch 'n Go / cents mode ─────────────────────────────────
+    // Digits shift left (append cent digit). No decimal key — it's a no-op.
+    // Cap at RM 9,999.99 = 999,999 cents.
+    if (!isQtyActive) {
+      if (k === '⌫') {
+        setPriceCents(c => Math.floor(c / 10))
+        return
+      }
+      if (k === '.') return  // decimal not needed in money mode
+      const d = parseInt(k, 10)
+      if (isNaN(d)) return
+      setPriceCents(c => Math.min(c * 10 + d, 999999))
+      return
+    }
+
+    // ── Quantity field: normal decimal mode (unchanged) ───────────────────────
+    const value    = qtyStr
+    const setValue = setQtyStr
 
     if (k === '⌫') {
       setValue(value.length <= 1 ? '' : value.slice(0, -1))
@@ -131,10 +157,10 @@ export default function NumericEditorSheet({
     }
     // Collapse lone leading zero
     if (value === '0') { setValue(k); return }
-    // Cap decimal places
+    // Cap at 3 decimal places for weights
     const dotIdx = value.indexOf('.')
-    if (dotIdx >= 0 && value.length - dotIdx > maxDecimals) return
-    // Max length
+    if (dotIdx >= 0 && value.length - dotIdx > 3) return
+    // Max 7 significant digits
     if (value.replace('.', '').length >= 7) return
     setValue(value + k)
   }
@@ -144,12 +170,12 @@ export default function NumericEditorSheet({
       if (quantityEditable) { setActive('quantity'); setError('Quantity must be greater than zero.'); return }
       setError('Invalid quantity.'); return
     }
-    if (priceNum <= 0) { setActive('unit_price'); setError('Enter a valid unit price.'); return }
+    if (priceCents <= 0) { setActive('unit_price'); setError('Enter a valid unit price.'); return }
     setSaving(true)
     setError(null)
     const res = await onSave({
       quantity: qtyNum,
-      unitPrice: priceNum,
+      unitPrice: priceNum,   // priceCents / 100 — normal decimal submitted to server
       supplier: supplier.trim(),
     })
     setSaving(false)
@@ -164,7 +190,7 @@ export default function NumericEditorSheet({
   }
 
   const qtyDisplay   = qtyStr === '' ? '0' : qtyStr
-  const priceDisplay = priceStr === '' ? '0.00' : priceStr
+  const priceDisplay = (priceCents / 100).toFixed(2)
 
   // Maximum safe z-index (32-bit signed int max) so the sheet trumps everything
   // including any intermediate stacking contexts created by transforms or position:fixed.
@@ -266,9 +292,9 @@ export default function NumericEditorSheet({
           </div>
         )}
 
-        {/* Custom numeric keypad */}
+        {/* Custom numeric keypad — decimal dot is disabled when price field is active */}
         <div className="px-4 pb-1 flex-shrink-0">
-          <NumKeypad onKey={handleKey} />
+          <NumKeypad onKey={handleKey} dotDisabled={!isQtyActive} />
         </div>
 
         {/* Action buttons */}
@@ -288,7 +314,7 @@ export default function NumericEditorSheet({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || qtyNum <= 0 || priceNum <= 0}
+              disabled={saving || qtyNum <= 0 || priceCents <= 0}
               className="flex-1 flex items-center justify-center rounded-2xl text-base font-semibold text-white active:opacity-90"
               style={{ minHeight: 50, background: saving || qtyNum <= 0 || priceNum <= 0 ? '#d1d5db' : '#f97316' }}
             >

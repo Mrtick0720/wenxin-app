@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import MoneyInput from '@/app/components/MoneyInput'
 import { importCashDrawerSessionAction } from './actions'
 import type { ImportSessionInput } from '@/lib/cashDrawer/types'
 
@@ -236,11 +237,23 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className={labelClass}>Opening Float (RM)</label>
-                <input type="number" inputMode="decimal" step="0.01" value={form.openingFloat} onChange={e => set('openingFloat', e.target.value)} className={inputClass} />
+                <MoneyInput
+                  value={parseNum(form.openingFloat)}
+                  onChange={v => set('openingFloat', v !== null ? v.toFixed(2) : '')}
+                  nullable
+                  max="cash"
+                  className={inputClass}
+                />
               </div>
               <div>
                 <label className={labelClass}>Closing Float (RM)</label>
-                <input type="number" inputMode="decimal" step="0.01" value={form.closingFloat} onChange={e => set('closingFloat', e.target.value)} className={inputClass} />
+                <MoneyInput
+                  value={parseNum(form.closingFloat)}
+                  onChange={v => set('closingFloat', v !== null ? v.toFixed(2) : '')}
+                  nullable
+                  max="cash"
+                  className={inputClass}
+                />
               </div>
             </div>
           </div>
@@ -261,7 +274,13 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
             ].map(({ key, label }) => (
               <div key={key}>
                 <label className={labelClass}>{label} <span className="text-gray-300">(optional)</span></label>
-                <input type="number" inputMode="decimal" step="0.01" value={form[key]} onChange={e => set(key, e.target.value)} className={inputClass} />
+                <MoneyInput
+                  value={parseNum(form[key])}
+                  onChange={v => set(key, v !== null ? v.toFixed(2) : '')}
+                  nullable
+                  max="cash"
+                  className={inputClass}
+                />
               </div>
             ))}
           </div>

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
+import MoneyInput from '@/app/components/MoneyInput'
 import { createCashAdjustmentAction } from './actions'
 
 type Tab = 'coupon' | 'pay_out'
@@ -17,7 +18,7 @@ type Props = {
 export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, onClose, onSaved }: Props) {
   const [mounted, setMounted] = useState(false)
   const [tab, setTab] = useState<Tab>('coupon')
-  const [amount, setAmount] = useState('')
+  const [amountValue, setAmountValue] = useState(0)
   const [quantity, setQuantity] = useState('')
   const [referenceNo, setReferenceNo] = useState('')
   const [category, setCategory] = useState('')
@@ -30,7 +31,7 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
   useEffect(() => {
     if (isOpen) {
       setTab('coupon')
-      setAmount('')
+      setAmountValue(0)
       setQuantity('')
       setReferenceNo('')
       setCategory('')
@@ -41,8 +42,7 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
 
   async function handleSubmit() {
     if (submitting) return
-    const parsedAmount = parseFloat(amount.trim())
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+    if (!amountValue || amountValue <= 0) {
       setError('Amount must be greater than zero')
       return
     }
@@ -53,7 +53,7 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
       businessDate,
       sessionId,
       adjustmentType: tab,
-      amount:         parsedAmount,
+      amount:         amountValue,
       quantity:       tab === 'coupon' && quantity.trim() ? parseInt(quantity.trim(), 10) : null,
       referenceNo:    tab === 'coupon' && referenceNo.trim() ? referenceNo.trim() : null,
       category:       tab === 'pay_out' && category.trim() ? category.trim() : null,
@@ -124,14 +124,12 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
           {/* Amount — required */}
           <div className="mb-4">
             <label className={labelClass}>Amount (RM) <span className="text-red-400">*</span></label>
-            <input
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              placeholder="0.00"
-              value={amount}
-              onChange={e => { setAmount(e.target.value); setError(null) }}
+            <MoneyInput
+              value={amountValue}
+              onChange={v => { setAmountValue(v ?? 0); setError(null) }}
+              max="cash"
               className={inputClass}
+              style={{ fontSize: 14 }}
             />
           </div>
 

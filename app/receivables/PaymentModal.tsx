@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import MoneyInput from '@/app/components/MoneyInput'
 import { recordReceivablePaymentAction } from './actions'
 
 const Z = 2147483647
@@ -19,19 +20,18 @@ export default function PaymentModal({
   onClose: () => void
   onPaid: () => void
 }) {
-  const [amount, setAmount] = useState('')
+  const [amountValue, setAmountValue] = useState(0)
   const [method, setMethod] = useState('Cash')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
-    const parsed = parseFloat(amount)
-    if (!parsed || parsed <= 0) { setError('Enter a valid amount.'); return }
-    if (parsed > maxAmount) { setError(`Amount cannot exceed RM ${maxAmount.toFixed(2)}.`); return }
+    if (!amountValue || amountValue <= 0) { setError('Enter a valid amount.'); return }
+    if (amountValue > maxAmount) { setError(`Amount cannot exceed RM ${maxAmount.toFixed(2)}.`); return }
     setSaving(true)
     setError(null)
-    const res = await recordReceivablePaymentAction(receivableId, { amount: parsed, method, notes: notes.trim() || undefined })
+    const res = await recordReceivablePaymentAction(receivableId, { amount: amountValue, method, notes: notes.trim() || undefined })
     setSaving(false)
     if (!res.ok) { setError(res.error); return }
     onPaid()
@@ -47,9 +47,14 @@ export default function PaymentModal({
         <div className="space-y-3">
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Amount (RM) *</label>
-            <input className={inputCls} style={{ fontSize: 16 }} type="number" inputMode="decimal" min="0.01" step="0.01"
+            <MoneyInput
+              value={amountValue}
+              onChange={v => setAmountValue(v ?? 0)}
+              max="cash"
+              className={inputCls}
+              style={{ fontSize: 16 }}
               placeholder={`max ${maxAmount.toFixed(2)}`}
-              value={amount} onChange={e => setAmount(e.target.value)} />
+            />
           </div>
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Method</label>

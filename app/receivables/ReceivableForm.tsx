@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import MoneyInput from '@/app/components/MoneyInput'
 import { createReceivableAction, updateReceivableAction, type ReceivableInput, type Receivable } from './actions'
 import { DatePickerField } from '@/app/components/DateTimePickerFields'
 
@@ -71,9 +72,13 @@ export default function ReceivableForm({
           </div>
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Amount (RM) *</label>
-            <input className={inputCls} style={{ fontSize: 16 }} type="number" inputMode="decimal" min="0.01" step="0.01"
-              placeholder="0.00"
-              value={form.original_amount || ''} onChange={e => set('original_amount', parseFloat(e.target.value) || 0)} />
+            <MoneyInput
+              value={form.original_amount}
+              onChange={v => set('original_amount', v ?? 0)}
+              max="cash"
+              className={inputCls}
+              style={{ fontSize: 16 }}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-400 mb-1 block">Due Date</label>
