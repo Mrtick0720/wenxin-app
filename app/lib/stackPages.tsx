@@ -3,7 +3,6 @@
 import React, { lazy, Suspense } from 'react'
 import { useStaff } from '@/app/components/StaffProvider'
 import type { StaffRole } from '@/lib/auth/types'
-import { preloadRouteLoaders } from '@/lib/routePreload'
 import { FullPageSpinner } from '@/app/components/Spinner'
 
 // Client-side stack page registry.
@@ -17,16 +16,19 @@ import { FullPageSpinner } from '@/app/components/Spinner'
 // Pure route metadata (path/label/section/key) lives in ./stackRoutes, which
 // imports no page modules at all.
 
-const loadPurchaseClient = () => import('@/app/purchase/PurchaseClient')
-const loadBentoClient = () => import('@/app/bento/BentoClient')
-const loadStaffPage = () => import('@/app/staff/page')
+// Exported so HomeRefresh can pass them to preloadStaggered() without this
+// module needing to know about the preload schedule.
+export const loadPurchaseClient = () => import('@/app/purchase/PurchaseClient')
+export const loadBentoClient = () => import('@/app/bento/BentoClient')
+export const loadInventoryPage = () => import('@/app/inventory/page')
+export const loadStaffPage = () => import('@/app/staff/page')
+
 const loadStaffAccountsStack = () => import('@/app/staff/accounts/StaffAccountsStack')
 const loadTasksPage = () => import('@/app/tasks/page')
 const loadProfileStack = () => import('@/app/profile/ProfileStack')
 const loadReceivablesPage = () => import('@/app/receivables/page')
 const loadPayablesPage = () => import('@/app/payables/page')
 const loadFinancePage = () => import('@/app/finance/page')
-const loadInventoryPage = () => import('@/app/inventory/page')
 const loadReportsPage = () => import('@/app/reports/page')
 const loadDineInPage = () => import('@/app/dine-in/page')
 const loadReservationsPage = () => import('@/app/reservations/page')
@@ -116,7 +118,3 @@ export function getPageElement(href: string): React.ReactNode | null {
   return factory ? factory() : null
 }
 
-/** Preload the performance-critical Purchase chunk after Home becomes interactive. */
-export function preloadRoutes() {
-  preloadRouteLoaders([loadPurchaseClient])
-}
