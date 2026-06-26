@@ -179,7 +179,7 @@ function ItemFormSheet({
             </div>
           )}
 
-          <div className={planningOnly ? '' : 'grid grid-cols-2 gap-3'}>
+          <div className="grid grid-cols-2 gap-3">
             <Field label="Quantity *">
               <input
                 className={inputCls}
@@ -192,7 +192,22 @@ function ItemFormSheet({
                 onKeyDown={e => { if (e.key === 'Enter') onSave() }}
               />
             </Field>
-            {!planningOnly && showCosts && (
+            {planningOnly ? (
+              <div>
+                <label className="text-xs text-gray-400 mb-1 block">Unit</label>
+                <select
+                  className={inputCls}
+                  style={{ fontSize: 16 }}
+                  value={form.unit}
+                  onChange={e => setForm(f => ({ ...f, unit: e.target.value }))}
+                >
+                  {UNITS.map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+                {catalogItem && catalogItem.unit !== form.unit && (
+                  <p className="text-xs text-gray-400 mt-1">Default: {catalogItem.unit}</p>
+                )}
+              </div>
+            ) : showCosts && (
               <Field label="Unit Price (RM)">
                 <input
                   className={inputCls}
@@ -207,35 +222,39 @@ function ItemFormSheet({
             )}
           </div>
 
-          <Field label="Specification">
-            <input
-              className={inputCls}
-              style={{ fontSize: 16 }}
-              placeholder="e.g. large size, boneless"
-              value={form.specification}
-              onChange={e => setForm(f => ({ ...f, specification: e.target.value }))}
-            />
-          </Field>
+          {!planningOnly && (
+            <>
+              <Field label="Specification">
+                <input
+                  className={inputCls}
+                  style={{ fontSize: 16 }}
+                  placeholder="e.g. large size, boneless"
+                  value={form.specification}
+                  onChange={e => setForm(f => ({ ...f, specification: e.target.value }))}
+                />
+              </Field>
 
-          <Field label="Supplier">
-            <input
-              className={inputCls}
-              style={{ fontSize: 16 }}
-              placeholder="e.g. KK Fresh Market"
-              value={form.supplier}
-              onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
-            />
-          </Field>
+              <Field label="Supplier">
+                <input
+                  className={inputCls}
+                  style={{ fontSize: 16 }}
+                  placeholder="e.g. KK Fresh Market"
+                  value={form.supplier}
+                  onChange={e => setForm(f => ({ ...f, supplier: e.target.value }))}
+                />
+              </Field>
 
-          <Field label="Note (optional)">
-            <input
-              className={inputCls}
-              style={{ fontSize: 16 }}
-              placeholder="e.g. fresh only, no frozen"
-              value={form.note}
-              onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-            />
-          </Field>
+              <Field label="Note (optional)">
+                <input
+                  className={inputCls}
+                  style={{ fontSize: 16 }}
+                  placeholder="e.g. fresh only, no frozen"
+                  value={form.note}
+                  onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
+                />
+              </Field>
+            </>
+          )}
         </div>
 
         <div
@@ -677,7 +696,15 @@ export default function ChecklistSection({
 
   // Completion sheet
   const [completingItem, setCompletingItem] = useState<ChecklistEntry | null>(null)
+  const [completingItemPrice, setCompletingItemPrice] = useState<number | null>(null)
   const pendingCompletes = useRef<Set<number>>(new Set())
+
+  function startCompletion(item: ChecklistEntry) {
+    // unit_price is a price snapshot saved server-side when the item was added.
+    // Reading it here is synchronous — no fetch needed, sheet opens instantly.
+    setCompletingItemPrice(item.unit_price ?? null)
+    setCompletingItem(item)
+  }
   const pendingDeletes = useRef<Set<number>>(new Set())
 
   // Delete confirmation
@@ -1022,7 +1049,7 @@ export default function ChecklistSection({
               item={item}
               canComplete={showCosts}
               showCosts={showCosts}
-              onComplete={item => { setCompletingItem(item) }}
+              onComplete={item => { startCompletion(item) }}
               onUncomplete={handleUncomplete}
               onEdit={openEdit}
               catalog={catalog}
@@ -1115,13 +1142,12 @@ export default function ChecklistSection({
           itemName={completingItem.name}
           unit={completingItem.unit}
           initialQuantity={completingItem.quantity}
-          initialUnitPrice={null}
-          initialSupplier={completingItem.supplier ?? ''}
+          initialUnitPrice={completingItemPrice}
           quantityEditable={true}
-          showSupplier={true}
+          showSupplier={false}
           onSave={handleCompleteSave}
-          onClose={() => setCompletingItem(null)}
-          onDelete={() => { const it = completingItem; setCompletingItem(null); requestDelete(it) }}
+          onClose={() => { setCompletingItem(null); setCompletingItemPrice(null) }}
+          onDelete={() => { const it = completingItem; setCompletingItem(null); setCompletingItemPrice(null); requestDelete(it) }}
         />
       )}
 

@@ -2,6 +2,7 @@
 
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import * as svc from '@/lib/purchaseLedger/service'
 import { canViewPurchaseCosts } from '@/lib/purchaseLedger/permissions'
 import type { StaffRole } from '@/lib/auth/types'
@@ -22,6 +23,9 @@ export type ChecklistEntry = {
   completed_at: string | null
   created_by: string | null
   created_by_name: string | null
+  // Snapshot of last paid unit price at the time the item was added.
+  // Only returned to cost-view roles (owner/manager) via FULL_SELECT_COLS.
+  unit_price?: number | null
 }
 
 export type ChecklistItemInput = {
@@ -36,9 +40,9 @@ export type ChecklistItemInput = {
 
 const ROLES = ['owner', 'manager', 'kitchen', 'front_desk'] as const
 const PURCHASE_EXECUTION_ROLES = ['owner', 'manager'] as const
-// unit_price omitted until migration 20260617_checklist_unit_price.sql is applied
+// unit_price: price snapshot saved at add-time, only exposed to cost-view roles
 const FULL_SELECT_COLS =
-  'id, name, specification, supplier, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
+  'id, name, specification, supplier, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name, unit_price'
 const STAFF_SELECT_COLS =
   'id, name, specification, category, unit, quantity, note, status, purchase_record_id, created_at, completed_at, created_by, created_by_name'
 
@@ -165,6 +169,23 @@ export async function addChecklistItemAction(
     const staff = await requireRole(...ROLES)
     const supabase = await createServerSupabaseClient()
 
+    // Look up the most recent paid price for this item (server-side, admin bypasses
+    // RLS so historical prices are always reachable regardless of role). The snapshot
+    // is saved on the row so the confirm sheet can open instantly without a second
+    // fetch. Kitchen/front_desk never receive this value (STAFF_SELECT_COLS omits it).
+    const admin = createAdminSupabaseClient()
+    const { data: priceRow } = await admin
+      .from('purchase_items')
+      .select('unit_price')
+      .eq('name', input.name.trim())
+      .not('unit_price', 'is', null)
+      .gt('unit_price', 0)
+      .order('id', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const lastUnitPrice: number | null =
+      typeof priceRow?.unit_price === 'number' ? priceRow.unit_price : null
+
     const insertPayload: Record<string, unknown> = {
       name: input.name.trim(),
       specification: input.specification?.trim() || null,
@@ -173,6 +194,7 @@ export async function addChecklistItemAction(
       unit: input.unit,
       quantity: input.quantity,
       note: input.note?.trim() || null,
+      unit_price: lastUnitPrice,
       created_by: staff.id,
       created_by_name: staff.displayName,
     }

@@ -832,12 +832,13 @@ export default function PurchaseClient(props: Props) {
     }
   }, [])
 
-  // Kitchen (no cost view) renders item names translated via the catalog, so it
-  // must load eagerly — not just when the Add sheet opens. Without this the
-  // kitchen list shows "Unknown item" for every row (empty catalog).
+  // Catalog is needed by all roles: kitchen for item name translation, everyone
+  // else for the Add to Checklist dropdown. Start on mount — parallel with the
+  // hero + content fetches — so the first tap on Item Name is instant.
+  // fetchCatalogAction() does its own requireRole() check; no ctx guard needed.
   useEffect(() => {
-    if (ctx && !ctx.perms.canViewCosts) void ensureCatalogLoaded()
-  }, [ctx, ensureCatalogLoaded])
+    void ensureCatalogLoaded()
+  }, [ensureCatalogLoaded])
 
   const [showAdd, setShowAdd]                 = useState(false)
   const [form, setForm]                       = useState(emptyForm)
