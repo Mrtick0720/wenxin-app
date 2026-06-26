@@ -3,7 +3,9 @@
 
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import type { CashDrawerSession, CashAdjustment, ImportSessionInput, CreateAdjustmentInput } from '@/lib/cashDrawer/types'
+import { readRelayDaily } from '@/lib/feedme/relayStore'
 
 const OUTLET_ID = '00000000-0000-0000-0000-000000000001'
 
@@ -15,15 +17,17 @@ type ActionResult<T> =
 
 function rowToSession(row: Record<string, unknown>): CashDrawerSession {
   return {
-    id:            row.id as number,
-    businessDate:  row.business_date as string,
-    counter:       row.counter as string,
-    outletId:      row.outlet_id as string,
-    outletName:    (row.outlet_name as string) ?? null,
-    openTime:      (row.open_time as string) ?? null,
-    closeTime:     (row.close_time as string) ?? null,
-    openedBy:      (row.opened_by as string) ?? null,
-    closedBy:      (row.closed_by as string) ?? null,
+    id:                    row.id as number,
+    businessDate:          row.business_date as string,
+    counter:               row.counter as string,
+    outletId:              row.outlet_id as string,
+    outletName:            (row.outlet_name as string) ?? null,
+    cashierOnDutyStaffId:  (row.cashier_on_duty_staff_id as string) ?? null,
+    cashierOnDutyName:     null,  // resolved after fetch via resolveStaffNames
+    openTime:              (row.open_time as string) ?? null,
+    closeTime:             (row.close_time as string) ?? null,
+    openedBy:              (row.opened_by as string) ?? null,
+    closedBy:              (row.closed_by as string) ?? null,
     openingFloat:  row.opening_float != null ? Number(row.opening_float) : null,
     closingFloat:  row.closing_float != null ? Number(row.closing_float) : null,
     cashSales:     row.cash_sales != null ? Number(row.cash_sales) : null,
@@ -64,6 +68,16 @@ function rowToAdjustment(row: Record<string, unknown>): CashAdjustment {
   }
 }
 
+// ── Staff name resolution ─────────────────────────────────────────────
+
+async function resolveStaffNames(ids: (string | null)[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter((x): x is string => !!x))]
+  if (unique.length === 0) return new Map()
+  const admin = createAdminSupabaseClient()
+  const { data } = await admin.from('staff_profiles').select('id, display_name').in('id', unique)
+  return new Map((data ?? []).map(r => [r.id as string, r.display_name as string]))
+}
+
 // ── Session actions ───────────────────────────────────────────────────
 
 export async function fetchCashDrawerSessionsAction(
@@ -80,7 +94,15 @@ export async function fetchCashDrawerSessionsAction(
       .order('counter', { ascending: true })
 
     if (error) return { ok: false, error: error.message }
-    return { ok: true, data: (data ?? []).map(rowToSession) }
+    const sessions = (data ?? []).map(rowToSession)
+    const names = await resolveStaffNames(sessions.map(s => s.cashierOnDutyStaffId))
+    return {
+      ok: true,
+      data: sessions.map(s => ({
+        ...s,
+        cashierOnDutyName: s.cashierOnDutyStaffId ? (names.get(s.cashierOnDutyStaffId) ?? null) : null,
+      })),
+    }
   } catch {
     return { ok: false, error: 'Unauthorised' }
   }
@@ -96,27 +118,28 @@ export async function importCashDrawerSessionAction(
     const { data, error } = await supabase
       .from('cash_drawer_sessions')
       .insert({
-        business_date:   input.businessDate,
-        counter:         input.counter.trim(),
-        outlet_id:       OUTLET_ID,
-        outlet_name:     input.outletName?.trim() || null,
-        open_time:       input.openTime || null,
-        close_time:      input.closeTime || null,
-        opened_by:       input.openedBy?.trim() || null,
-        closed_by:       input.closedBy?.trim() || null,
-        opening_float:   input.openingFloat,
-        closing_float:   input.closingFloat,
-        cash_sales:      input.cashSales,
-        pay_in:          input.payIn,
-        pay_out:         input.payOut,
-        alipay:          input.alipay,
-        duitnow:         input.duitnow,
-        maybank_qr:      input.maybankQr,
-        touchngo:        input.touchngo,
-        wechat:          input.wechat,
-        source:          'manual_import',
-        imported_at:     new Date().toISOString(),
-        imported_by:     staff.id,
+        business_date:              input.businessDate,
+        counter:                    input.counter.trim(),
+        outlet_id:                  OUTLET_ID,
+        outlet_name:                input.outletName?.trim() || null,
+        cashier_on_duty_staff_id:   input.cashierOnDutyStaffId ?? null,
+        open_time:                  input.openTime || null,
+        close_time:                 input.closeTime || null,
+        opened_by:                  input.openedBy?.trim() || null,
+        closed_by:                  input.closedBy?.trim() || null,
+        opening_float:              input.openingFloat,
+        closing_float:              input.closingFloat,
+        cash_sales:                 input.cashSales,
+        pay_in:                     input.payIn,
+        pay_out:                    input.payOut,
+        alipay:                     input.alipay,
+        duitnow:                    input.duitnow,
+        maybank_qr:                 input.maybankQr,
+        touchngo:                   input.touchngo,
+        wechat:                     input.wechat,
+        source:                     'manual_import',
+        imported_at:                new Date().toISOString(),
+        imported_by:                staff.id,
       })
       .select('*')
       .single()
@@ -212,6 +235,38 @@ export async function createCashAdjustmentAction(
   }
 }
 
+export async function fetchLatestClosedSessionAction(
+  beforeDate: string,
+): Promise<ActionResult<CashDrawerSession | null>> {
+  try {
+    await requireRole('owner', 'manager')
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('cash_drawer_sessions')
+      .select('*')
+      .eq('outlet_id', OUTLET_ID)
+      .not('close_time', 'is', null)
+      .lt('business_date', beforeDate)
+      .order('business_date', { ascending: false })
+      .order('close_time', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) return { ok: false, error: error.message }
+    if (!data) return { ok: true, data: null }
+    const session = rowToSession(data)
+    const names = await resolveStaffNames([session.cashierOnDutyStaffId])
+    return {
+      ok: true,
+      data: {
+        ...session,
+        cashierOnDutyName: session.cashierOnDutyStaffId ? (names.get(session.cashierOnDutyStaffId) ?? null) : null,
+      },
+    }
+  } catch {
+    return { ok: false, error: 'Unauthorised' }
+  }
+}
+
 export async function softDeleteCashAdjustmentAction(
   id: number,
 ): Promise<ActionResult<void>> {
@@ -231,5 +286,42 @@ export async function softDeleteCashAdjustmentAction(
     return { ok: true, data: undefined }
   } catch {
     return { ok: false, error: 'Unauthorised' }
+  }
+}
+
+export async function fetchActiveStaffAction(): Promise<ActionResult<Array<{ id: string; displayName: string }>>> {
+  try {
+    await requireRole('owner', 'manager')
+    const admin = createAdminSupabaseClient()
+    const { data, error } = await admin
+      .from('staff_profiles')
+      .select('id, display_name')
+      .eq('active', true)
+      .order('display_name')
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, data: (data ?? []).map(r => ({ id: r.id as string, displayName: r.display_name as string })) }
+  } catch {
+    return { ok: false, error: 'Unauthorised' }
+  }
+}
+
+export async function fetchFeedMeRelayAction(): Promise<ActionResult<{
+  cashSales: number | null
+  payments: Array<{ method: string; amount: number; percentage: number }> | null
+}>> {
+  try {
+    await requireRole('owner', 'manager')
+    const relay = await readRelayDaily()
+    if (!relay?.value) return { ok: true, data: { cashSales: null, payments: null } }
+    const pmts = relay.value.payments
+    return {
+      ok: true,
+      data: {
+        cashSales: pmts?.find(p => p.method === 'CASH')?.amount ?? null,
+        payments: pmts?.length ? pmts : null,
+      },
+    }
+  } catch {
+    return { ok: false, error: 'FeedMe relay unavailable' }
   }
 }

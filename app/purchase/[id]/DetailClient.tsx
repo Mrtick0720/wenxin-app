@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import MoneyInput from '@/app/components/MoneyInput'
 import { PURCHASE_CATEGORIES, categoryColor } from '@/lib/purchaseLedger/categories'
 import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import BackButton from '../../components/BackButton'
@@ -86,9 +87,10 @@ export default function DetailClient({ itemId, onChanged }: Props) {
 
   const [form, setForm] = useState({
     name: '', specification: '', category: 'Vegetables', unit: 'kg',
-    quantity: '', unit_price: '', supplier: '', purchaser: '', receiver: '', remarks: '',
+    quantity: '', supplier: '', purchaser: '', receiver: '', remarks: '',
     purchase_method: '', payment_status: '',
   })
+  const [unitPriceValue, setUnitPriceValue] = useState(0)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [showDelete, setShowDelete] = useState(false)
@@ -111,7 +113,6 @@ export default function DetailClient({ itemId, onChanged }: Props) {
         category: r.category ?? 'Vegetables',
         unit: r.unit ?? 'kg',
         quantity: String(r.quantity ?? ''),
-        unit_price: r.unit_price != null ? String(r.unit_price) : '',
         supplier: r.supplier ?? '',
         purchaser: r.purchaser ?? '',
         receiver: r.receiver ?? '',
@@ -119,6 +120,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
         purchase_method: r.purchase_method ?? '',
         payment_status: r.payment_status ?? 'unpaid',
       })
+      setUnitPriceValue(r.unit_price ?? 0)
       setLoading(false)
     })
   }, [id])
@@ -155,7 +157,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
       category: form.category,
       unit: form.unit,
       quantity: parseFloat(form.quantity) || 0,
-      unit_price: canViewCosts && form.unit_price ? parseFloat(form.unit_price) : null,
+      unit_price: canViewCosts && unitPriceValue > 0 ? unitPriceValue : null,
       supplier: canViewCosts ? form.supplier.trim() || null : null,
       purchaser: form.purchaser.trim() || null,
       receiver: form.receiver.trim() || null,
@@ -179,7 +181,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
   }
 
   const qty = parseFloat(form.quantity) || 0
-  const up = parseFloat(form.unit_price) || 0
+  const up = unitPriceValue
   const total = qty * up
   const catColor = categoryColor(form.category)
 
@@ -260,8 +262,14 @@ export default function DetailClient({ itemId, onChanged }: Props) {
           {canViewCosts && (
             <>
               <FieldRow label="Unit Price (RM)">
-                <input className="w-full outline-none text-gray-900" style={{ fontSize: 16 }} type="number" inputMode="decimal" readOnly={readOnly}
-                  value={form.unit_price} onChange={(e) => setForm((f) => ({ ...f, unit_price: e.target.value }))} placeholder="0.00" />
+                <MoneyInput
+                  value={unitPriceValue}
+                  onChange={v => setUnitPriceValue(v ?? 0)}
+                  max="price"
+                  className="w-full outline-none text-gray-900"
+                  style={{ fontSize: 16 }}
+                  disabled={readOnly}
+                />
               </FieldRow>
               <FieldRow label="Total">
                 <span className="font-semibold text-gray-900" style={{ fontSize: 16 }}>{total > 0 ? `RM ${total.toFixed(2)}` : '—'}</span>

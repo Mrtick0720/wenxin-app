@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import MoneyInput from '@/app/components/MoneyInput'
 import { supabase } from '@/lib/supabase/client'
 import { useNavigation } from '../../../../components/NavigationStack'
 import { updateOrderAction } from '../../actions'
@@ -67,14 +68,14 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
     order_time: '',
     area: '',
     address: '',
-    menu_type: '',          // selected variant code
-    unit_price: '',
+    menu_type: '',
     note: '',
     payment_status: 'unpaid',
     payment_method: '',
-    amount_paid: '0',
     payment_note: '',
   })
+  const [unitPriceValue, setUnitPriceValue] = useState(0)
+  const [amountPaidValue, setAmountPaidValue] = useState(0)
 
   // Load order data
   useEffect(() => {
@@ -91,13 +92,14 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
         area: (o.area as string) ?? '',
         address: (o.address as string) ?? '',
         menu_type: (o.menu_type as string) ?? '',
-        unit_price: o.quantity ? String(((o.amount as number) || 0) / (o.quantity as number)) : '',
         note: (o.note as string) ?? '',
         payment_status: (o.payment_status as string) ?? ((o.paid as boolean) ? 'paid' : 'unpaid'),
         payment_method: (o.payment_method as string) ?? '',
-        amount_paid: String(o.amount_paid ?? (o.paid ? (o.amount ?? 0) : 0)),
         payment_note: (o.payment_note as string) ?? '',
       })
+      const loadedUp = o.quantity ? ((o.amount as number || 0) / (o.quantity as number)) : 0
+      setUnitPriceValue(loadedUp)
+      setAmountPaidValue((o.amount_paid as number) ?? (o.paid ? ((o.amount as number) ?? 0) : 0))
       originalDateRef.current = (o.date as string) ?? ''
       // Restore structured menu selections if available
       const raw = o.bento_items as string | null | undefined
@@ -194,7 +196,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
 
   async function handleSave() {
     if (!form.customer_name.trim()) { setError('Customer name is required.'); return }
-    if (!form.unit_price || unitPrice <= 0) { setError('Unit price is required.'); return }
+    if (!unitPriceValue || unitPriceValue <= 0) { setError('Unit price is required.'); return }
 
     const activeVariantSubmit = activeVariants.filter(v => (variantQtys[v.id] ?? 0) > 0)
     const activeCustomCombos  = customCombos.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
@@ -222,7 +224,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
 
     const itemsText = parts.join(', ')
     const menuType  = activeVariantSubmit.length > 0 ? activeVariantSubmit[0].code : 'custom'
-    const amount    = (parseFloat(form.unit_price) || 0) * totalQty
+    const amount    = unitPriceValue * totalQty
 
     const firstCustom  = activeCustomCombos[0]
     const firstProtein = firstCustom ? proteins.find(p => p.id === firstCustom.protein_id) : null
@@ -289,7 +291,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       paid:                    form.payment_status === 'paid',
       payment_status:          form.payment_status,
       payment_method:          form.payment_method || null,
-      amount_paid:             parseFloat(form.amount_paid) || 0,
+      amount_paid:             amountPaidValue,
       payment_note:            form.payment_note || '',
       status:                  allProductionDone ? 'completed' : 'pending',
     }
@@ -308,7 +310,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
   }
 
   const isDelivery     = form.fulfillment_type === 'delivery'
-  const unitPrice      = parseFloat(form.unit_price) || 0
+  const unitPrice      = unitPriceValue
   const activeVariants = assignedVariantIds === null
     ? []
     : allVariants.filter(v => assignedVariantIds.includes(v.id))
@@ -508,8 +510,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <label className="text-sm text-gray-600 mb-1 block">Unit Price (RM)</label>
-              <input name="unit_price" type="number" inputMode="decimal" placeholder="13.00"
-                value={form.unit_price} onChange={handleChange} className={INPUT} />
+              <MoneyInput value={unitPriceValue} onChange={v => setUnitPriceValue(v ?? 0)} max="price" className={INPUT} />
             </div>
             <div>
               <label className="text-sm text-gray-600 mb-1 block">Quantity</label>
@@ -536,10 +537,11 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
             <label className="text-sm text-gray-600 mb-2 block">Status</label>
             <div className="flex gap-2">
               {(['unpaid','paid','partial'] as const).map(s => (
-                <button key={s} type="button" onClick={() => setForm(prev => ({
-                  ...prev, payment_status: s,
-                  amount_paid: s === 'paid' ? String(total) : s === 'unpaid' ? '0' : prev.amount_paid,
-                }))}
+                <button key={s} type="button" onClick={() => {
+                  setForm(prev => ({ ...prev, payment_status: s }))
+                  if (s === 'paid') setAmountPaidValue(total)
+                  else if (s === 'unpaid') setAmountPaidValue(0)
+                }}
                   className={`flex-1 py-2.5 rounded-xl text-sm font-medium border capitalize ${
                     form.payment_status === s
                       ? s === 'paid' ? 'bg-green-500 text-white border-green-500' : s === 'partial' ? 'bg-blue-500 text-white border-blue-500' : 'bg-orange-500 text-white border-orange-500'
@@ -563,7 +565,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
               </div>
               <div className="mb-4">
                 <label className="text-sm text-gray-600 mb-1 block">Amount Paid (RM)</label>
-                <input name="amount_paid" type="number" placeholder="0.00" value={form.amount_paid} onChange={handleChange} className={INPUT} />
+                <MoneyInput value={amountPaidValue} onChange={v => setAmountPaidValue(v ?? 0)} max="cash" className={INPUT} />
               </div>
             </>
           )}

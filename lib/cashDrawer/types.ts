@@ -6,6 +6,8 @@ export type CashDrawerSession = {
   counter: string
   outletId: string
   outletName: string | null
+  cashierOnDutyStaffId: string | null
+  cashierOnDutyName: string | null      // resolved from staff_profiles
   openTime: string | null     // ISO timestamptz
   closeTime: string | null
   openedBy: string | null
@@ -54,6 +56,7 @@ export type CashAdjustment = {
 export type ImportSessionInput = {
   businessDate: string        // YYYY-MM-DD
   counter: string
+  cashierOnDutyStaffId?: string | null
   outletName: string | null
   openTime: string | null     // ISO datetime string (from datetime-local input)
   closeTime: string | null

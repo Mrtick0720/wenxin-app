@@ -8,7 +8,7 @@ import { FullPageSpinner } from '@/app/components/Spinner'
 // Client-side stack page registry.
 //
 // IMPORTANT: this module imports ONLY client-safe page modules. Server
-// Components that pull in `server-only` (e.g. /cashier, /attendance, /checklist,
+// Components that pull in `server-only` (e.g. /attendance, /checklist,
 // which import lib/auth/currentStaff) are intentionally NOT registered here, so
 // they never enter the client bundle. Those routes navigate by URL via the
 // `getPageElement() === null` fallback in NavLink / BottomNav.
@@ -40,6 +40,7 @@ const loadAssetsPage = () => import('@/app/assets/page')
 const loadMarketingPage = () => import('@/app/marketing/page')
 const loadKitchenTasksPage = () => import('@/app/kitchen-tasks/page')
 const loadCustomersClient = () => import('@/app/bento/customers/CustomersClient')
+export const loadCashierClient = () => import('@/app/cashier/CashierClient')
 
 const PurchaseClient = lazy(loadPurchaseClient)
 const BentoClient = lazy(loadBentoClient)
@@ -62,6 +63,7 @@ const AssetsPage = lazy(loadAssetsPage)
 const MarketingPage = lazy(loadMarketingPage)
 const KitchenTasksPage = lazy(loadKitchenTasksPage)
 const CustomersClientPage = lazy(loadCustomersClient)
+const CashierClientPage = lazy(loadCashierClient)
 
 function PageFallback() {
   return <FullPageSpinner />
@@ -106,6 +108,7 @@ const pages: Record<string, RouteFactory> = {
   '/marketing':    () => <S><MarketingPage /></S>,
   '/kitchen-tasks': () => <S><KitchenTasksPage /></S>,
   '/bento/customers': () => <S><CustomersClientPage /></S>,
+  '/cashier':         () => <S><CashierClientPage /></S>,
 }
 
 /**

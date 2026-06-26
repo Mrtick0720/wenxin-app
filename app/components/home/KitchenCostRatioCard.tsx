@@ -10,10 +10,11 @@ import type { PurchaseKpi } from '@/lib/purchaseLedger/types'
 import type { RatioStatus } from '@/lib/purchaseLedger/kpiMath'
 
 const RATIO_THEME: Record<RatioStatus, { gradient: string; fg: string; fgFaint: string; badgeBg: string; badgeFg: string; label: string }> = {
-  good:    { gradient: 'linear-gradient(150deg, #22c55e 0%, #16a34a 45%, #15803d 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'Good' },
-  warning: { gradient: 'linear-gradient(150deg, #fbbf24 0%, #f59e0b 45%, #d97706 100%)', fg: '#422006', fgFaint: 'rgba(66,32,6,0.6)', badgeBg: 'rgba(66,32,6,0.16)', badgeFg: '#422006', label: 'Watch' },
-  bad:     { gradient: 'linear-gradient(150deg, #f87171 0%, #ef4444 45%, #dc2626 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'Too high' },
-  na:      { gradient: 'linear-gradient(150deg, #9ca3af 0%, #6b7280 45%, #4b5563 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'No data' },
+  excellent: { gradient: 'linear-gradient(150deg, #22c55e 0%, #16a34a 45%, #15803d 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'Excellent' },
+  good:      { gradient: 'linear-gradient(150deg, #60a5fa 0%, #3b82f6 45%, #2563eb 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'Good' },
+  warning:   { gradient: 'linear-gradient(150deg, #fbbf24 0%, #f59e0b 45%, #d97706 100%)', fg: '#422006', fgFaint: 'rgba(66,32,6,0.6)', badgeBg: 'rgba(66,32,6,0.16)', badgeFg: '#422006', label: 'Watch' },
+  bad:       { gradient: 'linear-gradient(150deg, #f87171 0%, #ef4444 45%, #dc2626 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'Too high' },
+  na:        { gradient: 'linear-gradient(150deg, #9ca3af 0%, #6b7280 45%, #4b5563 100%)', fg: '#fff', fgFaint: 'rgba(255,255,255,0.72)', badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#fff', label: 'No data' },
 }
 
 const MONTHS_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']

@@ -28,6 +28,7 @@ import {
 import { fetchChecklistAction, fetchPurchaseContentAction, moveRecordToChecklistAction } from './checklist-actions'
 import type { ChecklistEntry } from './checklist-actions'
 import type { RestoreChecklistAction } from './ChecklistSection'
+import MoneyInput from '@/app/components/MoneyInput'
 import CatalogCombobox from './CatalogCombobox'
 import QuickEditSheet from './QuickEditSheet'
 import NumericEditorSheet from './NumericEditorSheet'
@@ -121,21 +122,24 @@ function ratioText(r: number | null) {
 // Color category for the Purchase Cost Ratio hero card. These are the COLOR
 // thresholds — a management urgency signal — and are deliberately distinct from
 // the configurable `kpi.target` (which still drives the "Target ≤ X%" label):
-//   < 25%  → Healthy (green)
-//   25–30% → Warning (amber)
-//   ≥ 30%  → Danger  (red)
-type RatioBand = 'healthy' | 'warning' | 'danger' | 'na'
+//   ≤25%        → Excellent (green)
+//   >25%–≤30%  → Good      (blue)
+//   >30%–≤35%  → Warning   (amber)
+//   >35%        → Danger    (red)
+type RatioBand = 'excellent' | 'good' | 'warning' | 'danger' | 'na'
 
 function ratioBand(ratio: number | null): RatioBand {
   if (ratio === null) return 'na'
-  if (ratio < 25) return 'healthy'
-  if (ratio < 30) return 'warning'
+  if (ratio <= 25) return 'excellent'
+  if (ratio <= 30) return 'good'
+  if (ratio <= 35) return 'warning'
   return 'danger'
 }
 
 function ratioBandLabel(b: RatioBand): string {
   switch (b) {
-    case 'healthy': return 'Healthy'
+    case 'excellent': return 'Excellent'
+    case 'good':    return 'Good'
     case 'warning': return 'Warning'
     case 'danger':  return 'Danger'
     default:        return 'No data'
@@ -145,12 +149,17 @@ function ratioBandLabel(b: RatioBand): string {
 // Per-band theme for the hero card. Gradients are noticeably more saturated than
 // the Home revenue card (orange-400→600) so this reads as a warning indicator
 // from a distance. Amber uses dark text for contrast; the rest use white.
-const RATIO_BANDS: RatioBand[] = ['healthy', 'warning', 'danger', 'na']
+const RATIO_BANDS: RatioBand[] = ['excellent', 'good', 'warning', 'danger', 'na']
 const BAND_THEME: Record<RatioBand, {
   gradient: string; fg: string; fgMuted: string; fgFaint: string; badgeBg: string; badgeFg: string
 }> = {
-  healthy: {
+  excellent: {
     gradient: 'linear-gradient(150deg, #22c55e 0%, #16a34a 45%, #15803d 100%)',
+    fg: '#ffffff', fgMuted: 'rgba(255,255,255,0.88)', fgFaint: 'rgba(255,255,255,0.70)',
+    badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#ffffff',
+  },
+  good: {
+    gradient: 'linear-gradient(150deg, #60a5fa 0%, #3b82f6 45%, #2563eb 100%)',
     fg: '#ffffff', fgMuted: 'rgba(255,255,255,0.88)', fgFaint: 'rgba(255,255,255,0.70)',
     badgeBg: 'rgba(255,255,255,0.22)', badgeFg: '#ffffff',
   },
@@ -832,6 +841,7 @@ export default function PurchaseClient(props: Props) {
 
   const [showAdd, setShowAdd]                 = useState(false)
   const [form, setForm]                       = useState(emptyForm)
+  const [manualUnitPrice, setManualUnitPrice] = useState(0)
   const [selectedAddItem, setSelectedAddItem] = useState<CatalogItem | null>(null)
   const [saving, setSaving]                   = useState(false)
   const [addError, setAddError]               = useState<string | null>(null)
@@ -1120,6 +1130,7 @@ export default function PurchaseClient(props: Props) {
   function openAdd() {
     void ensureCatalogLoaded()
     setForm(emptyForm)
+    setManualUnitPrice(0)
     setSelectedAddItem(null)
     setAddError(null)
     setSaving(false)
@@ -1138,7 +1149,7 @@ export default function PurchaseClient(props: Props) {
         category: form.category,
         unit: form.unit,
         quantity: parseFloat(form.quantity) || 0,
-        unit_price: form.unit_price ? parseFloat(form.unit_price) : null,
+        unit_price: manualUnitPrice > 0 ? manualUnitPrice : null,
         supplier: form.supplier.trim() || null,
         receiver: form.receiver.trim() || null,
         remarks: form.remarks.trim() || null,
@@ -1163,7 +1174,7 @@ export default function PurchaseClient(props: Props) {
       category:      form.category,
       unit:          form.unit,
       quantity:      parseFloat(form.quantity) || 0,
-      unit_price:    form.unit_price ? parseFloat(form.unit_price) : null,
+      unit_price:    manualUnitPrice > 0 ? manualUnitPrice : null,
       supplier:      form.supplier.trim() || null,
       purchaser:     ctx!.role,
       receiver:      form.receiver.trim() || null,
@@ -2227,8 +2238,7 @@ export default function PurchaseClient(props: Props) {
                     onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} />
                 </Field>
                 <Field label="Unit Price (RM)">
-                  <input className={inputCls} type="number" inputMode="decimal" placeholder="0.00" value={form.unit_price}
-                    onChange={(e) => setForm((f) => ({ ...f, unit_price: e.target.value }))} />
+                  <MoneyInput value={manualUnitPrice} onChange={v => setManualUnitPrice(v ?? 0)} max="price" className={inputCls} />
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-2">

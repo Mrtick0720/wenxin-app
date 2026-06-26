@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import BackButton from '../../components/BackButton'
+import MoneyInput from '@/app/components/MoneyInput'
 import { supabase } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useNavigation } from '@/app/components/NavigationStack'
@@ -74,16 +75,14 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
     order_time:       '',
     area:             '',
     address:          '',
-    // Custom (no weekly plan) bento compartments
     ready_by:         '',
-    unit_price:       '',
     note:             '',
-    // Payment
     payment_status:   'unpaid',
     payment_method:   '',
-    amount_paid:      '0',
     payment_note:     '',
   })
+  const [unitPriceValue, setUnitPriceValue] = useState(0)
+  const [amountPaidValue, setAmountPaidValue] = useState(0)
 
   // Customer combobox — pick a member (deducts package) or free-type a walk-in.
   const [customers, setCustomers] = useState<CustomerOpt[]>([])
@@ -192,14 +191,9 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
   }
 
   function handlePaymentStatus(status: string) {
-    setForm(prev => ({
-      ...prev,
-      payment_status: status,
-      amount_paid:
-        status === 'paid'   ? String(total || 0) :
-        status === 'unpaid' ? '0' :
-        prev.amount_paid,
-    }))
+    setForm(prev => ({ ...prev, payment_status: status }))
+    if (status === 'paid') setAmountPaidValue(total || 0)
+    else if (status === 'unpaid') setAmountPaidValue(0)
   }
 
   const activeVariants   = assignedVariantIds === null
@@ -209,13 +203,13 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
   const variantTotal     = activeVariants.reduce((s, v) => s + (variantQtys[v.id] ?? 0), 0)
   const customTotal      = customCombos.reduce((s, c) => s + c.qty, 0)
   const totalQty         = variantTotal + customTotal
-  const unitPrice = parseFloat(form.unit_price) || 0
+  const unitPrice = unitPriceValue
   const total = unitPrice * totalQty
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.customer_name.trim()) { show('Customer name is required.', 'error'); return }
-    if (!form.unit_price || unitPrice <= 0) { show('Unit price is required.', 'error'); return }
+    if (!unitPriceValue || unitPriceValue <= 0) { show('Unit price is required.', 'error'); return }
 
     const activeVariantSubmit = activeVariants.filter(v => (variantQtys[v.id] ?? 0) > 0)
     const activeCustomCombos  = customCombos.filter(c => c.protein_id || c.vegetable_id || c.staple_id)
@@ -306,7 +300,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
         status:                  'pending',
         payment_status:          form.payment_status,
         payment_method:          form.payment_method || null,
-        amount_paid:             parseFloat(form.amount_paid) || 0,
+        amount_paid:             amountPaidValue,
         payment_note:            form.payment_note || '',
       }).select('*').single()
       if (err) {
@@ -686,8 +680,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div>
               <label className="text-sm text-gray-600 mb-1 block">Unit Price (RM) *</label>
-              <input type="number" name="unit_price" inputMode="decimal" placeholder="25.50"
-                value={form.unit_price} onChange={handleChange} className={INPUT} />
+              <MoneyInput value={unitPriceValue} onChange={v => setUnitPriceValue(v ?? 0)} max="price" className={INPUT} />
             </div>
             <div>
               <label className="text-sm text-gray-600 mb-1 block">Quantity</label>
@@ -751,10 +744,9 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
                 <label className="text-sm text-gray-600 mb-1 block">
                   Amount Paid (RM){form.payment_status === 'partial' ? ' *' : ''}
                 </label>
-                <input type="number" name="amount_paid" placeholder="0.00"
-                  value={form.amount_paid} onChange={handleChange} className={INPUT} />
-                {form.payment_status === 'partial' && form.amount_paid && total > 0 &&
-                  parseFloat(form.amount_paid) >= total && (
+                <MoneyInput value={amountPaidValue} onChange={v => setAmountPaidValue(v ?? 0)} max="cash" className={INPUT} />
+                {form.payment_status === 'partial' && amountPaidValue > 0 && total > 0 &&
+                  amountPaidValue >= total && (
                   <p className="text-xs text-orange-500 mt-1">Amount paid should be less than total for partial payment.</p>
                 )}
               </div>

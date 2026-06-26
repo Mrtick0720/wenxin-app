@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import MoneyInput from '@/app/components/MoneyInput'
 import { updateRecordAction } from './actions'
 import type { LedgerRecord } from './PurchaseClient'
 
@@ -52,7 +53,7 @@ const Z_MAX = 2147483647
 export default function QuickEditSheet({ record, showCosts, canRollback, onClose, onOptimisticSave, onSaveFailed, onRollback }: Props) {
   const [quantity, setQuantity] = useState(String(record.quantity || ''))
   const [unit, setUnit] = useState(record.unit)
-  const [unitPrice, setUnitPrice] = useState(record.unit_price != null ? String(record.unit_price) : '')
+  const [unitPriceValue, setUnitPriceValue] = useState(record.unit_price ?? 0)
   const [supplier, setSupplier] = useState(record.supplier ?? '')
   const [note, setNote] = useState(record.note ?? '')
   const [paymentMethod, setPaymentMethod] = useState(record.purchase_method ?? '')
@@ -71,7 +72,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
   }
 
   const qty = parseFloat(quantity) || 0
-  const up = parseFloat(unitPrice) || 0
+  const up = unitPriceValue
   const total = qty * up
 
   async function handleSave() {
@@ -80,7 +81,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
     setError(null)
 
     const updatedQty = qty
-    const updatedUp = showCosts && unitPrice ? up : (record.unit_price ?? 0)
+    const updatedUp = showCosts ? unitPriceValue : (record.unit_price ?? 0)
 
     const optimistic = {
       ...(record as unknown as LedgerRecord),
@@ -103,7 +104,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
       category: record.category,
       unit,
       quantity: updatedQty,
-      unit_price: showCosts && unitPrice ? updatedUp : null,
+      unit_price: showCosts && unitPriceValue > 0 ? updatedUp : null,
       supplier: showCosts ? supplier.trim() || null : null,
       purchaser: record.purchaser ?? null,
       receiver: record.receiver ?? null,
@@ -208,10 +209,12 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-400 mb-1 block">Unit Price (RM)</label>
-                  <input
+                  <MoneyInput
+                    value={unitPriceValue}
+                    onChange={v => setUnitPriceValue(v ?? 0)}
+                    max="price"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
-                    style={{ fontSize: 16 }} type="number" inputMode="decimal" placeholder="0.00"
-                    value={unitPrice} onChange={(e) => setUnitPrice(e.target.value)}
+                    style={{ fontSize: 16 }}
                   />
                 </div>
                 <div>
