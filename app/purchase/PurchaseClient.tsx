@@ -566,6 +566,12 @@ export default function PurchaseClient(props: Props) {
   const pendingUnchecks = useRef<Set<number>>(new Set())
   const [rollbackErrMsg, setRollbackErrMsg] = useState<string | null>(null)
 
+  // Portals (createPortal) require document, which is undefined during SSR.
+  // Using useState(false) + useEffect ensures server and client initial renders
+  // both produce `false`, preventing hydration mismatches.
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+
   // ── Optimistic transition guards ──
   // Tracks items actively moving between stages. During any refresh, items in this
   // map are filtered out of the bucket they're LEAVING so a stale poll cannot flash
@@ -1867,7 +1873,7 @@ export default function PurchaseClient(props: Props) {
                 onItemsChange={setChecklistSeed}
                 onSelectModeChange={setChecklistSelectMode}
                 onSelectionChange={(count, all) => { setChecklistSelectedCount(count); setChecklistAllSelected(all) }}
-                purchaserName={props.purchaserName ?? ''}
+                purchaserName={props.purchaserName ?? staff?.displayName ?? ''}
               />
             )}
           </div>
@@ -2135,7 +2141,7 @@ export default function PurchaseClient(props: Props) {
       </div>
 
       {/* ── Checklist FAB — hidden when in select-to-send mode ── */}
-      {activeTab === 'checklist' && !checklistSelectMode && typeof document !== 'undefined' && createPortal(
+      {activeTab === 'checklist' && !checklistSelectMode && mounted && createPortal(
         <button
           type="button"
           onClick={() => {
@@ -2159,7 +2165,7 @@ export default function PurchaseClient(props: Props) {
       )}
 
       {/* ── Add sheet — portaled to body so it clears bottom nav ── */}
-      {showAdd && typeof document !== 'undefined' && createPortal(
+      {showAdd && mounted && createPortal(
         <div
           className="fixed flex flex-col justify-end"
           style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}
@@ -2309,7 +2315,7 @@ export default function PurchaseClient(props: Props) {
       )}
 
       {/* ── Rollback error toast ── */}
-      {rollbackErrMsg && typeof document !== 'undefined' && createPortal(
+      {rollbackErrMsg && mounted && createPortal(
         <div
           className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
           style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', background: '#ef4444' }}
@@ -2320,7 +2326,7 @@ export default function PurchaseClient(props: Props) {
       )}
 
       {/* ── Delete confirm — portaled to body ── */}
-      {deletingRecord && typeof document !== 'undefined' && createPortal(
+      {deletingRecord && mounted && createPortal(
         <div
           className="fixed flex items-center justify-center"
           style={{ top: 0, left: 0, right: 0, bottom: 0, zIndex: Z_MAX, background: 'rgba(0,0,0,0.4)' }}

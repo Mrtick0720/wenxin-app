@@ -835,7 +835,7 @@ export default function ChecklistSection({
       created_at: new Date().toISOString(),
       completed_at: null,
       created_by: null,
-      created_by_name: null,
+      created_by_name: purchaserName || null,
     }
     setItems(prev => [optimistic, ...prev])
     setAddForm(emptyAddForm); setAddCatalogItem(null); setShowAdd(false)
