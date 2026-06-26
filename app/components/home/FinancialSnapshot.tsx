@@ -14,13 +14,15 @@ interface Props {
   receivablesOpenCount: number
   payablesTotal: number
   payablesDueTodayCount: number
+  cashBalance: number | null
+  cashNote: string | null
 }
 
 function fmt(n: number) {
   return `RM ${n.toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-export default function FinancialSnapshot({ role, receivablesTotal, receivablesOpenCount, payablesTotal, payablesDueTodayCount }: Props) {
+export default function FinancialSnapshot({ role, receivablesTotal, receivablesOpenCount, payablesTotal, payablesDueTodayCount, cashBalance, cashNote }: Props) {
   const isOwner = role === 'owner'
 
   const items = [
@@ -45,11 +47,11 @@ export default function FinancialSnapshot({ role, receivablesTotal, receivablesO
     ...(isOwner ? [{
       key: 'cash',
       label: 'Cash',
-      value: '—',
-      note: 'Manual entry',
-      amountClass: 'text-gray-400',
-      noteClass: 'text-gray-300',
-      href: '/finance',
+      value: cashBalance !== null ? fmt(cashBalance) : '—',
+      note: cashNote ?? 'Manual entry',
+      amountClass: cashBalance !== null ? 'text-gray-900' : 'text-gray-400',
+      noteClass: cashBalance !== null ? 'text-gray-400' : 'text-gray-300',
+      href: '/cashier',
     }] : []),
   ]
 

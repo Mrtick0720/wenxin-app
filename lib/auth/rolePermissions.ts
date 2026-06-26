@@ -168,6 +168,10 @@ export const ROLE_PERMISSIONS: RolePermissions = {
     PERMISSION.VIEW_BENTO_WEEKLY_MENU,
     // No VIEW_BENTO_PRODUCTION
 
+    // Purchase — submit checklist requests and verify role-safe rows.
+    // No EDIT_PURCHASE: that permission edits the financial ledger directly.
+    PERMISSION.VIEW_PURCHASE,
+
     // Dine-in
     PERMISSION.VIEW_DINE_IN,
     PERMISSION.EDIT_DINE_IN,

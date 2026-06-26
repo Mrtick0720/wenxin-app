@@ -13,7 +13,7 @@ export default function LoginForm({ sessionEnded = false }: { sessionEnded?: boo
     <form action={formAction} className="mt-10 space-y-4">
       {sessionEnded && !state.error && (
         <div className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
-          Your 12-hour session has ended. Please sign in again.
+          Your session has ended. Please sign in again.
         </div>
       )}
 

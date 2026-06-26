@@ -1,0 +1,5 @@
+{
+  "_README": "PLACEHOLDER — not a real query. To use: copy this file to scripts/feedme-cash-drawer.query.json (gitignored) and replace its entire contents with the REAL request body you captured from the FeedMe Cash Drawer `postgres-query` request (Chrome DevTools -> Network -> postgres-query -> Payload -> copy the JSON body). The request body is an array of three query specs with schemaName: RECORD, DRAWER, and PAYMENT_TIME_PAYMENT. Keep ids OUT of the file by using the ${FEEDME_BUSINESS_ID} / ${FEEDME_RESTAURANT_ID} placeholders — the script substitutes them from .env.local at runtime. The <<PASTE...>> marker must be gone or the script refuses to run.",
+  "restaurantId": "${FEEDME_RESTAURANT_ID}",
+  "query": "<<PASTE THE CAPTURED CASH DRAWER postgres-query BODY HERE>>"
+}

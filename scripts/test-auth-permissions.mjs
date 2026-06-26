@@ -23,6 +23,7 @@ assert.equal(canAccessPath('kitchen', '/bento/production'), true)
 assert.equal(canAccessPath('kitchen', '/bento/customers'), false)
 assert.equal(canAccessPath('front_desk', '/bento/customers/12/edit'), true)
 assert.equal(canAccessPath('front_desk', '/bento/production'), false)
+assert.equal(canAccessPath('front_desk', '/purchase'), true)
 
 assert.deepEqual(getHomeVisibility('kitchen'), {
   revenue: false,
@@ -129,7 +130,7 @@ assert.deepEqual(
 )
 assert.deepEqual(
   getNavigationItems('front_desk').map(item => item.href),
-  ['/', '/tasks', '/profile']
+  ['/', '/tasks', '/purchase', '/profile']
 )
 
 console.log('staff authorization tests passed')

@@ -53,13 +53,16 @@ for (const [name, value] of Object.entries(PERMISSION)) {
 // Roles
 // ═══════════════════════════════════════════════════════════════════
 
-section('5. Roles — Five Roles Defined')
-assert(STAFF_ROLES.length === 5, `Expected 5 roles, got ${STAFF_ROLES.length}`)
+section('5. Roles — All Roles Defined')
+assert(STAFF_ROLES.length === 8, `Expected 8 roles, got ${STAFF_ROLES.length}`)
 assert(STAFF_ROLES.includes('owner'), 'owner role missing')
 assert(STAFF_ROLES.includes('manager'), 'manager role missing')
 assert(STAFF_ROLES.includes('kitchen'), 'kitchen role missing')
 assert(STAFF_ROLES.includes('front_desk'), 'front_desk role missing')
 assert(STAFF_ROLES.includes('delivery'), 'delivery role missing')
+assert(STAFF_ROLES.includes('cashier'), 'cashier role missing')
+assert(STAFF_ROLES.includes('packing'), 'packing role missing')
+assert(STAFF_ROLES.includes('other'), 'other role missing')
 
 section('6. Roles — ROLE_PERMISSIONS Has All Roles')
 for (const role of STAFF_ROLES) {
@@ -153,13 +156,18 @@ assert(hasPermission('front_desk', PERMISSION.VIEW_INCIDENTS), 'Front Desk shoul
 assert(hasPermission('front_desk', PERMISSION.VIEW_CASHIER), 'Front Desk should have VIEW_CASHIER')
 assert(hasPermission('front_desk', PERMISSION.OPERATE_CASHIER), 'Front Desk should have OPERATE_CASHIER')
 assert(hasPermission('front_desk', PERMISSION.VIEW_CUSTOMER_PII), 'Front Desk should have VIEW_CUSTOMER_PII')
+assert(hasPermission('front_desk', PERMISSION.VIEW_PURCHASE), 'Front Desk should have VIEW_PURCHASE')
 
 section('14. Front Desk — Does NOT Have Restricted Permissions')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_HOME_REVENUE), 'Front Desk should NOT have VIEW_HOME_REVENUE')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_FINANCE), 'Front Desk should NOT have VIEW_FINANCE')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_REPORTS), 'Front Desk should NOT have VIEW_REPORTS')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_BENTO_PRODUCTION), 'Front Desk should NOT have VIEW_BENTO_PRODUCTION')
-assert(!hasPermission('front_desk', PERMISSION.VIEW_PURCHASE), 'Front Desk should NOT have VIEW_PURCHASE')
+assert(!hasPermission('front_desk', PERMISSION.APPROVE_PURCHASE), 'Front Desk should NOT have legacy APPROVE_PURCHASE')
+assert(!hasPermission('front_desk', PERMISSION.EDIT_PURCHASE), 'Front Desk should NOT directly edit Purchase ledger records')
+assert(!hasPermission('front_desk', PERMISSION.VIEW_PURCHASE_COSTS), 'Front Desk should NOT have VIEW_PURCHASE_COSTS')
+assert(!hasPermission('front_desk', PERMISSION.DELETE_PURCHASE), 'Front Desk should NOT have DELETE_PURCHASE')
+assert(!hasPermission('front_desk', PERMISSION.EXPORT_PURCHASE), 'Front Desk should NOT have EXPORT_PURCHASE')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_INVENTORY), 'Front Desk should NOT have VIEW_INVENTORY')
 assert(!hasPermission('front_desk', PERMISSION.VIEW_ATTENDANCE_ALL), 'Front Desk should NOT have VIEW_ATTENDANCE_ALL')
 assert(!hasPermission('front_desk', PERMISSION.EDIT_SUPPLIERS), 'Front Desk should NOT have EDIT_SUPPLIERS')

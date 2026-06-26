@@ -63,15 +63,17 @@ section('2. canAddPurchase')
 assert(canAddPurchase('owner'), 'owner can add')
 assert(canAddPurchase('manager'), 'manager can add')
 assert(canAddPurchase('kitchen'), 'kitchen can add')
-assert(!canAddPurchase('front_desk'), 'front_desk cannot add')
+assert(!canAddPurchase('front_desk'), 'front_desk cannot directly add ledger records')
 
 // ── Delete / Export (owner only) ──
 section('3. canDeletePurchase / canExportPurchase')
 assert(canDeletePurchase('owner'), 'owner can delete')
 assert(!canDeletePurchase('manager'), 'manager cannot delete')
 assert(!canDeletePurchase('kitchen'), 'kitchen cannot delete')
+assert(!canDeletePurchase('front_desk'), 'front_desk cannot delete')
 assert(canExportPurchase('owner'), 'owner can export')
 assert(!canExportPurchase('manager'), 'manager cannot export')
+assert(!canExportPurchase('front_desk'), 'front_desk cannot export')
 
 // ── Month total ──
 section('4. canViewMonthTotal')
@@ -84,6 +86,7 @@ section('5. historyWindowDays')
 assert(historyWindowDays('owner') === null, 'owner = all history')
 assert(historyWindowDays('manager') === 7, 'manager = 7 days')
 assert(historyWindowDays('kitchen') === 1, 'kitchen = today only')
+assert(historyWindowDays('front_desk') === 1, 'front_desk = today only')
 
 // ── Edit rights ──
 section('6. canEditRecord')
@@ -106,6 +109,10 @@ assert(!('total_price' in staffView), 'kitchen view drops total_price')
 assert(!('supplier' in staffView), 'kitchen view drops supplier')
 assert(!('actual_unit_price' in staffView), 'kitchen view drops actual_unit_price')
 assert(staffView.name === 'Fish' && staffView.quantity === 5, 'kitchen view keeps name/quantity')
+const frontDeskView = sanitizeRecordForRole('front_desk', full)
+assert(!('unit_price' in frontDeskView), 'front_desk view drops unit_price')
+assert(!('total_price' in frontDeskView), 'front_desk view drops total_price')
+assert(!('supplier' in frontDeskView), 'front_desk view drops supplier')
 const ownerView = sanitizeRecordForRole('owner', full)
 assert(ownerView.unit_price === 10, 'owner view keeps unit_price')
 

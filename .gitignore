@@ -37,6 +37,9 @@ yarn-error.log*
 # FeedMe last-successful revenue cache (local data, not committed)
 lib/feedme/.cache/
 
+# FeedMe cash drawer query body — contains hardcoded venue IDs, use .example.json as template
+scripts/feedme-cash-drawer.query.json
+
 # vercel
 .vercel
 

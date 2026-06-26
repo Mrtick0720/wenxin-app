@@ -67,13 +67,13 @@ export default function StaffAccountsStack() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="sticky top-0 z-10 flex items-center gap-3 border-b bg-white px-4 py-3">
+    <main className="h-full flex flex-col bg-gray-50">
+      <header className="flex-shrink-0 flex items-center gap-3 border-b bg-white px-4 py-3">
         <BackButton href="/staff" />
         <h1 className="text-base font-semibold text-gray-900">Staff Accounts</h1>
       </header>
       <div
-        className="mx-auto max-w-3xl px-4 py-4"
+        className="flex-1 min-h-0 overflow-y-auto w-full mx-auto max-w-3xl px-4 py-4"
         style={{ paddingBottom: 'calc(112px + env(safe-area-inset-bottom, 0px))' }}
       >
         {accounts === null ? (

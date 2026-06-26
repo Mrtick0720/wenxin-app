@@ -4,7 +4,7 @@ import {
   type StaffRole,
 } from './types.ts'
 
-export const SESSION_HOURS = 12
+export const SESSION_DAYS = 7
 export const STAFF_EMAIL_DOMAIN = 'staff.wenxin.internal'
 
 type RoleMap = Partial<Record<StaffRole, boolean>>
@@ -33,7 +33,7 @@ const ROUTE_RULES: RouteRule[] = [
   { prefix: '/reservations', roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/complaints', roles: { owner: true, manager: true, front_desk: true } },
   { prefix: '/inventory', roles: { owner: true, manager: true, kitchen: true } },
-  { prefix: '/purchase', roles: { owner: true, manager: true, kitchen: true } },
+  { prefix: '/purchase', roles: { owner: true, manager: true, kitchen: true, front_desk: true } },
   // Kitchen removed: the Suppliers page exposes purchase cost totals, which
   // must never reach staff devices (see Purchase ledger cost-hiding policy).
   { prefix: '/suppliers', roles: { owner: true, manager: true } },
@@ -61,7 +61,7 @@ const ROUTE_RULES: RouteRule[] = [
 const BOTTOM_NAV_ITEMS: Array<NavigationItem & { roles: RoleMap }> = [
   { href: '/', label: 'Home', roles: ALL_ROLES },
   { href: '/tasks', label: 'Approvals', roles: ALL_ROLES },
-  { href: '/purchase', label: 'Purchase', roles: { owner: true, manager: true, kitchen: true } },
+  { href: '/purchase', label: 'Purchase', roles: { owner: true, manager: true, kitchen: true, front_desk: true } },
   { href: '/marketing', label: 'Marketing', roles: { owner: true, manager: true } },
   { href: '/profile', label: 'Me', roles: ALL_ROLES },
 ]
@@ -116,7 +116,7 @@ export function getHomeVisibility(role: StaffRole) {
 export function isSessionExpired(startedAt: string, now = new Date()) {
   const start = new Date(startedAt).getTime()
   if (!Number.isFinite(start)) return true
-  return now.getTime() - start >= SESSION_HOURS * 60 * 60 * 1000
+  return now.getTime() - start >= SESSION_DAYS * 24 * 60 * 60 * 1000
 }
 
 export function validatePasswordChange(password: string, confirmation: string) {

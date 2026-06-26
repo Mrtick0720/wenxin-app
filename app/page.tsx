@@ -18,6 +18,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayStore'
 import { businessToday } from '@/lib/feedme/parseQueryResult'
 import { todayLocalStr } from '@/lib/dateUtils'
+import { fetchCashDrawerSessionsAction, fetchLatestClosedSessionAction } from '@/app/cashier/actions'
+import { computeCurrentCash } from '@/lib/cashDrawer/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -143,6 +145,34 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+async function getCashBalance(businessDate: string): Promise<{ balance: number | null; note: string | null }> {
+  const result = await fetchCashDrawerSessionsAction(businessDate)
+  if (result.ok && result.data.length > 0) {
+    // Priority 1: today's OPEN session — compute current cash
+    for (const s of result.data) {
+      if (s.closeTime === null) {
+        const cc = computeCurrentCash(s)
+        if (cc !== null) return { balance: cc, note: 'Cash Drawer' }
+      }
+    }
+    // Priority 2: today's CLOSED session — use closing float
+    for (const s of result.data) {
+      if (s.closeTime !== null && s.closingFloat !== null) {
+        return { balance: s.closingFloat, note: 'Cash Drawer' }
+      }
+    }
+  }
+  // Priority 3: latest previous closed session — use closing float
+  const closedResult = await fetchLatestClosedSessionAction(businessDate)
+  if (closedResult.ok && closedResult.data) {
+    const s = closedResult.data
+    if (s.closingFloat !== null) return { balance: s.closingFloat, note: 'Cash Drawer' }
+    const cc = computeCurrentCash(s)
+    if (cc !== null) return { balance: cc, note: 'Cash Drawer' }
+  }
+  return { balance: null, note: null }
+}
+
 // ── Today's Issues — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
 function getTodayIssues(role: StaffRole): Issue[] {
@@ -172,7 +202,8 @@ export default async function Home() {
   // blocking the others or the page render. FeedMe metrics fall back to null,
   // which the UI renders as "—".
   const showPurchase = canAccessPath(staff.role, '/purchase')
-  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary] = await Promise.all([
+  const bizToday = businessToday()
+  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary, cashDrawerBalance] = await Promise.all([
     safe(getStats(supabase, visibility.revenue), null),
     safe(getBentoStats(supabase, staff.role, visibility.revenue), { total: 0, completed: 0, revenue: 0 }),
     safe(getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')), 0),
@@ -185,6 +216,7 @@ export default async function Home() {
     safe(visibility.revenue ? readRelayWeek() : Promise.resolve(null), null),
     safe(visibility.revenue ? getReceivablesSummary(supabase) : Promise.resolve({ totalBalance: 0, openCount: 0 }), { totalBalance: 0, openCount: 0 }),
     safe(visibility.revenue ? getPayablesSummary() : Promise.resolve({ totalBalance: 0, dueTodayCount: 0 }), { totalBalance: 0, dueTodayCount: 0 }),
+    safe(staff.role === 'owner' ? getCashBalance(bizToday) : Promise.resolve({ balance: null, note: null }), { balance: null, note: null }),
   ])
   const notificationCount = anomalyCount + pendingChecklist
 
@@ -199,7 +231,6 @@ export default async function Home() {
   // fabricate today's revenue, and growth stays "—" for now.
   const feedMeDate = feedMeRevenue?.value.date ?? null
   const feedMeRevenueValue = feedMeRevenue?.value.revenue ?? null
-  const bizToday = businessToday()
   const revenueIsToday = feedMeDate !== null && feedMeDate === bizToday
   const revenueTotal = revenueIsToday ? feedMeRevenueValue : null
 
@@ -331,6 +362,8 @@ export default async function Home() {
             receivablesOpenCount={receivablesSummary.openCount}
             payablesTotal={payablesSummary.totalBalance}
             payablesDueTodayCount={payablesSummary.dueTodayCount}
+            cashBalance={cashDrawerBalance.balance ?? feedMeRevenue?.value?.payments?.find(p => p.method === 'CASH')?.amount ?? null}
+            cashNote={cashDrawerBalance.note ?? (feedMeRevenue?.value?.payments?.find(p => p.method === 'CASH') ? 'Cash sales today' : null)}
           />
         )}
 
