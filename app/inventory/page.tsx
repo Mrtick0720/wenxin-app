@@ -16,6 +16,33 @@ import ReportLowSheet from './ReportLowSheet'
 import { resolveLowStockReportAction } from './report-actions'
 import type { LowStockReport } from '@/lib/inventory/types'
 
+// ── Stale-while-revalidate module-level cache ────────────────────────
+//
+// Lives outside the component so it survives unmount. This is the standard
+// caching model for all stack modules (Purchase, Inventory, Staff, Bento…).
+//
+// Algorithm:
+//   No cache  → foreground fetch → loading skeleton → render → write cache
+//   Cache fresh (< TTL) → render immediately → do nothing
+//   Cache stale (≥ TTL) → render immediately → background refresh →
+//                          if data changed: update state + cache
+//                          always: reset cachedAt
+//
+// Invariants:
+//   • The loading skeleton is shown ONLY on the very first visit (cache === null).
+//   • TTL expiry never discards the cache or shows a skeleton.
+//   • Cache is only invalidated on auth/permission failure (caught by SessionHeartbeat)
+//     or on full-page reload (logout tears down module scope).
+//   • Errors are never cached. Background-refresh errors are swallowed silently.
+//   • setItems() is skipped when the new data is byte-for-byte identical to the
+//     cached data, avoiding unnecessary React reconciliation passes.
+type InventoryCache = {
+  items: InventoryView[]
+  cachedAt: number
+}
+let inventoryCache: InventoryCache | null = null
+const CACHE_TTL_MS = 5 * 60 * 1000  // background refresh after 5 minutes of age
+
 // ── Status badge config ──────────────────────────────────────────────
 const STATUS_BADGE: Record<DisplayStatus, { label: string; color: string }> = {
   out:          { label: 'Out of Stock',  color: 'bg-red-100 text-red-600' },
@@ -251,17 +278,60 @@ function ItemCard({
 type Tab = 'Attention' | 'All' | typeof INVENTORY_CATEGORIES[number]
 
 export default function InventoryPage() {
-  const [items, setItems] = useState<InventoryView[]>([])
-  const [loading, setLoading] = useState(true)
+  // Snapshot the module-level cache at render time so useState initializers are
+  // stable. Any write to inventoryCache after this point does not affect them.
+  const initCache = inventoryCache
+
+  const [items, setItems] = useState<InventoryView[]>(initCache?.items ?? [])
+  const [loading, setLoading] = useState(initCache === null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('Attention')
 
   useEffect(() => {
-    fetchInventoryAction().then(result => {
-      if (result.ok) setItems(result.data)
-      else setFetchError(result.error)
-      setLoading(false)
-    })
+    let active = true
+
+    async function doFetch(isBackground: boolean) {
+      const result = await fetchInventoryAction()
+      if (!active) return
+
+      if (result.ok) {
+        const newItems = result.data
+        // Skip the state update when the serialized data is identical — avoids
+        // a React reconciliation pass that would produce no visible change.
+        const changed =
+          !inventoryCache ||
+          JSON.stringify(newItems) !== JSON.stringify(inventoryCache.items)
+        if (changed) setItems(newItems)
+        // Always update cachedAt so the TTL resets after a successful refresh,
+        // preventing a background fetch on every subsequent mount.
+        inventoryCache = { items: newItems, cachedAt: Date.now() }
+        if (!isBackground) setLoading(false)
+      } else {
+        // Never cache errors. On foreground (first visit) surface the error.
+        // On background (stale refresh) swallow silently — the cached data is
+        // still valid and the user should not see a flash or error for a
+        // transient network hiccup.
+        if (!isBackground) {
+          setFetchError(result.error)
+          setLoading(false)
+        }
+      }
+    }
+
+    if (initCache === null) {
+      // First visit — no cache exists. Show the loading skeleton and fetch.
+      doFetch(false)
+    } else {
+      const isStale = Date.now() - initCache.cachedAt >= CACHE_TTL_MS
+      if (isStale) {
+        // Cache is stale. Cached data is already in state (rendered instantly).
+        // Kick off a silent background refresh to bring the data up to date.
+        doFetch(true)
+      }
+      // Cache is fresh — nothing to do.
+    }
+
+    return () => { active = false }
   }, [])
 
   // Count Sheet state
@@ -287,17 +357,20 @@ export default function InventoryPage() {
     const result = await resolveLowStockReportAction(reportId)
     if (result.ok) {
       fetchInventoryAction().then(r => {
-        if (r.ok) setItems(r.data)
+        if (r.ok) {
+          setItems(r.data)
+          inventoryCache = { items: r.data, cachedAt: Date.now() }
+        }
       })
     }
   }
 
   function handleItemSaved() {
-    setLoading(true)
     fetchInventoryAction().then(result => {
-      if (result.ok) setItems(result.data)
-      else setFetchError(result.error)
-      setLoading(false)
+      if (result.ok) {
+        setItems(result.data)
+        inventoryCache = { items: result.data, cachedAt: Date.now() }
+      }
     })
   }
 
@@ -319,11 +392,11 @@ export default function InventoryPage() {
   }
 
   function handleCountSaved() {
-    setLoading(true)
     fetchInventoryAction().then(result => {
-      if (result.ok) setItems(result.data)
-      else setFetchError(result.error)
-      setLoading(false)
+      if (result.ok) {
+        setItems(result.data)
+        inventoryCache = { items: result.data, cachedAt: Date.now() }
+      }
     })
   }
 
