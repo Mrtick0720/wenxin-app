@@ -83,10 +83,15 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false, b
     setForceHomeActive(false)
 
     if (action === 'home') {
-      if (canPop) popToRoot()
+      if (canPop) {
+        popToRoot()
+        // Home layer is already mounted beneath the stack — no router navigation needed.
+        // Calling router.push('/') here would trigger force-dynamic re-render + splash.
+      } else {
+        router.push('/')
+      }
       setForceHomeActive(true)
       setPendingHref('/')
-      router.push('/')
       return
     }
 
@@ -110,7 +115,7 @@ export default function BottomNav({ pendingCount = 0, purchasePending = false, b
         const active = pendingHref
           ? href === pendingHref
           : href === '/'
-            ? activePath === '/' || forceHomeActive
+            ? activePath === '/' || (forceHomeActive && !canPop)
             : activePath === href || activePath.startsWith(`${href}/`)
         return (
           <a key={label} href={href} onClick={e => handleTap(e, href)}
