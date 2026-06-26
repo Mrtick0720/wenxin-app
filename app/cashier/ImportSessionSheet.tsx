@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { importCashDrawerSessionAction, fetchActiveStaffAction } from './actions'
 import type { ImportSessionInput } from '@/lib/cashDrawer/types'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -352,14 +353,22 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
           </div>
         )}
 
-        {/* Step 5: Import */}
+        {/* Step 5: Import confirmation text only — button lives in the footer below */}
         {step === 5 && (
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
               All values have been reviewed. Tap Import to save this Cash Drawer session for {form.businessDate} / {form.counter || 'Main'}.
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Unified footer — keyboard-aware for all steps */}
+      <SheetActionFooter className="border-t border-gray-50">
+        {step === 5 ? (
+          <>
             {error && (
-              <div className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2">{error}</div>
+              <div className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2 mb-3">{error}</div>
             )}
             <button
               onClick={handleImport}
@@ -368,29 +377,26 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
             >
               {submitting ? 'Importing…' : 'Import'}
             </button>
+          </>
+        ) : (
+          <div className="flex gap-3">
+            {step > 1 && (
+              <button
+                onClick={() => { setStep(s => (s - 1) as Step); setStepError(null) }}
+                className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-medium text-gray-600"
+              >
+                Back
+              </button>
+            )}
+            <button
+              onClick={handleNext}
+              className="flex-1 py-3 rounded-2xl bg-orange-500 text-white text-sm font-semibold"
+            >
+              {step === 4 ? 'Confirm' : 'Next'}
+            </button>
           </div>
         )}
-      </div>
-
-      {/* Navigation: Back / Next — not shown on Step 5 */}
-      {step < 5 && (
-        <div className="px-4 pb-8 pt-3 flex gap-3 border-t border-gray-50">
-          {step > 1 && (
-            <button
-              onClick={() => { setStep(s => (s - 1) as Step); setStepError(null) }}
-              className="flex-1 py-3 rounded-2xl border border-gray-200 text-sm font-medium text-gray-600"
-            >
-              Back
-            </button>
-          )}
-          <button
-            onClick={handleNext}
-            className="flex-1 py-3 rounded-2xl bg-orange-500 text-white text-sm font-semibold"
-          >
-            {step === 4 ? 'Confirm' : 'Next'}
-          </button>
-        </div>
-      )}
+      </SheetActionFooter>
     </div>
   )
 

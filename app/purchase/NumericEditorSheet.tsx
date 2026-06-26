@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 // ── Custom numeric keypad (compact) ──────────────────────────────────────────
 // Digit key button — declared at module scope to avoid react-hooks/static-components
@@ -298,10 +299,7 @@ export default function NumericEditorSheet({
         </div>
 
         {/* Action buttons */}
-        <div
-          className="flex-shrink-0 px-4 pt-2"
-          style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
-        >
+        <SheetActionFooter>
           <div className="flex gap-3">
             <button
               type="button"
@@ -337,7 +335,7 @@ export default function NumericEditorSheet({
               {deleteLabel}
             </button>
           )}
-        </div>
+        </SheetActionFooter>
       </div>
     </div>
   )

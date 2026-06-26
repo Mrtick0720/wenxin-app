@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { createCashAdjustmentAction } from './actions'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 type Tab = 'coupon' | 'pay_out'
 
@@ -194,27 +195,25 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
           </div>
 
           {/* V1 notice */}
-          <div className="bg-gray-50 rounded-xl px-3 py-2.5 mb-4">
+          <div className="bg-gray-50 rounded-xl px-3 py-2.5 mb-2">
             <p className="text-[11px] text-gray-400 leading-relaxed">
               Adjustments are tracked for owner visibility. They are not included in the drawer balance in V1.
             </p>
           </div>
+        </div>
 
+        <SheetActionFooter className="border-t">
           {error && (
-            <div className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2 mb-4">{error}</div>
+            <div className="text-sm text-red-500 bg-red-50 rounded-xl px-3 py-2 mb-3">{error}</div>
           )}
-
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full bg-orange-500 text-white font-semibold py-3.5 rounded-2xl disabled:opacity-50 mb-2"
+            className="w-full bg-orange-500 text-white font-semibold py-3.5 rounded-2xl disabled:opacity-50"
           >
             {submitting ? 'Saving…' : 'Save'}
           </button>
-        </div>
-
-        {/* Safe area */}
-        <div className="pb-6 shrink-0" />
+        </SheetActionFooter>
       </div>
     </div>
   )

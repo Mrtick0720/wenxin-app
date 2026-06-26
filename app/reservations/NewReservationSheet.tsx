@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { createReservationAction, updateReservationAction, type NewReservationInput } from './actions'
 import { todayLocalStr, addDays } from '@/lib/dateUtils'
 import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 const Z_MAX = 2147483647
 
@@ -87,7 +88,7 @@ export default function NewReservationSheet({
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '90vh', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
+        style={{ maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
@@ -186,7 +187,7 @@ export default function NewReservationSheet({
         </div>
 
         {/* Footer */}
-        <div className="flex-shrink-0 border-t border-gray-100 px-4 pt-3 pb-3">
+        <SheetActionFooter className="border-t border-gray-100">
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose}
               className="py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">
@@ -198,7 +199,7 @@ export default function NewReservationSheet({
               {saving ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </div>
+        </SheetActionFooter>
       </div>
     </div>
   )

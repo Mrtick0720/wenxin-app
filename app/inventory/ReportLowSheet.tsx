@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createLowStockReportAction } from './report-actions'
 import type { LowStockReportInput } from '@/lib/inventory/types'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 type ReportType = 'running_low' | 'out_of_stock' | 'needed_tomorrow' | 'unusual_usage' | 'other'
 type Urgency = 'normal' | 'urgent'
@@ -101,7 +102,7 @@ export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props
       </div>
 
       {/* Scrollable body */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-5 pb-32 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-5 pb-6 space-y-6">
 
         {/* WHAT'S HAPPENING */}
         <section className="space-y-3">
@@ -182,9 +183,9 @@ export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props
       </div>
 
       {/* Save bar */}
-      <div className="fixed bottom-0 inset-x-0 z-[510] bg-white border-t px-4 pt-3 pb-[calc(env(safe-area-inset-bottom,0px)+12px)] space-y-2">
+      <SheetActionFooter className="border-t">
         {error && (
-          <p className="text-sm text-red-500 text-center">{error}</p>
+          <p className="text-sm text-red-500 text-center mb-2">{error}</p>
         )}
         <button
           type="button"
@@ -194,7 +195,7 @@ export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props
         >
           {submitting ? 'Submitting…' : 'Submit Report'}
         </button>
-      </div>
+      </SheetActionFooter>
 
     </div>,
     document.body,

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { markPurchasePaidAction } from './actions'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 const Z = 2147483647
 
@@ -42,41 +43,55 @@ export default function PaymentModal({
 
   const content = (
     <div
-      className="fixed flex items-center justify-center"
-      style={{ inset: 0, zIndex: Z, background: 'rgba(0,0,0,0.45)' }}
+      className="fixed inset-0 flex flex-col justify-end bg-black/45"
+      style={{ zIndex: Z }}
       onClick={onClose}
     >
       <div
-        className="mx-5 w-full max-w-sm rounded-2xl bg-white p-5"
-        onClick={(event) => event.stopPropagation()}
+        className="bg-white rounded-t-3xl flex flex-col"
+        onClick={e => e.stopPropagation()}
       >
-        <div className="mb-2 text-base font-semibold">Mark Paid</div>
-        <div className="text-sm text-gray-500">
-          Mark the full amount <span className="font-semibold text-gray-900">{fmt(amount)}</span> as paid?
+        {/* Grabber */}
+        <div className="flex justify-center pt-3 pb-1 shrink-0">
+          <div className="w-10 h-1 bg-gray-200 rounded-full" />
         </div>
-        {error && (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
-            {error}
+
+        {/* Body */}
+        <div className="px-5 pt-3 pb-4 shrink-0">
+          <div className="text-base font-semibold mb-2">Mark Paid</div>
+          <div className="text-sm text-gray-500">
+            Mark the full amount{' '}
+            <span className="font-semibold text-gray-900">{fmt(amount)}</span>{' '}
+            as paid?
           </div>
-        )}
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-xl bg-gray-100 py-2.5 text-sm font-semibold text-gray-600 active:opacity-80"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 rounded-xl py-2.5 text-sm font-semibold text-white active:opacity-90"
-            style={{ background: saving ? '#d1d5db' : '#22c55e' }}
-          >
-            {saving ? 'Saving…' : 'Mark Paid'}
-          </button>
+          {error && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {error}
+            </div>
+          )}
         </div>
+
+        {/* Footer */}
+        <SheetActionFooter className="border-t border-gray-100">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="py-3 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="py-3 rounded-xl text-sm font-semibold text-white active:opacity-90"
+              style={{ background: saving ? '#d1d5db' : '#22c55e' }}
+            >
+              {saving ? 'Saving…' : 'Mark Paid'}
+            </button>
+          </div>
+        </SheetActionFooter>
       </div>
     </div>
   )

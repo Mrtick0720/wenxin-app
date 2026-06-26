@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { CATEGORY_COUNT_PERMISSIONS } from '@/lib/inventory/permissions'
 import { fetchCountItemsAction, saveCountAction } from './count-actions'
 import type { CountItem, CountEntry } from '@/lib/inventory/types'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 type Props = {
   isOpen: boolean
@@ -276,9 +277,9 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
             )}
           </div>
 
-          {/* Save bar — flex-shrink-0 sibling, pinned to bottom of the flex column */}
+          {/* Save bar — keyboard-aware, pinned to bottom of the flex column */}
           {items.length > 0 && (
-            <div className="flex-shrink-0 bg-white border-t px-4 py-4 pb-safe">
+            <SheetActionFooter className="border-t">
               {saveError && (
                 <p className="text-xs text-red-500 mb-2 text-center">{saveError}</p>
               )}
@@ -294,7 +295,7 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
               >
                 {saving ? 'Saving...' : 'Save Count'}
               </button>
-            </div>
+            </SheetActionFooter>
           )}
         </>
       )}

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { updateRecordAction } from './actions'
 import type { LedgerRecord } from './PurchaseClient'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'DuitNow', 'Credit', 'Other']
@@ -124,7 +125,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
     >
       <div
         className="bg-white rounded-t-3xl flex flex-col"
-        style={{ maxHeight: '92vh', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 20px)' }}
+        style={{ maxHeight: '92vh' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -307,7 +308,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
         )}
 
         {/* Footer */}
-        <div className="flex-shrink-0 border-t border-gray-100 bg-white px-4 pt-3 pb-3">
+        <SheetActionFooter className="border-t border-gray-100">
           <div className="grid grid-cols-2 gap-3">
             <button type="button" onClick={onClose}
               className="py-3 rounded-2xl text-sm font-semibold bg-gray-100 text-gray-600 active:opacity-80">Cancel</button>
@@ -315,7 +316,7 @@ export default function QuickEditSheet({ record, showCosts, canRollback, onClose
               className="py-3 rounded-2xl text-sm font-semibold text-white active:opacity-90"
               style={{ background: saving ? '#d1d5db' : '#f97316' }}>Save</button>
           </div>
-        </div>
+        </SheetActionFooter>
       </div>
     </div>
   )

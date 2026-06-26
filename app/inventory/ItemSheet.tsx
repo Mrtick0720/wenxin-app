@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { createItemAction, updateItemAction, archiveItemAction, deleteItemAction } from './manage-actions'
 import type { InventoryView, ItemCreateData, ItemUpdateData } from '@/lib/inventory/types'
+import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
 const CATEGORIES = ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies']
 const UNIT_QUICKPICKS = ['kg', 'g', 'bottles', 'tubs', 'pcs', 'bags', 'pairs', 'cartons', 'packs']
@@ -548,7 +549,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
       </div>
 
       {/* Save bar */}
-      <div className="flex-shrink-0 bg-white border-t px-4 py-4 pb-safe">
+      <SheetActionFooter className="border-t">
         {error && <p className="text-xs text-red-500 mb-2 text-center">{error}</p>}
         <button
           type="button"
@@ -562,7 +563,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
         >
           {saving ? 'Saving…' : mode === 'add' ? 'Add Item' : 'Save Changes'}
         </button>
-      </div>
+      </SheetActionFooter>
 
     </div>,
     document.body
