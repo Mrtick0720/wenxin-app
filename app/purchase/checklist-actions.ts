@@ -364,7 +364,7 @@ export async function moveRecordToChecklistAction(
  */
 export async function completeChecklistItemAction(
   id: number,
-  completion: { unit_price: number; supplier: string | null },
+  completion: { unit_price: number; supplier: string | null; quantity: number },
 ): Promise<ActionResult<{ purchaseRecordId: number; record: PurchaseRecord }>> {
   try {
     const staff = await requireRole(...PURCHASE_EXECUTION_ROLES)
@@ -385,7 +385,7 @@ export async function completeChecklistItemAction(
       specification: item.specification ?? null,
       category: item.category,
       unit: item.unit,
-      quantity: item.quantity,
+      quantity: completion.quantity,
       unit_price: completion.unit_price,
       supplier: completion.supplier || item.supplier || null,
       receiver: null,

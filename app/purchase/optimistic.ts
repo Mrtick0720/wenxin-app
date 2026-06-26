@@ -45,14 +45,16 @@ export function createOptimisticPurchaseRecord({
   today,
   unitPrice,
   supplier,
+  quantity,
 }: {
   item: OptimisticChecklistItem
   tempId: number
   today: string
   unitPrice: number
   supplier: string | null
+  quantity: number
 }): PurchaseRecord {
-  const total = roundMoney(item.quantity * unitPrice)
+  const total = roundMoney(quantity * unitPrice)
   return {
     id: tempId,
     date: today,
@@ -60,7 +62,7 @@ export function createOptimisticPurchaseRecord({
     specification: null,
     category: item.category,
     unit: item.unit,
-    quantity: item.quantity,
+    quantity,
     unit_price: unitPrice,
     total_price: total,
     supplier,

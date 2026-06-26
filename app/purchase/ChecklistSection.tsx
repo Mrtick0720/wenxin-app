@@ -631,7 +631,7 @@ export default function ChecklistSection({
   catalog: CatalogItem[]
   catalogLoading: boolean
   onRecordCreated: () => void
-  onItemCompleting?: (item: ChecklistEntry, completion: { unit_price: number; supplier: string | null }) => number
+  onItemCompleting?: (item: ChecklistEntry, completion: { unit_price: number; supplier: string | null; quantity: number }) => number
   onItemCompleted?: (record: PurchaseRecord, optimisticId?: number) => void
   onItemCompleteFailed?: (optimisticId?: number) => void
   initialItems?: ChecklistEntry[]
@@ -950,7 +950,7 @@ export default function ChecklistSection({
 
     // Optimistic: immediately remove from checklist before server responds
     const optimisticItem = completingItem
-    const completion = { unit_price: data.unitPrice, supplier: data.supplier || null }
+    const completion = { unit_price: data.unitPrice, supplier: data.supplier || null, quantity: data.quantity }
     const optimisticId = onItemCompleting?.(optimisticItem, completion)
     setItems(prev => prev.filter(i => i.id !== optimisticItem.id))
     setCompletingItem(null)

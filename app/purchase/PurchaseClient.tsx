@@ -284,7 +284,7 @@ function RecordRow({
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-medium text-sm text-gray-900">{displayName}</div>
-            <div className="text-xs text-gray-400 mt-0.5">{item.quantity} {item.unit}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{item.received_quantity ?? item.quantity} {item.unit}</div>
           </div>
         </button>
       </div>
@@ -388,7 +388,7 @@ function RecordRow({
 
           {/* Quantity — auto width, never wraps */}
           <span className="font-medium text-gray-600 tabular-nums text-left" style={{ fontSize: 14, whiteSpace: 'nowrap' }}>
-            {item.quantity % 1 === 0 ? item.quantity.toFixed(0) : item.quantity.toFixed(2)} {item.unit}
+            {(item.received_quantity ?? item.quantity) % 1 === 0 ? (item.received_quantity ?? item.quantity).toFixed(0) : (item.received_quantity ?? item.quantity).toFixed(2)} {item.unit}
           </span>
 
           {/* Total Amount — auto width, never wraps, capped */}
@@ -1314,7 +1314,7 @@ export default function PurchaseClient(props: Props) {
 
   // ── Checklist completion callbacks ──
   // Completed checklist items go to Pending Verification, NOT directly to records.
-  function handleItemCompleting(item: ChecklistEntry, completion: { unit_price: number; supplier: string | null }): number {
+  function handleItemCompleting(item: ChecklistEntry, completion: { unit_price: number; supplier: string | null; quantity: number }): number {
     const tempId = nextTempRecordId.current--
     const optimistic = createOptimisticPurchaseRecord({
       item,
@@ -1322,6 +1322,7 @@ export default function PurchaseClient(props: Props) {
       today: ctx!.today,
       unitPrice: completion.unit_price,
       supplier: completion.supplier,
+      quantity: completion.quantity,
     })
     const mutationId = nextClientMutationId()
     setMutationId(optimistic, mutationId)
