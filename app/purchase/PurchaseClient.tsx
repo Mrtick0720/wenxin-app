@@ -51,6 +51,7 @@ import {
 import { usePurchaseSync } from './usePurchaseSync'
 import { usePurchaseRealtime } from './usePurchaseRealtime'
 import { rollbackVerifiedToVerifyAction } from './verification-actions'
+import { PURCHASE_UNITS as UNITS } from '@/lib/units'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
 const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
@@ -91,7 +92,6 @@ type Perms = { canViewCosts: boolean; canDelete: boolean; canExport: boolean }
 type InlineEditField = 'quantity' | 'unit_price'
 type InlineEditTarget = { record: LedgerRecord; field: InlineEditField }
 
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTHS_FULL  = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -528,7 +528,7 @@ const Z_MAX = 2147483647
 
 export default function PurchaseClient(props: Props) {
   const hasInitial = !!(props.role && props.today && props.perms)
-  const { push, pop } = useNavigation()
+  const { push, pop, currentPath } = useNavigation()
   const staff = useStaff()
 
   // Snapshot cache at mount time so useState initializers are stable
@@ -815,10 +815,7 @@ export default function PurchaseClient(props: Props) {
   const [catalogSettled, setCatalogSettled] = useState(false) // true once first fetch completes
   const [catalogError, setCatalogError]     = useState<string | null>(null)
   const catalogLoadStarted = useRef(false)
-  const ensureCatalogLoaded = useCallback(async () => {
-    if (catalogLoadStarted.current) return
-    catalogLoadStarted.current = true
-    setCatalogLoading(true)
+  const doFetchCatalog = useCallback(async () => {
     setCatalogError(null)
     try {
       const res = await fetchCatalogAction()
@@ -831,6 +828,13 @@ export default function PurchaseClient(props: Props) {
       setCatalogSettled(true)
     }
   }, [])
+
+  const ensureCatalogLoaded = useCallback(async () => {
+    if (catalogLoadStarted.current) return
+    catalogLoadStarted.current = true
+    setCatalogLoading(true)
+    await doFetchCatalog()
+  }, [doFetchCatalog])
 
   // Catalog is needed by all roles: kitchen for item name translation, everyone
   // else for the Add to Checklist dropdown. Start on mount — parallel with the
@@ -872,6 +876,9 @@ export default function PurchaseClient(props: Props) {
   ) => {
     const thisGen = ++refreshGen.current
     if (!silent) setRefreshing(true)
+    // On manual pull-to-refresh, silently refresh the catalog so newly-added
+    // items become searchable without requiring a hard page reload.
+    if (!silent) void doFetchCatalog()
     const canViewCosts = ctx?.perms.canViewCosts ?? false
     const activeFilters = canViewCosts
       ? { category: f.category || undefined, from: f.from || undefined, to: f.to || undefined, supplier: f.supplier || undefined, purchaser: f.purchaser || undefined }
@@ -965,7 +972,7 @@ export default function PurchaseClient(props: Props) {
       return [...localOnly, ...guarded]
     })
     if (!silent) setRefreshing(false)
-  }, [filters, ctx, records])
+  }, [filters, ctx, records, doFetchCatalog])
 
   // Silent background refresh — used by polling/visibility/reconnect so no "Refreshing…" shows
   const backgroundRefresh = useCallback(() => {
@@ -2153,8 +2160,8 @@ export default function PurchaseClient(props: Props) {
 
       </div>
 
-      {/* ── Checklist FAB — hidden when in select-to-send mode ── */}
-      {activeTab === 'checklist' && !checklistSelectMode && mounted && createPortal(
+      {/* ── Checklist FAB — hidden when in select-to-send mode, or when Purchase is not the active stack page ── */}
+      {activeTab === 'checklist' && !checklistSelectMode && mounted && currentPath === '/purchase' && createPortal(
         <button
           type="button"
           onClick={() => {

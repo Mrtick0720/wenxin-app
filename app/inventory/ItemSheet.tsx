@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { createItemAction, updateItemAction, archiveItemAction, deleteItemAction } from './manage-actions'
-import type { InventoryView, ItemCreateData, ItemUpdateData } from '@/lib/inventory/types'
+import {
+  createItemAction,
+  updateItemAction,
+  fetchInventoryCatalogAction,
+  fetchInventoryStatusByCatalogAction,
+} from './manage-actions'
+import type { InventoryView, ItemCreateData, ItemUpdateData, InventoryCatalogItem, DisplayStatus } from '@/lib/inventory/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
-
-const CATEGORIES = ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies']
-const UNIT_QUICKPICKS = ['kg', 'g', 'bottles', 'tubs', 'pcs', 'bags', 'pairs', 'cartons', 'packs']
+import InventoryItemPicker from './InventoryItemPicker'
+import { INVENTORY_CATEGORIES } from '@/lib/inventory/status'
+import { PURCHASE_UNITS } from '@/lib/units'
 
 type Props = {
   mode: 'add' | 'edit'
@@ -18,7 +23,6 @@ type Props = {
 }
 
 type FormState = {
-  name: string
   category: string
   unit: string
   trackOpened: boolean
@@ -35,7 +39,6 @@ type FormState = {
 
 function emptyForm(): FormState {
   return {
-    name: '',
     category: '',
     unit: '',
     trackOpened: false,
@@ -53,7 +56,6 @@ function emptyForm(): FormState {
 
 function formFromItem(item: InventoryView): FormState {
   return {
-    name: item.name,
     category: item.category,
     unit: item.unit,
     trackOpened: item.trackOpened,
@@ -71,46 +73,68 @@ function formFromItem(item: InventoryView): FormState {
 
 export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm)
+  const [selectedCatalogItem, setSelectedCatalogItem] = useState<InventoryCatalogItem | null>(null)
+  const [catalogItems, setCatalogItems] = useState<InventoryCatalogItem[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(false)
+  const [catalogError, setCatalogError] = useState<string | null>(null)
+  const [existingItems, setExistingItems] = useState<Map<number, { currentQuantity: number; displayStatus: DisplayStatus }>>(new Map())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
-  const [archiveConfirm, setArchiveConfirm] = useState(false)
-  const [archiving, setArchiving] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
-    if (isOpen) {
-      setForm(mode === 'edit' && item ? formFromItem(item) : emptyForm())
-      setSaving(false)
-      setError(null)
-      setToast(null)
-      setArchiveConfirm(false)
-      setArchiving(false)
-      setDeleteConfirm(false)
-      setDeleting(false)
+    if (!isOpen) return
+    setForm(mode === 'edit' && item ? formFromItem(item) : emptyForm())
+    setSelectedCatalogItem(null)
+    setSaving(false)
+    setError(null)
+    setToast(null)
+
+    if (mode === 'add') {
+      setCatalogLoading(true)
+      setCatalogError(null)
+      setExistingItems(new Map())
+      Promise.all([
+        fetchInventoryCatalogAction(),
+        fetchInventoryStatusByCatalogAction(),
+      ]).then(([catalogResult, statusResult]) => {
+        setCatalogLoading(false)
+        if (catalogResult.ok) setCatalogItems(catalogResult.data)
+        else setCatalogError(catalogResult.error)
+        if (statusResult.ok) {
+          const map = new Map<number, { currentQuantity: number; displayStatus: DisplayStatus }>()
+          for (const s of statusResult.data) {
+            map.set(s.catalogId, { currentQuantity: s.currentQuantity, displayStatus: s.displayStatus })
+          }
+          setExistingItems(map)
+        }
+        // Status fetch failure is non-fatal: picker still works, just without
+        // duplicate indicators until the catalog_id migration is applied.
+      })
     }
   }, [isOpen, mode, item])
 
   function set<K extends keyof FormState>(field: K, value: FormState[K]) {
-    setForm(prev => {
-      const next = { ...prev, [field]: value }
-      // auto-set trackOpened when category changes
-      if (field === 'category') {
-        next.trackOpened = value === 'Sauces'
-      }
-      return next
-    })
+    setForm(prev => ({ ...prev, [field]: value }))
+  }
+
+  function handleSelectCatalog(item: InventoryCatalogItem) {
+    setSelectedCatalogItem(item)
+    set('trackOpened', item.trackInventory)
   }
 
   const initialQty = parseFloat(form.initialQuantity) || 0
   const initialOpenedQty = parseFloat(form.initialOpenedQty) || 0
   const initOpenedError = form.trackOpened && mode === 'add' && initialOpenedQty > initialQty
-  const canSave =
-    form.name.trim() !== '' &&
-    form.category !== '' &&
-    form.unit.trim() !== '' &&
-    !initOpenedError
+  const unitEmpty = mode === 'edit' && form.unit.trim() === ''
+
+  const canSave = mode === 'add'
+    ? selectedCatalogItem !== null && !initOpenedError
+    : !initOpenedError && !unitEmpty
+
+  const displayUnit = mode === 'add'
+    ? (selectedCatalogItem?.unit ?? 'units')
+    : (form.unit.trim() || (item?.unit ?? 'units'))
 
   async function handleSave() {
     if (!canSave || saving) return
@@ -121,9 +145,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
 
     if (mode === 'add') {
       const payload: ItemCreateData = {
-        name: form.name.trim(),
-        category: form.category,
-        unit: form.unit.trim(),
+        catalogId: selectedCatalogItem!.id,
         trackOpened: form.trackOpened,
         reorderLevel: parseFloat(form.reorderLevel) || 0,
         reorderPoint: form.reorderPoint !== '' ? parseFloat(form.reorderPoint) : null,
@@ -138,9 +160,8 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
       result = await createItemAction(payload)
     } else {
       const payload: ItemUpdateData = {
-        name: form.name.trim(),
-        category: form.category,
-        unit: form.unit.trim(),
+        category: form.category.trim() || item!.category,
+        unit: form.unit.trim() || item!.unit,
         trackOpened: form.trackOpened,
         reorderLevel: parseFloat(form.reorderLevel) || 0,
         reorderPoint: form.reorderPoint !== '' ? parseFloat(form.reorderPoint) : null,
@@ -164,42 +185,6 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
       }, 1200)
     } else {
       setError(result.error)
-    }
-  }
-
-  async function handleArchive() {
-    if (!item || archiving) return
-    setArchiving(true)
-    const result = await archiveItemAction(item.id)
-    setArchiving(false)
-    if (result.ok) {
-      setToast('Item archived')
-      onSaved()
-      setTimeout(() => {
-        setToast(null)
-        onClose()
-      }, 1200)
-    } else {
-      setError(result.error)
-      setArchiveConfirm(false)
-    }
-  }
-
-  async function handleDelete() {
-    if (!item || deleting) return
-    setDeleting(true)
-    const result = await deleteItemAction(item.id)
-    setDeleting(false)
-    if (result.ok) {
-      setToast('Item deleted')
-      onSaved()
-      setTimeout(() => {
-        setToast(null)
-        onClose()
-      }, 1200)
-    } else {
-      setError(result.error)
-      setDeleteConfirm(false)
     }
   }
 
@@ -233,74 +218,81 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
       {/* Scrollable body */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-5 pb-4 space-y-6">
 
-        {/* ── Basic Info ─────────────────────────────────────── */}
-        <section className="space-y-4">
-          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Basic Info</h3>
-
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">
-              Name <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.name}
-              onChange={e => set('name', e.target.value)}
-              placeholder="e.g. 牛肉面酱"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400"
+        {/* ── Inventory Item (add) / Item Info (edit) ──────────── */}
+        {mode === 'add' ? (
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              Inventory Item <span className="text-red-400">*</span>
+            </h3>
+            <InventoryItemPicker
+              items={catalogItems}
+              selectedItem={selectedCatalogItem}
+              onSelect={handleSelectCatalog}
+              existingItems={existingItems}
+              placeholder="Select Inventory Item..."
+              loading={catalogLoading}
+              error={catalogError}
             />
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">
-              Category <span className="text-red-400">*</span>
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => set('category', cat)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    form.category === cat
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            {selectedCatalogItem && (
+              <div className="flex items-center gap-2 px-1">
+                <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-600">
+                  {selectedCatalogItem.category}
+                </span>
+                <span className="text-xs text-gray-300">·</span>
+                <span className="text-xs text-gray-500">{selectedCatalogItem.unit}</span>
+              </div>
+            )}
+          </section>
+        ) : (
+          <section className="space-y-3">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Item</h3>
+            {/* Name — always read-only (owned by catalog or fixed at creation) */}
+            <div className="bg-gray-50 rounded-xl px-4 py-3">
+              <div className="font-semibold text-gray-900 text-sm">{item?.name}</div>
+              {item?.catalogId != null && (
+                <div className="text-xs text-gray-400 mt-0.5">Managed by Purchase Catalog</div>
+              )}
             </div>
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-500 mb-1.5 block">
-              Unit <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.unit}
-              onChange={e => set('unit', e.target.value)}
-              placeholder="e.g. bottles"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 mb-2"
-            />
-            <div className="flex flex-wrap gap-1.5">
-              {UNIT_QUICKPICKS.map(u => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => set('unit', u)}
-                  className={`px-2.5 py-1 rounded-full text-xs transition-colors ${
-                    form.unit === u
-                      ? 'bg-orange-100 text-orange-600 font-medium'
-                      : 'bg-gray-100 text-gray-500'
-                  }`}
-                >
-                  {u}
-                </button>
-              ))}
+            {/* Category — editable */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block">Category</label>
+              <select
+                value={form.category}
+                onChange={e => set('category', e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 bg-white"
+              >
+                {INVENTORY_CATEGORIES.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+                {/* If item has a non-standard category, keep it selectable */}
+                {item?.category && !INVENTORY_CATEGORIES.includes(item.category as never) && (
+                  <option value={item.category}>{item.category}</option>
+                )}
+              </select>
             </div>
-          </div>
-        </section>
+            {/* Unit — editable, shared with Purchase module */}
+            <div>
+              <label className="text-xs text-gray-500 mb-1.5 block">Unit</label>
+              <select
+                value={form.unit}
+                onChange={e => set('unit', e.target.value)}
+                className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none bg-white ${
+                  unitEmpty ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-orange-400'
+                }`}
+              >
+                <option value="">Select unit…</option>
+                {PURCHASE_UNITS.map(u => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+                {/* Keep legacy unit selectable if it isn't in the standard list */}
+                {form.unit && !PURCHASE_UNITS.includes(form.unit) && (
+                  <option value={form.unit}>{form.unit} (current)</option>
+                )}
+              </select>
+              {unitEmpty && <p className="text-xs text-red-500 mt-1">Unit is required</p>}
+            </div>
+          </section>
+        )}
 
         {/* ── Stock Settings ─────────────────────────────────── */}
         <section className="space-y-4">
@@ -310,7 +302,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
           <div className="flex items-center justify-between py-0.5">
             <div>
               <div className="text-sm font-medium text-gray-900">Track Opened / Unopened</div>
-              <div className="text-xs text-gray-400 mt-0.5">For sauces and items opened gradually</div>
+              <div className="text-xs text-gray-400 mt-0.5">Track opened and unopened stock separately</div>
             </div>
             <button
               type="button"
@@ -343,7 +335,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
                   className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-orange-400"
                 />
                 <span className="text-xs text-gray-400 w-16 flex-shrink-0 truncate">
-                  {form.unit || 'units'}
+                  {displayUnit}
                 </span>
               </div>
               {form.trackOpened && (
@@ -363,7 +355,7 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
                       }`}
                     />
                     <span className="text-xs text-gray-400 w-16 flex-shrink-0 truncate">
-                      {form.unit || 'units'}
+                      {displayUnit}
                     </span>
                   </div>
                   {initOpenedError && (
@@ -463,88 +455,11 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
           <textarea
             value={form.notes}
             onChange={e => set('notes', e.target.value)}
-            placeholder="Optional notes..."
+            placeholder="Optional notes…"
             rows={3}
             className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-orange-400 resize-none"
           />
         </section>
-
-        {/* ── Archive + Delete (edit only) ───────────────────── */}
-        {mode === 'edit' && (
-          <section className="border-t pt-4 space-y-4">
-
-            {/* Archive */}
-            {archiveConfirm ? (
-              <div className="bg-red-50 rounded-xl p-4 space-y-3">
-                <p className="text-sm font-medium text-red-600">Archive this item?</p>
-                <p className="text-xs text-red-400">
-                  It will be hidden from the inventory list. Historical counts are preserved.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setArchiveConfirm(false)}
-                    className="flex-1 py-2 rounded-xl text-sm border border-gray-200 text-gray-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleArchive}
-                    disabled={archiving}
-                    className="flex-1 py-2 rounded-xl text-sm bg-red-500 text-white font-medium disabled:opacity-50"
-                  >
-                    {archiving ? 'Archiving…' : 'Yes, Archive'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setArchiveConfirm(true)}
-                className="text-sm text-red-400 hover:text-red-500"
-              >
-                Archive Item
-              </button>
-            )}
-
-            {/* Delete — visually separated, more destructive */}
-            <div className="border-t pt-4">
-              {deleteConfirm ? (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
-                  <p className="text-sm font-semibold text-red-700">Permanently delete this item?</p>
-                  <p className="text-xs text-red-500">This cannot be undone.</p>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setDeleteConfirm(false)}
-                      className="flex-1 py-2 rounded-xl text-sm border border-gray-200 text-gray-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      disabled={deleting}
-                      className="flex-1 py-2 rounded-xl text-sm bg-red-700 text-white font-medium disabled:opacity-50"
-                    >
-                      {deleting ? 'Deleting…' : 'Delete Forever'}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirm(true)}
-                  className="text-sm text-red-700 hover:text-red-800 font-medium"
-                >
-                  Delete Item
-                </button>
-              )}
-            </div>
-
-          </section>
-        )}
 
       </div>
 

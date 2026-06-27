@@ -16,7 +16,7 @@ import {
   deleteRecordAction,
 } from '../actions'
 
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
+import { PURCHASE_UNITS as UNITS } from '@/lib/units'
 
 function formatCreatedAt(iso: string | null): string {
   if (!iso) return '—'

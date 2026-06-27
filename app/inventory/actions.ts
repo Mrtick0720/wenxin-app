@@ -45,15 +45,42 @@ export async function fetchInventoryAction(): Promise<
       reportsByItemId.set(row.item_id, existing)
     }
 
+    // Batch-fetch name_ms and purchase_source from catalog for all linked items.
+    // Items without a catalog link default to nameMs=null, purchaseSource='local'.
+    const catalogIds = rows
+      .map(r => r.item.catalogId)
+      .filter((id): id is number => id != null)
+
+    type CatalogMeta = { nameMs: string | null; purchaseSource: 'local' | 'china' | 'both' }
+    const catalogMeta = new Map<number, CatalogMeta>()
+
+    if (catalogIds.length > 0) {
+      const { data: catRows } = await supabase
+        .from('purchase_catalog')
+        .select('id, name_ms, purchase_source')
+        .in('id', catalogIds)
+      for (const row of catRows ?? []) {
+        const src = row.purchase_source as string
+        catalogMeta.set(row.id as number, {
+          nameMs: (row.name_ms as string) ?? null,
+          purchaseSource: (['china', 'both'].includes(src) ? src : 'local') as 'local' | 'china' | 'both',
+        })
+      }
+    }
+
     const views: InventoryView[] = rows.map(({ item, stock }) => {
       const currentQuantity = stock?.currentQuantity ?? 0
       const openedQuantity = stock?.openedQuantity ?? 0
+      const meta = item.catalogId != null ? (catalogMeta.get(item.catalogId) ?? null) : null
 
       return {
         id: item.id,
         name: item.name,
+        nameMs: meta?.nameMs ?? null,
         category: item.category,
         unit: item.unit,
+        catalogId: item.catalogId,
+        purchaseSource: meta?.purchaseSource ?? 'local',
         notes: item.notes,
         reorderLevel: item.reorderLevel,
         reorderPoint: item.reorderPoint,

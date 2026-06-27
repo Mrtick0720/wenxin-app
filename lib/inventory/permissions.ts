@@ -39,9 +39,9 @@ export function getInventoryActionsForRole(role: StaffRole): InventoryAction[] {
 // Used by UI to show/hide "Count Stock" and "Count This Category" buttons.
 
 export const CATEGORY_COUNT_PERMISSIONS: Record<string, string[]> = {
-  owner:      ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
-  manager:    ['Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
-  kitchen:    ['Fresh', 'Sauces', 'Dry Goods', 'Packaging', 'Supplies'],
+  owner:      ['Seafood', 'Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
+  manager:    ['Seafood', 'Fresh', 'Sauces', 'Dry Goods', 'Drinks', 'Packaging', 'Supplies'],
+  kitchen:    ['Seafood', 'Fresh', 'Sauces', 'Dry Goods', 'Packaging', 'Supplies'],
   front_desk: ['Drinks', 'Packaging'],
 }
 

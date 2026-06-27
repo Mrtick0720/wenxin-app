@@ -20,7 +20,7 @@ import {
 } from './checklist-actions'
 import type { ChecklistEntry } from './checklist-actions'
 
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
+import { PURCHASE_UNITS as UNITS } from '@/lib/units'
 
 // ── Shared input styles ───────────────────────────────────────────────────────
 const Z_MAX = 2147483647

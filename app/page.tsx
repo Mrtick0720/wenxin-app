@@ -19,7 +19,7 @@ import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayS
 import { businessToday } from '@/lib/feedme/parseQueryResult'
 import { todayLocalStr } from '@/lib/dateUtils'
 import { fetchCashDrawerSessionsAction, fetchLatestClosedSessionAction } from '@/app/cashier/actions'
-import { computeCurrentCash } from '@/lib/cashDrawer/utils'
+import { computeCurrentCash, computeCurrentCashLive } from '@/lib/cashDrawer/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -148,10 +148,11 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
 async function getCashBalance(businessDate: string): Promise<{ balance: number | null; note: string | null }> {
   const result = await fetchCashDrawerSessionsAction(businessDate)
   if (result.ok && result.data.length > 0) {
-    // Priority 1: today's OPEN session — compute current cash
+    // Priority 1: today's OPEN session — live estimate (null fields → 0 so the
+    // home card shows openingFloat − payOut even before cashSales is imported).
     for (const s of result.data) {
       if (s.closeTime === null) {
-        const cc = computeCurrentCash(s)
+        const cc = computeCurrentCashLive(s)
         if (cc !== null) return { balance: cc, note: 'Cash Drawer' }
       }
     }

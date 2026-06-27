@@ -25,8 +25,11 @@ CREATE POLICY "catalog readable by authenticated"
   TO authenticated USING (true);
 
 -- ── Seed data ──────────────────────────────────────────────────────────────
+-- Idempotent: skips rows whose (name_zh, name_ms, category) already exist.
 -- Columns: seq, name_ms, name_zh, name_en, category, unit
-INSERT INTO public.purchase_catalog (seq, name_ms, name_zh, name_en, category, unit) VALUES
+INSERT INTO public.purchase_catalog (seq, name_ms, name_zh, name_en, category, unit)
+SELECT v.seq, v.name_ms, v.name_zh, v.name_en, v.category, v.unit
+FROM (VALUES
   (1, 'Sawi', '菜心', 'Chinese Flowering Cabbage', 'Vegetables', 'bag'),
   (2, 'Pucuk Ubi', '番薯叶', 'Sweet Potato Leaves', 'Vegetables', 'bag'),
   (3, 'Kangkung', '空心菜', 'Water Spinach', 'Vegetables', 'bag'),
@@ -165,6 +168,12 @@ INSERT INTO public.purchase_catalog (seq, name_ms, name_zh, name_en, category, u
   (136, 'Serbuk pencuci', '洗衣粉', 'Laundry Powder', 'Packaging', 'pack'),
   (137, 'Clorox Bleach', 'clorox 漂白剂', 'Clorox Bleach', 'Others', 'bottle'),
   (138, 'Racun perosak', '杀虫剂', 'Pesticide', 'Others', 'bottle')
-ON CONFLICT DO NOTHING;
+) AS v(seq, name_ms, name_zh, name_en, category, unit)
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.purchase_catalog p
+  WHERE p.name_zh    = v.name_zh
+    AND p.category   = v.category
+    AND p.name_ms IS NOT DISTINCT FROM v.name_ms
+);
 
 COMMIT;

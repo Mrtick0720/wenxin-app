@@ -42,12 +42,32 @@ export type LowStockReportInput = {
   suggestedQuantity?: number | null
 }
 
+// Inventory status keyed by catalog_id — used by InventoryItemPicker to show
+// which catalog items are already tracked and their current stock level.
+export type InventoryCatalogStatus = {
+  catalogId: number
+  currentQuantity: number
+  displayStatus: DisplayStatus
+}
+
+// Catalog item shape returned by fetchInventoryCatalogAction.
+export type InventoryCatalogItem = {
+  id: number
+  name_zh: string
+  name_ms: string | null
+  category: string
+  unit: string
+  trackInventory: boolean
+  purchaseSource: 'local' | 'china' | 'both'
+}
+
 export type InventoryItem = {
   id: number
   outletId: string
   name: string
   category: string
   unit: string
+  catalogId: number | null
   reorderLevel: number        // min stock / low-stock threshold (col: reorder_level)
   reorderPoint: number | null // sea-freight reorder trigger (col: reorder_point)
   parLevel: number | null     // target/ideal stock level (col: par_level)
@@ -76,8 +96,11 @@ export type InventoryStockLevel = {
 export type InventoryView = {
   id: number
   name: string
+  nameMs: string | null         // secondary name from purchase_catalog (Malay/English)
   category: string
   unit: string
+  catalogId: number | null
+  purchaseSource: 'local' | 'china' | 'both'  // from purchase_catalog; legacy items default to 'local'
   notes: string | null
   // item config
   reorderLevel: number
@@ -152,9 +175,7 @@ export type CountEntry = {
 // Item management types
 
 export type ItemCreateData = {
-  name: string
-  category: string
-  unit: string
+  catalogId: number           // required — name/category/unit come from catalog server-side
   trackOpened: boolean
   reorderLevel: number
   reorderPoint: number | null
@@ -168,7 +189,7 @@ export type ItemCreateData = {
 }
 
 export type ItemUpdateData = {
-  name: string
+  // category and unit can be overridden in inventory independently of the purchase catalog
   category: string
   unit: string
   trackOpened: boolean

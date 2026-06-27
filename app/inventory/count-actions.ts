@@ -67,6 +67,7 @@ export async function fetchCountItemsAction(
 export async function saveCountAction(
   entries: CountEntry[],
   category: string,
+  notes?: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
     const staff = await requireRole('owner', 'manager', 'kitchen', 'front_desk')
@@ -93,6 +94,7 @@ export async function saveCountAction(
     const { error } = await supabase.rpc('save_inventory_count', {
       p_entries: entries,
       p_category: category,
+      p_notes: notes ?? null,
     })
 
     if (error) {

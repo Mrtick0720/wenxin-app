@@ -2,9 +2,86 @@
 
 import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import type { ItemCreateData, ItemUpdateData } from '@/lib/inventory/types'
+import { computeDisplayStatus } from '@/lib/inventory/status'
+import type { InventoryCatalogItem, InventoryCatalogStatus, ItemCreateData, ItemUpdateData } from '@/lib/inventory/types'
 
 const OUTLET_ID = '00000000-0000-0000-0000-000000000001'
+
+export async function fetchInventoryCatalogAction(): Promise<
+  { ok: true; data: InventoryCatalogItem[] } | { ok: false; error: string }
+> {
+  try {
+    await requireRole('owner', 'manager')
+    const supabase = await createServerSupabaseClient()
+    const { data, error } = await supabase
+      .from('purchase_catalog')
+      .select('id, name_zh, name_ms, category, unit, track_inventory, purchase_source')
+      .eq('active', true)
+      .eq('track_inventory', true)
+      .order('seq')
+    if (error) throw error
+    return {
+      ok: true,
+      data: (data ?? []).map(row => ({
+        id: row.id as number,
+        name_zh: row.name_zh as string,
+        name_ms: (row.name_ms as string) ?? null,
+        category: row.category as string,
+        unit: row.unit as string,
+        trackInventory: Boolean(row.track_inventory),
+        purchaseSource: (['china', 'both'].includes(row.purchase_source as string)
+          ? row.purchase_source
+          : 'local') as 'local' | 'china' | 'both',
+      })),
+    }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// Returns the inventory status for every active inventory item that is linked
+// to a catalog entry. Used by InventoryItemPicker for duplicate prevention.
+export async function fetchInventoryStatusByCatalogAction(): Promise<
+  { ok: true; data: InventoryCatalogStatus[] } | { ok: false; error: string }
+> {
+  try {
+    await requireRole('owner', 'manager')
+    const supabase = await createServerSupabaseClient()
+
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('catalog_id, category, reorder_level, reorder_point, inventory_stock_levels(current_quantity, last_counted_at)')
+      .eq('outlet_id', OUTLET_ID)
+      .eq('status', 'active')
+      .not('catalog_id', 'is', null)
+
+    if (error) return { ok: false, error: error.message }
+
+    const result: InventoryCatalogStatus[] = (data ?? []).map(row => {
+      const r = row as Record<string, unknown>
+      const stockRows = r.inventory_stock_levels
+      const stock = (Array.isArray(stockRows) ? stockRows[0] : stockRows) as Record<string, unknown> | null
+      const currentQuantity = stock ? Number(stock.current_quantity ?? 0) : 0
+      const lastCountedAt = stock ? (stock.last_counted_at as string | null) : null
+
+      return {
+        catalogId: r.catalog_id as number,
+        currentQuantity,
+        displayStatus: computeDisplayStatus({
+          currentQuantity,
+          reorderLevel: Number(r.reorder_level ?? 0),
+          reorderPoint: r.reorder_point != null ? Number(r.reorder_point) : null,
+          lastCountedAt,
+          category: r.category as string,
+        }),
+      }
+    })
+
+    return { ok: true, data: result }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
 
 export async function createItemAction(
   data: ItemCreateData,
@@ -12,31 +89,40 @@ export async function createItemAction(
   try {
     await requireRole('owner', 'manager')
 
-    const name = data.name.trim()
-    if (!name) return { ok: false, error: 'Name is required' }
-    if (!data.category) return { ok: false, error: 'Category is required' }
-    if (!data.unit.trim()) return { ok: false, error: 'Unit is required' }
+    const supabase = await createServerSupabaseClient()
+
+    // Fetch name/category/unit from catalog — these are catalog-owned fields
+    const { data: catalogRow, error: catalogError } = await supabase
+      .from('purchase_catalog')
+      .select('name_zh, category, unit')
+      .eq('id', data.catalogId)
+      .eq('active', true)
+      .eq('track_inventory', true)
+      .single()
+
+    if (catalogError || !catalogRow) {
+      return { ok: false, error: 'Catalog item not found or not trackable' }
+    }
 
     if (data.trackOpened && data.initialOpenedQuantity > data.initialQuantity) {
       return { ok: false, error: 'Opened quantity cannot exceed total quantity' }
     }
 
-    const supabase = await createServerSupabaseClient()
-
     const { data: created, error: itemError } = await supabase
       .from('inventory_items')
       .insert({
         outlet_id: OUTLET_ID,
-        name,
-        category: data.category,
-        unit: data.unit.trim(),
+        catalog_id: data.catalogId,
+        name: catalogRow.name_zh,
+        category: catalogRow.category,
+        unit: catalogRow.unit,
+        track_opened: data.trackOpened,
         reorder_level: data.reorderLevel,
         reorder_point: data.reorderPoint,
         par_level: data.parLevel,
         lead_time_days: data.leadTimeDays,
         location: data.location,
         supplier: data.supplier,
-        track_opened: data.trackOpened,
         notes: data.notes,
         status: 'active',
       })
@@ -45,7 +131,7 @@ export async function createItemAction(
 
     if (itemError) {
       if (itemError.code === '23505') {
-        return { ok: false, error: 'An item with this name already exists' }
+        return { ok: false, error: 'This catalog item already has an inventory entry' }
       }
       return { ok: false, error: itemError.message }
     }
@@ -75,26 +161,20 @@ export async function updateItemAction(
   try {
     await requireRole('owner', 'manager')
 
-    const name = data.name.trim()
-    if (!name) return { ok: false, error: 'Name is required' }
-    if (!data.category) return { ok: false, error: 'Category is required' }
-    if (!data.unit.trim()) return { ok: false, error: 'Unit is required' }
-
     const supabase = await createServerSupabaseClient()
 
     const { error } = await supabase
       .from('inventory_items')
       .update({
-        name,
         category: data.category,
-        unit: data.unit.trim(),
+        unit: data.unit,
+        track_opened: data.trackOpened,
         reorder_level: data.reorderLevel,
         reorder_point: data.reorderPoint,
         par_level: data.parLevel,
         lead_time_days: data.leadTimeDays,
         location: data.location,
         supplier: data.supplier,
-        track_opened: data.trackOpened,
         notes: data.notes,
         updated_at: new Date().toISOString(),
       })
@@ -115,7 +195,6 @@ export async function deleteItemAction(
     await requireRole('owner', 'manager')
     const supabase = await createServerSupabaseClient()
 
-    // Block delete if any movement history exists
     const { count, error: countError } = await supabase
       .from('inventory_movements')
       .select('id', { count: 'exact', head: true })
@@ -129,7 +208,6 @@ export async function deleteItemAction(
       }
     }
 
-    // Hard delete — cascade removes stock_levels and adjustments rows
     const { error } = await supabase
       .from('inventory_items')
       .delete()

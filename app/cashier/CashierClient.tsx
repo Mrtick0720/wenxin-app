@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import BackButton from '@/app/components/BackButton'
 import { FullPageSpinner } from '@/app/components/Spinner'
 import type { CashDrawerSession, CashAdjustment } from '@/lib/cashDrawer/types'
-import { computeCurrentCash, selectBestSession } from '@/lib/cashDrawer/utils'
+import { computeCurrentCash, computeCurrentCashLive, selectBestSession } from '@/lib/cashDrawer/utils'
 import {
   fetchCashDrawerSessionsAction,
   fetchCashAdjustmentsAction,
@@ -134,9 +135,15 @@ type Payment = { method: string; amount: number; percentage: number }
 
 export default function CashierClient() {
   const staff = useStaff()
+  const router = useRouter()
   const businessDate = businessToday()
   const canImport = staff?.role === 'owner'
   const canAdjust = staff?.role === 'owner' || staff?.role === 'manager'
+
+  // Skip router.refresh() on the initial mount — the server already rendered
+  // fresh data. Only invalidate the Home page cache on subsequent mutations
+  // (import, delete, adjustment) so the Cash card there stays in sync.
+  const initialLoadDoneRef = useRef(false)
 
   const [loading, setLoading] = useState(true)
   const [todaySessions, setTodaySessions] = useState<CashDrawerSession[]>([])
@@ -179,14 +186,25 @@ export default function CashierClient() {
     }
 
     setLoading(false)
+
+    // After mutations (import / delete / adjustment), invalidate the Next.js
+    // server-component cache so the Home page Cash card re-renders with the
+    // updated current cash. Skipped on the first mount — data is already fresh.
+    if (initialLoadDoneRef.current) {
+      router.refresh()
+    }
+    initialLoadDoneRef.current = true
   }
 
   useEffect(() => { void refresh() }, [])
 
-  // Hero value: open → current cash, closed → closing float, fallback → lastClosedSession
+  // Hero value: open → computeCurrentCashLive (shared with Home page — null fields
+  // default to 0 so the card shows openingFloat − payOut before cashSales arrives);
+  // closed → closing float; fallback → lastClosedSession.
+  // computeCurrentCash (strict) is kept for detail rows where "—" is accurate.
   const heroValue = selectedSession
     ? (selectedSession.closeTime === null
-        ? computeCurrentCash(selectedSession)
+        ? computeCurrentCashLive(selectedSession)
         : selectedSession.closingFloat)
     : (lastClosedSession
         ? (lastClosedSession.closingFloat ?? computeCurrentCash(lastClosedSession))

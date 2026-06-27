@@ -22,6 +22,7 @@ function mapItemRow(row: Record<string, unknown>): InventoryItem {
     name: row.name as string,
     category: row.category as string,
     unit: row.unit as string,
+    catalogId: row.catalog_id != null ? Number(row.catalog_id) : null,
     reorderLevel: Number(row.reorder_level ?? 0),
     reorderPoint: row.reorder_point != null ? Number(row.reorder_point) : null,
     parLevel: row.par_level != null ? Number(row.par_level) : null,
@@ -40,6 +41,7 @@ export async function createInventoryItem(data: {
   name: string
   category: string
   unit: string
+  catalogId?: number | null
   reorderLevel?: number
   reorderPoint?: number | null
   parLevel?: number | null
@@ -59,6 +61,7 @@ export async function createInventoryItem(data: {
       name: data.name.trim(),
       category: data.category,
       unit: data.unit.trim(),
+      catalog_id: data.catalogId ?? null,
       reorder_level: data.reorderLevel ?? 0,
       reorder_point: data.reorderPoint ?? null,
       par_level: data.parLevel ?? null,

@@ -7,7 +7,7 @@ import { updateRecordAction } from './actions'
 import type { LedgerRecord } from './PurchaseClient'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 
-const UNITS = ['kg', 'g', 'pcs', 'pack', 'box', 'bottle', 'bag', 'tray', 'bundle', 'carton', 'pail', 'portion']
+import { PURCHASE_UNITS as UNITS } from '@/lib/units'
 const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'DuitNow', 'Credit', 'Other']
 const PAYMENT_STATUSES = ['Paid', 'Unpaid'] as const
 

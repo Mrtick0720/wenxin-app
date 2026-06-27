@@ -3,11 +3,24 @@ import type { CashDrawerSession } from './types'
 /**
  * Expected cash in the drawer: opening float + cash sales + pay-in − pay-out.
  * Returns null when any required field is null (session still open/incomplete).
+ * Use this for closed-session reconciliation rows where "—" is the right answer
+ * when a field is genuinely unknown.
  */
 export function computeCurrentCash(s: CashDrawerSession): number | null {
   const { openingFloat: o, cashSales: c, payIn: i, payOut: p } = s
   if (o == null || c == null || i == null || p == null) return null
   return o + c + i - p
+}
+
+/**
+ * Live estimate for an OPEN session: treats null cashSales / payIn / payOut as 0
+ * so the hero card shows a floor value (openingFloat − payOut) the moment the
+ * float is entered, even before FeedMe cash-sales data has been imported.
+ * Returns null only when openingFloat itself is missing.
+ */
+export function computeCurrentCashLive(s: CashDrawerSession): number | null {
+  if (s.openingFloat == null) return null
+  return s.openingFloat + (s.cashSales ?? 0) + (s.payIn ?? 0) - (s.payOut ?? 0)
 }
 
 /**
