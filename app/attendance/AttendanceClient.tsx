@@ -7,6 +7,7 @@ import { useStaff } from '@/app/components/StaffProvider'
 import { supabase } from '@/lib/supabase/client'
 import type { CurrentStaff } from '@/lib/auth/types'
 import { FullPageSpinner } from '@/app/components/Spinner'
+import ClockInOutCard from '@/app/components/attendance/ClockInOutCard'
 
 type SessionRow = {
   id: number
@@ -25,14 +26,11 @@ export default function AttendanceClient({
   isManager: boolean
 }) {
   const clientStaff = useStaff()
-  const role = clientStaff?.role ?? staff.role
   const staffUserId = clientStaff?.id ?? staff.id
 
   const [hasOpenSession, setHasOpenSession] = useState(false)
   const [todaySessions, setTodaySessions] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [actionLoading, setActionLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
 
   const today = new Date().toISOString().split('T')[0]
 
@@ -53,35 +51,6 @@ export default function AttendanceClient({
   useEffect(() => {
     loadData()
   }, [loadData])
-
-  async function handleClockIn() {
-    setActionLoading(true)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('clock_in_attendance', {
-      _staff_user_id: staffUserId,
-      _business_date: today,
-    })
-    if (rpcError) {
-      setError(rpcError.message)
-    } else {
-      await loadData()
-    }
-    setActionLoading(false)
-  }
-
-  async function handleClockOut() {
-    setActionLoading(true)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('clock_out_attendance', {
-      _staff_user_id: staffUserId,
-    })
-    if (rpcError) {
-      setError(rpcError.message)
-    } else {
-      await loadData()
-    }
-    setActionLoading(false)
-  }
 
   function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('en-MY', {
@@ -114,54 +83,14 @@ export default function AttendanceClient({
         </div>
 
         <div className="px-4 py-4 pb-8 space-y-4">
-          {/* Clock In/Out Card */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm text-center">
-            <div className="text-5xl mb-4">
-              {hasOpenSession ? '🟢' : '⏰'}
-            </div>
-
-            {error && (
-              <div className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">
-                {error}
-              </div>
-            )}
-
-            {hasOpenSession ? (
-              <>
-                <div className="text-sm font-semibold text-green-600 mb-1">
-                  Clocked In
-                </div>
-                {todaySessions[0] && (
-                  <div className="text-xs text-gray-400 mb-4">
-                    Since {formatTime(todaySessions[0].clock_in)}
-                  </div>
-                )}
-                <button
-                  onClick={handleClockOut}
-                  disabled={actionLoading}
-                  className="w-full py-3 bg-orange-500 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
-                >
-                  {actionLoading ? 'Clocking Out...' : 'Clock Out'}
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="text-sm font-semibold text-gray-700 mb-1">
-                  Not Clocked In
-                </div>
-                <div className="text-xs text-gray-400 mb-4">
-                  Start your shift
-                </div>
-                <button
-                  onClick={handleClockIn}
-                  disabled={actionLoading}
-                  className="w-full py-3 bg-gray-900 text-white rounded-xl text-sm font-semibold disabled:opacity-50"
-                >
-                  {actionLoading ? 'Clocking In...' : 'Clock In'}
-                </button>
-              </>
-            )}
-          </div>
+          {/* Clock In/Out Card — GPS geofenced */}
+          <ClockInOutCard
+            staffUserId={staffUserId}
+            businessDate={today}
+            hasOpenSession={hasOpenSession}
+            openSince={todaySessions[0]?.clock_in ?? null}
+            onChanged={loadData}
+          />
 
           {/* Today's Sessions */}
           <div className="bg-white rounded-2xl p-4 shadow-sm">
