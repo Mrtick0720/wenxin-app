@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useStaff } from '@/app/components/StaffProvider'
 import {
   filterCatalogItems,
+  isLatinDisplayRole,
   resolveCatalogDisplayName,
   type CatalogItem,
 } from '@/lib/purchaseLedger/catalog'
@@ -28,7 +29,7 @@ export default function CatalogCombobox({
   error,
 }: Props) {
   const staff = useStaff()
-  const latinOnly = staff?.role === 'kitchen'
+  const latinOnly = isLatinDisplayRole(staff?.role)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [inputFocused, setInputFocused] = useState(false)

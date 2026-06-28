@@ -10,6 +10,15 @@ export type CatalogItem = {
 
 export type CatalogDisplayMode = 'default' | 'latin'
 
+/**
+ * Roles whose staff cannot read Chinese. For these roles, purchase item names
+ * are shown using only the Malay/English (name_ms) field. Owner/manager keep
+ * the bilingual (Chinese + name_ms) display.
+ */
+export function isLatinDisplayRole(role: string | null | undefined): boolean {
+  return role === 'kitchen' || role === 'front_desk'
+}
+
 export function normalizeCatalogSearch(value: string | null | undefined): string {
   return (value ?? '')
     .trim()

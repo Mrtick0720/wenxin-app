@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useStaff } from '@/app/components/StaffProvider'
 import {
+  isLatinDisplayRole,
   resolveCatalogDisplayName,
   type CatalogItem,
 } from '@/lib/purchaseLedger/catalog'
@@ -261,7 +262,7 @@ function PendingRow({ item, displayName, isFirst, isLast, onTap }: RowProps) {
 export default function PendingVerificationSection({ items, canVerify, canCancel, onAccepting, onAccepted, onAcceptFailed, onRejected, onRejectFailed, onCancelling, onCancelled, onCancelFailed }: Props) {
   const staff = useStaff()
   const { showToast } = useGlobalToast()
-  const latinOnly = staff?.role === 'kitchen'
+  const latinOnly = isLatinDisplayRole(staff?.role)
   const [catalog, setCatalog] = useState<CatalogItem[]>([])
   const [catalogLoaded, setCatalogLoaded] = useState(false)
   const [activeItem, setActiveItem] = useState<PendingVerificationItem | null>(null)
