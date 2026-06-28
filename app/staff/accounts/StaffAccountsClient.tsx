@@ -28,6 +28,7 @@ export type StaffAccountRow = {
   phone: string | null
   address: string | null
   notes: string | null
+  fixed_off_weekday: number | null
 }
 
 type StatusFilter = 'all' | 'active' | 'suspended' | 'archived'

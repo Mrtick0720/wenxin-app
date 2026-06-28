@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react'
 import BackButton from '@/app/components/BackButton'
+import FixedOffDayEditor from '../FixedOffDayEditor'
 import type { StaffAccountRow } from './StaffAccountsClient'
 import { getStaffAccountActionKeys } from '@/lib/staffAccountActions'
 import {
@@ -169,6 +170,16 @@ export default function StaffDetailPage({
             <Row label="Role"      value={roleLabel} />
             <Row label="Status"    value={<span className={statusColor}>{statusLabel}</span>} />
             <Row label="Join Date" value={formatJoinDate(account.created_at)} />
+            {!isOwner && (
+              <div className="py-3 border-b border-gray-100 last:border-0">
+                <span className="text-base text-gray-400 block mb-2">Fixed Off Day</span>
+                <FixedOffDayEditor
+                  staffId={account.id}
+                  current={account.fixed_off_weekday}
+                  editable={status !== 'archived'}
+                />
+              </div>
+            )}
             {status === 'archived' && account.archive_date && (
               <>
                 <Row label="Archived"  value={formatDate(account.archive_date)} />

@@ -11,7 +11,7 @@ export default async function StaffAccountsPage() {
   const [{ data: profiles }, { data: sessions }] = await Promise.all([
     supabase
       .from('staff_profiles')
-      .select('id,staff_id,display_name,role,active,archived,archive_date,archive_reason,last_login_at,created_at,phone,address,notes')
+      .select('id,staff_id,display_name,role,active,archived,archive_date,archive_reason,last_login_at,created_at,phone,address,notes,fixed_off_weekday')
       .order('display_name'),
     supabase
       .from('staff_sessions')
@@ -36,6 +36,7 @@ export default async function StaffAccountsPage() {
     phone: profile.phone ?? null,
     address: profile.address ?? null,
     notes: profile.notes ?? null,
+    fixed_off_weekday: profile.fixed_off_weekday ?? null,
   }))
 
   return (

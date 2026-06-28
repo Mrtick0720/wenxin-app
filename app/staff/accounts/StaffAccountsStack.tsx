@@ -20,7 +20,7 @@ export default function StaffAccountsStack() {
     Promise.all([
       supabase
         .from('staff_profiles')
-        .select('id,staff_id,display_name,role,active,archived,archive_date,archive_reason,last_login_at,created_at,phone,address,notes')
+        .select('id,staff_id,display_name,role,active,archived,archive_date,archive_reason,last_login_at,created_at,phone,address,notes,fixed_off_weekday')
         .order('display_name'),
       supabase
         .from('staff_sessions')
@@ -45,6 +45,7 @@ export default function StaffAccountsStack() {
         phone: p.phone ?? null,
         address: p.address ?? null,
         notes: p.notes ?? null,
+        fixed_off_weekday: p.fixed_off_weekday ?? null,
       }))
       setAccounts(rows)
     })
