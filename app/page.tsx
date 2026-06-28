@@ -25,7 +25,7 @@ import { todayLocalStr } from '@/lib/dateUtils'
 import { getReservationSummary, EMPTY_RESERVATION_SUMMARY } from '@/lib/reservations/homeSummary'
 import FrontDeskHome from './components/home/FrontDeskHome'
 import { fetchCashDrawerSessionsAction, fetchLatestClosedSessionAction } from '@/app/cashier/actions'
-import { computeCurrentCash, computeCurrentCashLive } from '@/lib/cashDrawer/utils'
+import { computeCurrentCash, computeCurrentCashLive, selectBestSession } from '@/lib/cashDrawer/utils'
 
 export const dynamic = 'force-dynamic'
 
@@ -147,29 +147,27 @@ async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
 
 async function getCashBalance(businessDate: string): Promise<{ balance: number | null; note: string | null }> {
   const result = await fetchCashDrawerSessionsAction(businessDate)
-  if (result.ok && result.data.length > 0) {
-    // Priority 1: today's OPEN session — live estimate (null fields → 0 so the
-    // home card shows openingFloat − payOut even before cashSales is imported).
-    for (const s of result.data) {
-      if (s.closeTime === null) {
-        const cc = computeCurrentCashLive(s)
-        if (cc !== null) return { balance: cc, note: 'Cash Drawer' }
-      }
-    }
-    // Priority 2: today's CLOSED session — use closing float
-    for (const s of result.data) {
-      if (s.closeTime !== null && s.closingFloat !== null) {
-        return { balance: s.closingFloat, note: 'Cash Drawer' }
-      }
+  const sessions = result.ok ? result.data : []
+  // Mirror the Cash Drawer detail page exactly so Home and the detail hero always
+  // agree: pick the SAME session via selectBestSession (not just the first open
+  // one in array order — that diverges when more than one drawer is open today),
+  // then derive the hero value the same way (open → live estimate, closed →
+  // closing float).
+  if (sessions.length > 0) {
+    const selected = selectBestSession(sessions)
+    if (selected) {
+      const balance = selected.closeTime === null
+        ? computeCurrentCashLive(selected)
+        : selected.closingFloat
+      return { balance, note: balance !== null ? 'Cash Drawer' : null }
     }
   }
-  // Priority 3: latest previous closed session — use closing float
+  // No sessions today → fall back to the latest previous closed session.
   const closedResult = await fetchLatestClosedSessionAction(businessDate)
   if (closedResult.ok && closedResult.data) {
     const s = closedResult.data
-    if (s.closingFloat !== null) return { balance: s.closingFloat, note: 'Cash Drawer' }
-    const cc = computeCurrentCash(s)
-    if (cc !== null) return { balance: cc, note: 'Cash Drawer' }
+    const balance = s.closingFloat ?? computeCurrentCash(s)
+    if (balance !== null) return { balance, note: 'Cash Drawer' }
   }
   return { balance: null, note: null }
 }

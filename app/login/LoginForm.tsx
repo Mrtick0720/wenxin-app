@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useEffect, useState } from 'react'
 import { loginAction, type LoginState } from './actions'
 
 const initialState: LoginState = { error: '' }
@@ -8,6 +8,27 @@ const initialState: LoginState = { error: '' }
 export default function LoginForm({ sessionEnded = false }: { sessionEnded?: boolean }) {
   const [state, formAction, pending] = useActionState(loginAction, initialState)
   const [showPassword, setShowPassword] = useState(false)
+
+  // Keep the Sign-in button riding just above the on-screen keyboard so it never
+  // gets hidden behind it (no scrolling needed). visualViewport.height shrinks
+  // when the soft keyboard opens; the gap below it is the keyboard's height.
+  const [kbHeight, setKbHeight] = useState(0)
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      const gap = window.innerHeight - (vv.height + vv.offsetTop)
+      // Ignore tiny deltas (URL bar, rounding); treat >80px as keyboard open.
+      setKbHeight(gap > 80 ? gap : 0)
+    }
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    update()
+    return () => {
+      vv.removeEventListener('resize', update)
+      vv.removeEventListener('scroll', update)
+    }
+  }, [])
 
   return (
     <form action={formAction} className="mt-10 space-y-4">
@@ -71,7 +92,22 @@ export default function LoginForm({ sessionEnded = false }: { sessionEnded?: boo
       <button
         type="submit"
         disabled={pending}
-        className="mt-2 h-12 w-full rounded-lg bg-orange-500 text-sm font-semibold text-white transition active:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        className="h-12 rounded-lg bg-orange-500 text-sm font-semibold text-white transition active:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+        style={
+          kbHeight > 0
+            ? {
+                // Keyboard open — float the button right above it, full-width,
+                // matching the form's max-w-sm (24rem) and px-6 (3rem) gutters.
+                position: 'fixed',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                bottom: kbHeight + 8,
+                width: 'calc(100% - 3rem)',
+                maxWidth: '24rem',
+                zIndex: 50,
+              }
+            : { width: '100%', marginTop: '0.5rem' }
+        }
       >
         {pending ? 'Signing in...' : 'Sign in'}
       </button>

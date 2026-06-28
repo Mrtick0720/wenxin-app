@@ -105,6 +105,10 @@ export default function ReservationsPage({ initialDate }: { initialDate?: string
   const [reservations, setReservations] = useState<ReservationRow[]>([])
   const [canSeePii, setCanSeePii] = useState(false)
   const [loading, setLoading] = useState(true)
+  // Tracks whether the first fetch has ever completed. The full-screen spinner
+  // is reserved for that first load; later date changes (e.g. week swipes) keep
+  // the previous content on screen so the page never blanks out.
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [tab, setTab] = useState<'active' | 'history'>('active')
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
   const [showNew, setShowNew] = useState(false)
@@ -146,6 +150,7 @@ export default function ReservationsPage({ initialDate }: { initialDate?: string
       setCanSeePii(res.data.canSeePii)
     }
     setLoading(false)
+    setHasLoaded(true)
   }, [])
 
   useEffect(() => {
@@ -332,32 +337,38 @@ export default function ReservationsPage({ initialDate }: { initialDate?: string
 
       <div className="px-4 py-4 pb-28 space-y-4">
 
-        {/* Hero card — shows active count */}
-        {loading && <FullPageSpinner />}
-        {!loading && (
-          <div className="relative bg-white rounded-2xl p-6 shadow-sm text-center overflow-hidden">
-            {activeCount > 0 && <CelebrationDots />}
-            <div className="relative z-10">
-              <div className="text-5xl font-bold text-gray-900">{activeCount}</div>
-              <div className="text-sm text-gray-500 mt-2">
-                {activeCount === 0
-                  ? `No active reservations for ${fmtDate(selectedDate)}`
-                  : `You have ${activeCount} active reservation${activeCount !== 1 ? 's' : ''}`}
+        {/* First load only — full-screen spinner. Subsequent date changes
+            (week swipe, calendar pick) keep the previous content visible and
+            only dim it slightly while the new day's data fetches, so the page
+            never blanks out. */}
+        {!hasLoaded && <FullPageSpinner />}
+        {hasLoaded && (
+          <div style={{ opacity: loading ? 0.4 : 1, transition: 'opacity 0.2s ease' }} className="space-y-4">
+            {/* Hero card — shows active count */}
+            <div className="relative bg-white rounded-2xl p-6 shadow-sm text-center overflow-hidden">
+              {activeCount > 0 && <CelebrationDots />}
+              <div className="relative z-10">
+                <div className="text-5xl font-bold text-gray-900">{activeCount}</div>
+                <div className="text-sm text-gray-500 mt-2">
+                  {activeCount === 0
+                    ? `No active reservations for ${fmtDate(selectedDate)}`
+                    : `You have ${activeCount} active reservation${activeCount !== 1 ? 's' : ''}`}
+                </div>
               </div>
             </div>
-          </div>
-        )}
 
-        {/* List */}
-        {!loading && total === 0 ? (
-          <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
-            <div className="text-sm text-gray-400">
-              {tab === 'active' ? 'No active reservations for this date' : 'No history for this date'}
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-2xl overflow-hidden shadow-sm">
-            {displayList.map((r, i) => renderRow(r, i))}
+            {/* List */}
+            {total === 0 ? (
+              <div className="bg-white rounded-2xl p-8 text-center shadow-sm">
+                <div className="text-sm text-gray-400">
+                  {tab === 'active' ? 'No active reservations for this date' : 'No history for this date'}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl overflow-hidden shadow-sm">
+                {displayList.map((r, i) => renderRow(r, i))}
+              </div>
+            )}
           </div>
         )}
 
