@@ -40,6 +40,9 @@ type Customer = {
   note: string
   active: boolean
   package_mode?: string // 'scheduled' (default) | 'balance'
+  // Meals pre-deducted at the start of THIS package to settle the previous
+  // package's overuse. 0 / undefined for a fresh package with no carry-over.
+  opening_offset?: number
 }
 
 type Order = {
@@ -57,12 +60,6 @@ type Order = {
   status: string
   amount: number
   paid?: boolean
-}
-
-const SUB_COLORS: Record<string, { color: string; bg: string }> = {
-  weekly:  { color: '#f97316', bg: '#fff7ed' },
-  monthly: { color: '#3b82f6', bg: '#eff6ff' },
-  school:  { color: '#8b5cf6', bg: '#faf5ff' },
 }
 
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
@@ -93,6 +90,18 @@ function toSubscriptionDay(day: PlannedSubscriptionDay): Omit<SubscriptionDay, '
 function formatDate(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00')
   return `${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+}
+
+// Label-left / value-right row used by the Subscription breakdown.
+function StatRow({ label, value, bold, valueClass, valueStyle }: {
+  label: string; value: string; bold?: boolean; valueClass?: string; valueStyle?: { color?: string }
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-gray-500">{label}</span>
+      <span className={`${bold ? 'font-semibold' : 'font-medium'} ${valueClass ?? 'text-gray-700'}`} style={valueStyle}>{value}</span>
+    </div>
+  )
 }
 
 export default function CustomerDetailPage({
@@ -406,9 +415,50 @@ export default function CustomerDetailPage({
     </div>
   )
 
-  const colors = SUB_COLORS[customer.subscription_type] ?? SUB_COLORS.monthly
-  const remaining = customer.total_portions - customer.used_portions
-  const pct = customer.total_portions > 0 ? Math.round((customer.used_portions / customer.total_portions) * 100) : 0
+  // ── Subscription / Balance package math ──
+  // purchased        = meals the customer actually paid for (total_portions)
+  // openingOffset    = previous package's overuse pre-deducted from this one
+  // openingBalance   = usable meals at package start (purchased − offset, ≥0)
+  // currentUsed      = meals consumed in THIS package (used_portions)
+  // currentRemaining = openingBalance − currentUsed (≥0)
+  // currentOverused  = currentUsed − openingBalance (≥0)  ← overuse to carry forward
+  // stillOwed        = offset − purchased (≥0)            ← prev overuse new pkg couldn't cover
+  const purchased = customer.total_portions
+  const openingOffset = customer.opening_offset ?? 0
+  const hasCarryOver = openingOffset > 0
+  const currentUsed = customer.used_portions
+  const openingBalance = Math.max(purchased - openingOffset, 0)
+  const stillOwed = Math.max(openingOffset - purchased, 0)
+  const currentRemaining = Math.max(openingBalance - currentUsed, 0)
+  const currentOverused = Math.max(currentUsed - openingBalance, 0)
+  // Overuse that will be deducted from the NEXT package on renewal.
+  const carryOveruse = Math.max(openingOffset + currentUsed - purchased, 0)
+
+  // Severity drives banner + colours. owed/overused = red, fully used = amber,
+  // otherwise green (normal balance left).
+  const subSeverity: 'owed' | 'overused' | 'fully_used' | 'normal' =
+    stillOwed > 0 ? 'owed'
+    : currentOverused > 0 ? 'overused'
+    : currentRemaining === 0 ? 'fully_used'
+    : 'normal'
+  const SEV = {
+    owed:       { num: '#dc2626', bar: '#ef4444', bannerBg: 'bg-red-50',   bannerText: 'text-red-700' },
+    overused:   { num: '#dc2626', bar: '#ef4444', bannerBg: 'bg-red-50',   bannerText: 'text-red-700' },
+    fully_used: { num: '#d97706', bar: '#f59e0b', bannerBg: 'bg-amber-50', bannerText: 'text-amber-700' },
+    normal:     { num: '#16a34a', bar: '#22c55e', bannerBg: 'bg-green-50', bannerText: 'text-green-700' },
+  }[subSeverity]
+  const subBanner =
+    subSeverity === 'owed' ? `New package used up covering past overuse — ${stillOwed} meal${stillOwed === 1 ? '' : 's'} still owed`
+    : subSeverity === 'overused' ? `Overused by ${currentOverused} meal${currentOverused === 1 ? '' : 's'} · settle on renewal`
+    : subSeverity === 'fully_used' ? 'Fully used — renew to continue'
+    : hasCarryOver ? `${openingOffset} meal${openingOffset === 1 ? '' : 's'} deducted from previous overuse`
+    : `${currentRemaining} meal${currentRemaining === 1 ? '' : 's'} remaining`
+  // Progress: usage against the opening balance (so a renewed package fills
+  // against 17, not 20). Overused/owed packages render a full red bar.
+  const subDenom = hasCarryOver ? openingBalance : purchased
+  const pct = currentOverused > 0 || stillOwed > 0 ? 100
+    : subDenom > 0 ? Math.min(Math.round((currentUsed / subDenom) * 100), 100)
+    : 100
   // Rendering uses the persisted subscription schedule as the single source of
   // truth. Plan generation above may fill missing DB rows in the background,
   // but the displayed end date and calendar never derive from total_portions.
@@ -524,20 +574,38 @@ export default function CustomerDetailPage({
               <button onClick={() => setEditing(e => !e)} className="text-xs text-orange-500">Edit used</button>
             </div>
 
-            <div className="flex items-center gap-4 mb-3">
-              <div className="text-center">
-                <div className="text-2xl font-bold" style={{ color: colors.color }}>{remaining}</div>
-                <div className="text-xs text-gray-400 mt-0.5">Remaining</div>
-              </div>
-              <div className="flex-1">
-                <div className="flex justify-between text-xs text-gray-400 mb-1">
-                  <span>{customer.used_portions} used</span>
-                  <span>{customer.total_portions} total</span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-2">
-                  <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: pct >= 80 ? '#ef4444' : colors.color }} />
-                </div>
-              </div>
+            {/* Status banner — one line that says exactly what's going on. */}
+            <div className={`rounded-xl px-3 py-2 text-xs font-medium mb-3 ${SEV.bannerBg} ${SEV.bannerText}`}>
+              {subSeverity === 'owed' || subSeverity === 'overused' ? '⚠ ' : (subSeverity === 'normal' && hasCarryOver ? 'ℹ️ ' : '')}{subBanner}
+            </div>
+
+            {/* Breakdown — keeps purchased / deducted / used / remaining distinct. */}
+            <div className="space-y-1.5 mb-3 text-sm">
+              {hasCarryOver ? (
+                <>
+                  <StatRow label="New package" value={`${purchased} meals`} />
+                  <StatRow label="− Previous overuse" value={`${openingOffset} meals`} valueClass="text-amber-600" />
+                  <StatRow label="= Opening balance" value={`${openingBalance} meals`} bold valueClass="text-gray-800" />
+                  <StatRow label="Used" value={`${currentUsed} meals`} />
+                  <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
+                  {stillOwed > 0 && <StatRow label="Still owed" value={`${stillOwed} meals`} bold valueClass="text-red-600" />}
+                </>
+              ) : (
+                <>
+                  <StatRow label="Package quota" value={`${purchased} meals`} />
+                  <StatRow label="Actual used" value={`${currentUsed} meals`} />
+                  <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
+                  {currentOverused > 0 && <StatRow label="Overused" value={`${currentOverused} meals`} bold valueClass="text-red-600" />}
+                </>
+              )}
+            </div>
+
+            {/* Progress — fills against the opening balance, red when overused. */}
+            <div className="relative w-full bg-gray-100 rounded-full h-2 mb-3">
+              <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: SEV.bar }} />
+              {carryOveruse > 0 && (
+                <span className="absolute -top-0.5 right-1 text-[10px] font-bold text-white leading-4">+{carryOveruse}</span>
+              )}
             </div>
 
             {editing && (
@@ -586,14 +654,23 @@ export default function CustomerDetailPage({
               {!archiving ? (
                 <button type="button"
                   onClick={() => { setArchTotal(String(customer.total_portions)); setArchStart(todayLocalStr()); setArchiving(true) }}
-                  className="w-full py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 active:bg-gray-50">
-                  Complete this package…
+                  className={`w-full py-2.5 rounded-xl text-sm font-medium border active:opacity-80 ${
+                    carryOveruse > 0
+                      ? 'border-red-200 bg-red-50 text-red-600'
+                      : 'border-gray-200 text-gray-600 active:bg-gray-50'
+                  }`}>
+                  {carryOveruse > 0 ? 'Complete & deduct overused meals' : 'Complete this package…'}
                 </button>
               ) : (
                 <div className="space-y-2.5">
                   <div className="text-xs text-gray-500">
                     Archive the current package ({customer.used_portions}/{customer.total_portions} used) into history, then renew or close.
                   </div>
+                  {carryOveruse > 0 && (
+                    <div className="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                      ⚠ {carryOveruse} overused meal{carryOveruse === 1 ? '' : 's'} will be deducted from the new package on renewal.
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[11px] text-gray-400 mb-1 block">New start date</label>

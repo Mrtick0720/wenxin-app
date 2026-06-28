@@ -62,9 +62,11 @@ export async function archivePeriodAction(
     await requireRole(...ROLES)
     const supabase = await createServerSupabaseClient()
 
+    // select('*') so opening_offset is read when the column exists, and simply
+    // comes back undefined on databases where the migration hasn't run yet.
     const { data: cust, error: custErr } = await supabase
       .from('bento_customers')
-      .select('start_date, total_portions, used_portions, delivery_frequency')
+      .select('*')
       .eq('id', customerId)
       .single()
     if (custErr) throw custErr
@@ -97,6 +99,15 @@ export async function archivePeriodAction(
 
     const { error: updErr } = await supabase.from('bento_customers').update(update).eq('id', customerId)
     if (updErr) throw updErr
+
+    // Carry the just-completed package's overuse into the new package as an
+    // opening offset. Best-effort: a separate write so the renewal never fails
+    // on databases where the opening_offset column hasn't been added yet.
+    if (opts.renew) {
+      const prevOffset = (cust as { opening_offset?: number }).opening_offset ?? 0
+      const carryOveruse = Math.max(prevOffset + (cust.used_portions ?? 0) - (cust.total_portions ?? 0), 0)
+      await supabase.from('bento_customers').update({ opening_offset: carryOveruse }).eq('id', customerId)
+    }
 
     return { ok: true, data: { periodNo } }
   } catch (e) { return fail(e) }
