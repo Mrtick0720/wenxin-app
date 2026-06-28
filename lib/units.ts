@@ -25,6 +25,7 @@ export const PURCHASE_UNITS: string[] = [
   'jar',
   'tub',
   'bucket',
+  'tong',     // LPG gas cylinder (Malaysian "tong gas") — e.g. 燃气
   'box',
   'carton',
   'tray',
