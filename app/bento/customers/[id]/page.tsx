@@ -441,12 +441,13 @@ export default function CustomerDetailPage({
     : currentOverused > 0 ? 'overused'
     : currentRemaining === 0 ? 'fully_used'
     : 'normal'
-  const SEV = {
+  const SEV_MAP = {
     owed:       { num: '#dc2626', bar: '#ef4444', bannerBg: 'bg-red-50',   bannerText: 'text-red-700' },
     overused:   { num: '#dc2626', bar: '#ef4444', bannerBg: 'bg-red-50',   bannerText: 'text-red-700' },
     fully_used: { num: '#d97706', bar: '#f59e0b', bannerBg: 'bg-amber-50', bannerText: 'text-amber-700' },
     normal:     { num: '#16a34a', bar: '#22c55e', bannerBg: 'bg-green-50', bannerText: 'text-green-700' },
-  }[subSeverity]
+  }
+  const SEV = SEV_MAP[subSeverity]
   const subBanner =
     subSeverity === 'owed' ? `New package used up covering past overuse — ${stillOwed} meal${stillOwed === 1 ? '' : 's'} still owed`
     : subSeverity === 'overused' ? `Overused by ${currentOverused} meal${currentOverused === 1 ? '' : 's'} · settle on renewal`
@@ -496,12 +497,39 @@ export default function CustomerDetailPage({
   // Balance + postpaid both mark the calendar from real order days only.
   const orderDrivenCalendar = isBalance || isPostpaid
   const balanceStatusByDate = new Map<string, 'delivered' | 'pending'>()
+  // Order-driven dates also carry their portions (order quantity), so tapping a
+  // green/orange day can show how many meals were delivered that day.
+  const ordersByDate = new Map<string, Order[]>()
   if (orderDrivenCalendar) {
     for (const o of orders) {
       if (o.status === 'canceled') continue
       balanceStatusByDate.set(o.date, o.date <= today ? 'delivered' : 'pending')
+      const arr = ordersByDate.get(o.date) ?? []
+      arr.push(o)
+      ordersByDate.set(o.date, arr)
     }
   }
+  const selectedBalanceOrders = orderDrivenCalendar && selectedDate ? ordersByDate.get(selectedDate) ?? null : null
+  const selectedBalancePortions = (selectedBalanceOrders ?? []).reduce((s, o) => s + (o.quantity ?? 1), 0)
+  const selectedBalanceDelivered = selectedDate ? balanceStatusByDate.get(selectedDate) === 'delivered' : false
+
+  // ── Balance package: usage measured in real PORTIONS (order quantities) ──
+  // Days carry 2–3 meals each, so "used by day count" is wrong. Delivered =
+  // portions on/before today, Scheduled = pending future portions.
+  const activeOrders = orders.filter(o => o.status !== 'canceled')
+  const deliveredPortions = activeOrders.filter(o => o.date <= today).reduce((s, o) => s + (o.quantity ?? 1), 0)
+  const scheduledPortions = activeOrders.filter(o => o.date > today).reduce((s, o) => s + (o.quantity ?? 1), 0)
+  const committedPortions = deliveredPortions + scheduledPortions
+  const balanceRemaining = Math.max(purchased - deliveredPortions, 0)
+  const overCommitted = Math.max(committedPortions - purchased, 0)
+  const balanceSeverity: 'overused' | 'fully_used' | 'normal' =
+    overCommitted > 0 ? 'overused' : balanceRemaining === 0 ? 'fully_used' : 'normal'
+  const balanceSEV = SEV_MAP[balanceSeverity]
+  const balanceBanner =
+    overCommitted > 0 ? `Over-committed by ${overCommitted} meal${overCommitted === 1 ? '' : 's'} · ${committedPortions} booked / ${purchased} quota`
+    : balanceRemaining === 0 ? 'Fully delivered'
+    : `${balanceRemaining} meal${balanceRemaining === 1 ? '' : 's'} left to deliver`
+  const balancePct = purchased > 0 ? Math.min(Math.round((deliveredPortions / purchased) * 100), 100) : 100
 
   // Calendar rendering
   const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate()
@@ -571,51 +599,76 @@ export default function CustomerDetailPage({
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-gray-700">Subscription</span>
-              <button onClick={() => setEditing(e => !e)} className="text-xs text-orange-500">Edit used</button>
+              {/* Balance usage is derived from order portions — no manual "used". */}
+              {!isBalance && <button onClick={() => setEditing(e => !e)} className="text-xs text-orange-500">Edit used</button>}
             </div>
 
-            {/* Status banner — one line that says exactly what's going on. */}
-            <div className={`rounded-xl px-3 py-2 text-xs font-medium mb-3 ${SEV.bannerBg} ${SEV.bannerText}`}>
-              {subSeverity === 'owed' || subSeverity === 'overused' ? '⚠ ' : (subSeverity === 'normal' && hasCarryOver ? 'ℹ️ ' : '')}{subBanner}
-            </div>
-
-            {/* Breakdown — keeps purchased / deducted / used / remaining distinct. */}
-            <div className="space-y-1.5 mb-3 text-sm">
-              {hasCarryOver ? (
-                <>
-                  <StatRow label="New package" value={`${purchased} meals`} />
-                  <StatRow label="− Previous overuse" value={`${openingOffset} meals`} valueClass="text-amber-600" />
-                  <StatRow label="= Opening balance" value={`${openingBalance} meals`} bold valueClass="text-gray-800" />
-                  <StatRow label="Used" value={`${currentUsed} meals`} />
-                  <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
-                  {stillOwed > 0 && <StatRow label="Still owed" value={`${stillOwed} meals`} bold valueClass="text-red-600" />}
-                </>
-              ) : (
-                <>
+            {isBalance ? (
+              <>
+                {/* Balance package — real portions (order quantities). */}
+                <div className={`rounded-xl px-3 py-2 text-xs font-medium mb-3 ${balanceSEV.bannerBg} ${balanceSEV.bannerText}`}>
+                  {overCommitted > 0 ? '⚠ ' : ''}{balanceBanner}
+                </div>
+                <div className="space-y-1.5 mb-3 text-sm">
                   <StatRow label="Package quota" value={`${purchased} meals`} />
-                  <StatRow label="Actual used" value={`${currentUsed} meals`} />
-                  <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
-                  {currentOverused > 0 && <StatRow label="Overused" value={`${currentOverused} meals`} bold valueClass="text-red-600" />}
-                </>
-              )}
-            </div>
+                  <StatRow label="Delivered" value={`${deliveredPortions} meals`} bold valueStyle={{ color: deliveredPortions > 0 ? '#16a34a' : undefined }} />
+                  <StatRow label="Remaining" value={`${balanceRemaining} meals`} bold valueStyle={{ color: balanceSEV.num }} />
+                  <StatRow label="Scheduled" value={`${scheduledPortions} meals`} valueClass="text-gray-500" />
+                  {overCommitted > 0 && <StatRow label="Over-committed" value={`${overCommitted} meals`} bold valueClass="text-red-600" />}
+                </div>
+                <div className="relative w-full bg-gray-100 rounded-full h-2 mb-3">
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${balancePct}%`, background: balanceSEV.bar }} />
+                  {overCommitted > 0 && (
+                    <span className="absolute -top-0.5 right-1 text-[10px] font-bold text-white leading-4">+{overCommitted}</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Status banner — one line that says exactly what's going on. */}
+                <div className={`rounded-xl px-3 py-2 text-xs font-medium mb-3 ${SEV.bannerBg} ${SEV.bannerText}`}>
+                  {subSeverity === 'owed' || subSeverity === 'overused' ? '⚠ ' : (subSeverity === 'normal' && hasCarryOver ? 'ℹ️ ' : '')}{subBanner}
+                </div>
 
-            {/* Progress — fills against the opening balance, red when overused. */}
-            <div className="relative w-full bg-gray-100 rounded-full h-2 mb-3">
-              <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: SEV.bar }} />
-              {carryOveruse > 0 && (
-                <span className="absolute -top-0.5 right-1 text-[10px] font-bold text-white leading-4">+{carryOveruse}</span>
-              )}
-            </div>
+                {/* Breakdown — keeps purchased / deducted / used / remaining distinct. */}
+                <div className="space-y-1.5 mb-3 text-sm">
+                  {hasCarryOver ? (
+                    <>
+                      <StatRow label="New package" value={`${purchased} meals`} />
+                      <StatRow label="− Previous overuse" value={`${openingOffset} meals`} valueClass="text-amber-600" />
+                      <StatRow label="= Opening balance" value={`${openingBalance} meals`} bold valueClass="text-gray-800" />
+                      <StatRow label="Used" value={`${currentUsed} meals`} />
+                      <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
+                      {stillOwed > 0 && <StatRow label="Still owed" value={`${stillOwed} meals`} bold valueClass="text-red-600" />}
+                    </>
+                  ) : (
+                    <>
+                      <StatRow label="Package quota" value={`${purchased} meals`} />
+                      <StatRow label="Actual used" value={`${currentUsed} meals`} />
+                      <StatRow label="Remaining" value={`${currentRemaining} meals`} bold valueStyle={{ color: SEV.num }} />
+                      {currentOverused > 0 && <StatRow label="Overused" value={`${currentOverused} meals`} bold valueClass="text-red-600" />}
+                    </>
+                  )}
+                </div>
 
-            {editing && (
-              <div className="flex items-center gap-2 mb-3">
-                <input type="number" className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
-                  value={usedEdit} onChange={e => setUsedEdit(e.target.value)} />
-                <button onClick={updateUsed} disabled={saving} className="bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-medium">
-                  {saving ? '...' : 'Save'}
-                </button>
-              </div>
+                {/* Progress — fills against the opening balance, red when overused. */}
+                <div className="relative w-full bg-gray-100 rounded-full h-2 mb-3">
+                  <div className="h-2 rounded-full transition-all" style={{ width: `${pct}%`, background: SEV.bar }} />
+                  {carryOveruse > 0 && (
+                    <span className="absolute -top-0.5 right-1 text-[10px] font-bold text-white leading-4">+{carryOveruse}</span>
+                  )}
+                </div>
+
+                {editing && (
+                  <div className="flex items-center gap-2 mb-3">
+                    <input type="number" className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-orange-400" style={{ fontSize: 16 }}
+                      value={usedEdit} onChange={e => setUsedEdit(e.target.value)} />
+                    <button onClick={updateUsed} disabled={saving} className="bg-orange-500 text-white px-4 py-2 rounded-xl text-sm font-medium">
+                      {saving ? '...' : 'Save'}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             {isBalance ? (
@@ -768,6 +821,7 @@ export default function CustomerDetailPage({
               const planDay = scheduleView.daysByDate.get(dateStr)
               const isHoliday = !!planDay?.holiday_name
               const isSelected = dateStr === selectedDate
+              const clickable = !!planDay || (orderDrivenCalendar && balanceStatusByDate.has(dateStr))
               const isToday = dateStr === today
               const status = orderDrivenCalendar
                 ? (balanceStatusByDate.get(dateStr) ?? null)
@@ -795,10 +849,10 @@ export default function CustomerDetailPage({
                 <div key={day} className="flex justify-center py-0.5">
                   <button
                     type="button"
-                    onClick={() => planDay && setSelectedDate(dateStr)}
-                    disabled={!planDay}
+                    onClick={() => clickable && setSelectedDate(dateStr)}
+                    disabled={!clickable}
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm relative
-                    ${planDay ? 'font-bold active:scale-95' : ''}
+                    ${clickable ? 'font-bold active:scale-95' : ''}
                     ${isSelected ? 'ring-2 ring-gray-800 ring-offset-1' : ''}
                     ${isToday ? 'after:absolute after:-bottom-1 after:h-1 after:w-1 after:rounded-full after:bg-blue-500' : ''}`}
                     style={{
@@ -890,6 +944,32 @@ export default function CustomerDetailPage({
                   style={{ fontSize: 16 }}
                 />
               </label>
+            </div>
+          )}
+
+          {/* Balance / postpaid day detail — portions delivered that day */}
+          {selectedDate && selectedBalanceOrders && selectedBalanceOrders.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div className="text-sm font-semibold text-gray-800">{formatDate(selectedDate)}</div>
+                <span className={`text-xs font-semibold rounded-full px-2.5 py-0.5 ${selectedBalanceDelivered ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'}`}>
+                  {selectedBalanceDelivered ? 'Delivered' : 'Pending'}
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {selectedBalanceOrders.map(o => (
+                  <div key={o.id} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-600 truncate">🍱 {o.items || o.menu_type || 'Meal'}</span>
+                    <span className="font-semibold text-gray-800 flex-shrink-0 ml-2">× {o.quantity ?? 1}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-between text-sm">
+                <span className="text-gray-500">{selectedBalanceDelivered ? 'Delivered portions' : 'Scheduled portions'}</span>
+                <span className="font-bold" style={{ color: selectedBalanceDelivered ? '#16a34a' : '#ea580c' }}>
+                  {selectedBalancePortions} meal{selectedBalancePortions === 1 ? '' : 's'}
+                </span>
+              </div>
             </div>
           )}
         </div>

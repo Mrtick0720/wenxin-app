@@ -28,6 +28,7 @@ export type Customer = {
   start_date: string
   total_portions: number
   used_portions: number
+  opening_offset?: number
   note: string
   active: boolean
 }
@@ -68,8 +69,13 @@ export default function CustomersClient() {
   const completedList = customers.filter(c => !c.active)
 
   function CustomerCard({ c, done }: { c: Customer; done: boolean }) {
-    const remaining = c.total_portions - c.used_portions
-    const pct = c.total_portions > 0 ? Math.round((c.used_portions / c.total_portions) * 100) : 0
+    // Mirror the detail page: usage is measured against the opening balance
+    // (purchased − previous-overuse offset), and overuse is shown explicitly
+    // instead of a negative "left".
+    const openingBalance = Math.max(c.total_portions - (c.opening_offset ?? 0), 0)
+    const remaining = Math.max(openingBalance - c.used_portions, 0)
+    const overused = Math.max(c.used_portions - openingBalance, 0)
+    const pct = openingBalance > 0 ? Math.min(Math.round((c.used_portions / openingBalance) * 100), 100) : 100
     const accent = done ? '#9ca3af' : '#f97316'
     return (
       <button type="button" onClick={() => push(
@@ -91,10 +97,12 @@ export default function CustomersClient() {
           <div className="mt-2">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
               <span>{c.used_portions} used</span>
-              <span className={!done && remaining <= 3 ? 'text-red-500 font-medium' : 'text-gray-400'}>{done ? 'Completed' : `${remaining} left`}</span>
+              <span className={!done && (overused > 0 || remaining <= 3) ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                {done ? 'Completed' : overused > 0 ? `Overused ${overused}` : `${remaining} left`}
+              </span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-1.5">
-              <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#9ca3af' : pct >= 80 ? '#ef4444' : accent }} />
+              <div className="h-1.5 rounded-full transition-all" style={{ width: `${pct}%`, background: done ? '#9ca3af' : (overused > 0 || remaining === 0 || pct >= 80) ? '#ef4444' : accent }} />
             </div>
           </div>
         )}
