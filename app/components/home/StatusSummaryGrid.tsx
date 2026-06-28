@@ -55,7 +55,7 @@ export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complai
       image: '/bento-card.webp',
     },
     {
-      title: 'Complaints',
+      title: 'Quality Issues',
       href: '/complaints',
       value: complaints,
       status: complaints > 0 ? '! Urgent' : 'Clear',

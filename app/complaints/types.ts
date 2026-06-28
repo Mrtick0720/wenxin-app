@@ -59,18 +59,18 @@ export const statusConfig: Record<string, { label: string; color: string }> = {
 }
 
 export const methodLabel: Record<string, string> = {
-  'On-site Complaint': 'On-site',
+  'On-site Quality Issue': 'On-site',
   'Google Review': 'Google',
   'Foodpanda': 'Foodpanda',
   'GrabFood': 'Grab',
   'Facebook': 'Facebook',
-  'Online Platform Complaint': 'Online',
-  'Reported Complaint': 'Reported',
+  'Online Platform Quality Issue': 'Online',
+  'Reported Quality Issue': 'Reported',
   'Other': 'Other',
 }
 
 export const timelineLabels: Record<string, string> = {
-  open: 'Complaint Received',
+  open: 'Quality Issue Received',
   handling: 'In Progress',
   resolved: 'Resolved',
   closed: 'Closed',

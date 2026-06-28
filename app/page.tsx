@@ -298,8 +298,8 @@ export default async function Home() {
   if (canAccessPath(staff.role, '/complaints') && complaintCount > 0) {
     issueRows.push({
       tone: 'blue',
-      title: 'Complaints',
-      detail: `${complaintCount} customer complaint${complaintCount === 1 ? '' : 's'} pending`,
+      title: 'Quality Issues',
+      detail: `${complaintCount} customer quality issue${complaintCount === 1 ? '' : 's'} pending`,
       link: '/complaints',
     })
   }

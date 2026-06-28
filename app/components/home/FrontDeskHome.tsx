@@ -82,7 +82,7 @@ const QUICK_ACCESS: { href: string; label: string; icon: React.ReactNode }[] = [
   { href: '/bento', label: 'Bento', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M12 6v12M3 12h18"/></svg>
   ) },
-  { href: '/complaints', label: 'Complaints', icon: (
+  { href: '/complaints', label: 'Quality Issues', icon: (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
   ) },
   { href: '/bento/customers', label: 'Customers', icon: (
@@ -139,7 +139,7 @@ export default async function FrontDeskHome() {
   // ── Action Required — only items that actually need action ──
   const actions: IssueRow[] = []
   if (complaints > 0) {
-    actions.push({ tone: 'red', title: 'Customer Complaints', detail: `${complaints} pending`, link: '/complaints' })
+    actions.push({ tone: 'red', title: 'Customer Quality Issues', detail: `${complaints} pending`, link: '/complaints' })
   }
   if (verifyCount > 0) {
     actions.push({ tone: 'yellow', title: 'Purchase to Verify', detail: `${verifyCount} item${verifyCount === 1 ? '' : 's'} to check`, link: '/purchase' })
@@ -191,7 +191,7 @@ export default async function FrontDeskHome() {
       image: '/Purchase.webp',
     },
     {
-      title: 'Complaints',
+      title: 'Quality Issues',
       href: '/complaints',
       subtitle: complaints > 0 ? `${complaints} urgent` : 'Clear',
       hasAlert: complaints > 0,

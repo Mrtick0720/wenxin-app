@@ -55,7 +55,7 @@ export default function ComplaintDetail({ complaint: initial, allComplaints, onU
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <BackButton href="/complaints" />
-          <span className="font-semibold text-base">Complaint #{complaint.complaintId}</span>
+          <span className="font-semibold text-base">Quality Issue #{complaint.complaintId}</span>
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-medium ${st.color}`}>{st.label}</span>
@@ -71,7 +71,7 @@ export default function ComplaintDetail({ complaint: initial, allComplaints, onU
       <div className="px-4 py-4 pb-8 space-y-4">
         {/* 1. Complaint Information */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="text-sm font-semibold text-gray-800 mb-3">Complaint Information</div>
+          <div className="text-sm font-semibold text-gray-800 mb-3">Quality Issue Information</div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
             <KV label="ID" value={`#${complaint.complaintId}`} />
             <KV label="Date" value={complaint.date} />

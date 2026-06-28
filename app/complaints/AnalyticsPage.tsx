@@ -26,10 +26,10 @@ const severityLabels: Record<string, string> = { high: 'Urgent', medium: 'Normal
 const statuses = ['open', 'handling', 'resolved', 'closed'] as const
 const statusLabels: Record<string, string> = { open: 'Open', handling: 'Handling', resolved: 'Resolved', closed: 'Closed' }
 
-const allMethods = ['On-site Complaint', 'Google Review', 'Foodpanda', 'GrabFood', 'Facebook', 'Online Platform Complaint', 'Reported Complaint', 'Other']
+const allMethods = ['On-site Quality Issue', 'Google Review', 'Foodpanda', 'GrabFood', 'Facebook', 'Online Platform Quality Issue', 'Reported Quality Issue', 'Other']
 const methodShort: Record<string, string> = {
-  'On-site Complaint': 'On-site', 'Google Review': 'Google', 'Foodpanda': 'Foodpanda',
-  'GrabFood': 'Grab', 'Facebook': 'Facebook', 'Online Platform Complaint': 'Online', 'Reported Complaint': 'Reported', 'Other': 'Other',
+  'On-site Quality Issue': 'On-site', 'Google Review': 'Google', 'Foodpanda': 'Foodpanda',
+  'GrabFood': 'Grab', 'Facebook': 'Facebook', 'Online Platform Quality Issue': 'Online', 'Reported Quality Issue': 'Reported', 'Other': 'Other',
 }
 
 const allResolutions = ['Apology', 'Remake', 'Discount', 'Refund', 'Coupon', 'Training', 'No Action', 'Pending', 'Other']
@@ -146,7 +146,7 @@ export default function AnalyticsPage({ complaints }: { complaints: Complaint[] 
               <polyline points="15 18 9 12 15 6"/>
             </svg>
           </button>
-          <span className="font-semibold text-base">Complaint Analysis</span>
+          <span className="font-semibold text-base">Quality Issue Analysis</span>
         </div>
       </div>
 
@@ -161,11 +161,11 @@ export default function AnalyticsPage({ complaints }: { complaints: Complaint[] 
               {p}
             </button>
           ))}
-          <span className="text-xs text-gray-400 ml-auto">{total} complaints</span>
+          <span className="text-xs text-gray-400 ml-auto">{total} quality issues</span>
         </div>
 
         {/* Total Summary */}
-        <Section title="Complaint Summary">
+        <Section title="Quality Issue Summary">
           <div className="grid grid-cols-5 gap-2">
             {[{ label: 'Total', count: total, color: 'text-gray-900' },
               { label: 'Open', count: active.filter(c => c.status === 'open').length, color: 'text-red-500' },

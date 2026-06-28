@@ -5,7 +5,7 @@ import type { Complaint } from './types'
 const typeOptions    = ['Food Quality', 'Service', 'Delivery', 'Cleanliness', 'Other']
 const severityOptions = ['low', 'medium', 'high']
 const statusOptions   = ['open', 'handling', 'resolved', 'closed']
-const methodOptions   = ['On-site Complaint', 'Google Review', 'Foodpanda', 'GrabFood', 'Facebook', 'Online Platform Complaint', 'Reported Complaint', 'Other']
+const methodOptions   = ['On-site Quality Issue', 'Google Review', 'Foodpanda', 'GrabFood', 'Facebook', 'Online Platform Quality Issue', 'Reported Quality Issue', 'Other']
 const responsibleOptions = ['Service Staff', 'Kitchen Staff', 'Delivery Staff', 'Manager', 'Unknown']
 const resolutionOptions  = ['Pending', 'Apology', 'Remake', 'Discount', 'Refund', 'Free Item', 'Coupon', 'Platform Reply', 'Other']
 const staffActionOptions = ['Pending', 'Verbal Reminder', 'Written Warning', 'Training', 'Point Deduction', 'Fine', 'Suspension', 'No Penalty']
@@ -46,7 +46,7 @@ export default function ComplaintForm({
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b">
         <div className="flex items-center gap-3">
           <button onClick={onCancel} className="text-orange-500 text-sm font-medium">Cancel</button>
-          <span className="font-semibold text-base">{isNew ? 'New Complaint' : 'Edit Complaint'}</span>
+          <span className="font-semibold text-base">{isNew ? 'New Quality Issue' : 'Edit Quality Issue'}</span>
         </div>
         <button onClick={onSave}
           className="bg-orange-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg active:bg-orange-600 transition-colors">
@@ -58,7 +58,7 @@ export default function ComplaintForm({
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         <Field label="Title">
           <input value={form.description} onChange={e => onChange({ ...form, description: e.target.value })}
-            placeholder="Complaint title / description"
+            placeholder="Quality issue title / description"
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
         </Field>
 
@@ -84,7 +84,7 @@ export default function ComplaintForm({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Complaint Method">
+          <Field label="Quality Issue Method">
             <select value={form.complaintMethod} onChange={e => onChange({ ...form, complaintMethod: e.target.value })}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
               {methodOptions.map(o => <option key={o} value={o}>{o}</option>)}
@@ -162,9 +162,9 @@ export default function ComplaintForm({
 
         {canDelete && onDelete && (
           <button
-            onClick={() => { if (window.confirm('Delete this complaint?')) onDelete() }}
+            onClick={() => { if (window.confirm('Delete this quality issue?')) onDelete() }}
             className="w-full py-2.5 rounded-lg text-sm font-medium text-red-500 border border-red-200 active:bg-red-50 transition-colors">
-            Delete Complaint
+            Delete Quality Issue
           </button>
         )}
 

@@ -102,7 +102,7 @@ export default async function KitchenHome() {
       hasAlert: lowStock.length > 0, tone: TONE.red, image: '/low-stock.webp',
     },
     {
-      title: 'Complaints', href: '/complaints',
+      title: 'Quality Issues', href: '/complaints',
       subtitle: complaints > 0 ? `${complaints} to review` : 'Clear',
       hasAlert: complaints > 0, tone: TONE.red, image: '/Complaints.webp',
     },

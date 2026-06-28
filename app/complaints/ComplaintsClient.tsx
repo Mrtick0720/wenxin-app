@@ -171,7 +171,7 @@ export default function ComplaintsClient() {
       <div className="bg-white px-4 py-3 flex items-center justify-between border-b sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <BackButton href="/" />
-          <span className="font-semibold text-base">Complaints</span>
+          <span className="font-semibold text-base">Quality Issues</span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={openComplaintAnalysis}
@@ -210,7 +210,7 @@ export default function ComplaintsClient() {
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search complaints..."
+          placeholder="Search quality issues..."
           className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
         />
 
@@ -237,11 +237,11 @@ export default function ComplaintsClient() {
         {/* Complaint List */}
         <div>
           <div className="text-sm font-semibold text-gray-700 mb-2">
-            {filterDate === 'Today' ? "Today's Complaints" : 'Complaints'} ({filtered.length})
+            {filterDate === 'Today' ? "Today's Quality Issues" : 'Quality Issues'} ({filtered.length})
           </div>
           <div className="space-y-3">
             {filtered.length === 0 && (
-              <div className="text-center text-gray-400 py-8">No complaints found</div>
+              <div className="text-center text-gray-400 py-8">No quality issues found</div>
             )}
             {filtered.map((c) => {
               const sev = severityConfig[c.severity] || severityConfig.low
@@ -292,7 +292,7 @@ export default function ComplaintsClient() {
       <button
         onClick={openNew}
         className="fixed bottom-20 right-4 w-12 h-12 bg-orange-500 text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-30 active:bg-orange-600 transition-colors"
-        aria-label="Add Complaint">+</button>
+        aria-label="Add Quality Issue">+</button>
 
       {/* Form modal */}
       {form && (
@@ -324,7 +324,7 @@ function ArchiveView({ complaints }: { complaints: Complaint[] }) {
         <span className="text-xs text-gray-400">{complaints.length} records</span>
       </div>
       <div className="px-4 py-4 space-y-3">
-        {complaints.length === 0 && <div className="text-center text-gray-400 py-8">No archived complaints</div>}
+        {complaints.length === 0 && <div className="text-center text-gray-400 py-8">No archived quality issues</div>}
         {complaints.map(c => {
           const sev = severityConfig[c.severity] || severityConfig.low
           const st = statusConfig[c.status] || statusConfig.open
