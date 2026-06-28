@@ -10,7 +10,7 @@ import { useNavigation } from '../../../components/NavigationStack'
 import { supabase } from '@/lib/supabase/client'
 import { buildSubscriptionPlan, getDefaultMenuType, type DeliveryFrequency, type Holiday, type PlannedSubscriptionDay, type SubscriptionDay } from '@/lib/subscriptionSchedule'
 import { buildPersistedScheduleView } from '@/lib/subscriptionScheduleView'
-import { getCustomerCalendarStatus, getDeliveredDates } from '@/lib/customerCalendarStatus'
+import { getCustomerCalendarStatus } from '@/lib/customerCalendarStatus'
 import { todayLocalStr } from '@/lib/dateUtils'
 import { getCustomerDetailInitialState } from '@/lib/customerDetailState'
 import { splitCustomerMeals } from '@/lib/customerOrderHistory'
@@ -423,10 +423,19 @@ export default function CustomerDetailPage({
   // currentRemaining = openingBalance − currentUsed (≥0)
   // currentOverused  = currentUsed − openingBalance (≥0)  ← overuse to carry forward
   // stillOwed        = offset − purchased (≥0)            ← prev overuse new pkg couldn't cover
+  const today = todayLocalStr()
+  // Orders are matched by customer name across ALL packages, so scope usage to
+  // the current package's start date (a renewal resets start_date).
+  const periodStart = customer.start_date || '0000-01-01'
   const purchased = customer.total_portions
   const openingOffset = customer.opening_offset ?? 0
   const hasCarryOver = openingOffset > 0
-  const currentUsed = customer.used_portions
+  // "Used" = real meals already DELIVERED: every non-cancelled order in this
+  // package period on/before today. Orders stay 'pending' in this workflow, so a
+  // past order IS a delivered meal — no longer the stale manual counter.
+  const currentUsed = orders
+    .filter(o => o.status !== 'canceled' && o.date >= periodStart && o.date <= today)
+    .reduce((s, o) => s + (o.quantity ?? 1), 0)
   const openingBalance = Math.max(purchased - openingOffset, 0)
   const stillOwed = Math.max(openingOffset - purchased, 0)
   const currentRemaining = Math.max(openingBalance - currentUsed, 0)
@@ -467,11 +476,19 @@ export default function CustomerDetailPage({
   const endDate = scheduleView.endDate
   const selectedDay = selectedDate ? scheduleView.daysByDate.get(selectedDate) : null
   const orderStatusById = new Map(orders.map(order => [order.id, order.status]))
-  const today = todayLocalStr()
-  // Delivered dates are the earliest `used_portions` non-skipped days on/before
-  // today — never future days (see getDeliveredDates). Used for both the calendar
-  // (green) and the Delivery History bucketing so the two always agree.
-  const deliveredDateSet = getDeliveredDates(subscriptionDays, customer.used_portions, today)
+  // A scheduled day is DELIVERED once it's on/before today and has a live order
+  // (or an explicit completed status). Orders stay 'pending' here, so a past day
+  // with an order is a delivered meal. Drives the green calendar days and the
+  // Delivery History bucketing, so calendar and counts always agree.
+  const deliveredDateSet = new Set(
+    subscriptionDays
+      .filter(d => {
+        if (d.status === 'skipped' || d.date > today) return false
+        if (d.status === 'completed') return true
+        return d.order_id != null && orderStatusById.get(d.order_id) !== 'canceled'
+      })
+      .map(d => d.date),
+  )
   const selectedDayStatus = selectedDay
     ? getCustomerCalendarStatus({
         date: selectedDay.date,
@@ -516,7 +533,7 @@ export default function CustomerDetailPage({
   // ── Balance package: usage measured in real PORTIONS (order quantities) ──
   // Days carry 2–3 meals each, so "used by day count" is wrong. Delivered =
   // portions on/before today, Scheduled = pending future portions.
-  const activeOrders = orders.filter(o => o.status !== 'canceled')
+  const activeOrders = orders.filter(o => o.status !== 'canceled' && o.date >= periodStart)
   const deliveredPortions = activeOrders.filter(o => o.date <= today).reduce((s, o) => s + (o.quantity ?? 1), 0)
   const scheduledPortions = activeOrders.filter(o => o.date > today).reduce((s, o) => s + (o.quantity ?? 1), 0)
   const committedPortions = deliveredPortions + scheduledPortions
@@ -599,8 +616,7 @@ export default function CustomerDetailPage({
           <div className="bg-white rounded-2xl p-4 shadow-sm">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm font-semibold text-gray-700">Subscription</span>
-              {/* Balance usage is derived from order portions — no manual "used". */}
-              {!isBalance && <button onClick={() => setEditing(e => !e)} className="text-xs text-orange-500">Edit used</button>}
+              {/* Usage is derived from delivered orders — no manual "used" edit. */}
             </div>
 
             {isBalance ? (

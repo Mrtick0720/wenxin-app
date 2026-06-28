@@ -80,12 +80,10 @@ export default function CustomersClient() {
   const completedList = customers.filter(c => !c.active)
 
   function CustomerCard({ c, done }: { c: Customer; done: boolean }) {
-    // Mirror the detail page. For balance packages "used" = real delivered
-    // portions (completed orders); for scheduled packages keep the stored count.
-    // Usage is measured against the opening balance (purchased − overuse offset),
-    // and overuse is shown explicitly instead of a negative "left".
-    const isBalance = c.package_mode === 'balance'
-    const used = isBalance ? (deliveredByName.get(c.name.trim().toLowerCase()) ?? 0) : c.used_portions
+    // Mirror the detail page: "used" = real delivered portions (non-cancelled
+    // orders on/before today), measured against the opening balance (purchased −
+    // overuse offset). Overuse shows explicitly instead of a negative "left".
+    const used = deliveredByName.get(c.name.trim().toLowerCase()) ?? 0
     const openingBalance = Math.max(c.total_portions - (c.opening_offset ?? 0), 0)
     const remaining = Math.max(openingBalance - used, 0)
     const overused = Math.max(used - openingBalance, 0)
