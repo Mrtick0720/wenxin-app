@@ -1,100 +1,76 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import NavLink from '../NavLink'
-import { createBrowserSupabaseClient } from '@/lib/supabase/client'
-import { todayLocalStr } from '@/lib/dateUtils'
+// Owner/manager Home glance into today's attendance. Shows In / Out / Absent
+// counts plus the staff currently on duty, and deep-links to the full board at
+// Staff → Attendance. Numbers come from the same computeTeamAttendance used by
+// the full board, so the glance and the board never disagree.
 
-type ShiftEntry = {
-  id: string
-  name: string
-  role: string
-  clockIn: string | null   // HH:MM from clock_in timestamp
-}
+import { useEffect, useState, useCallback } from 'react'
+import NavLink from '../NavLink'
+import { supabase } from '@/lib/supabase/client'
+import { todayLocalStr } from '@/lib/dateUtils'
+import {
+  computeTeamAttendance, formatClock,
+  type TeamAttendance, type SessionLite, type ShiftLite,
+} from '@/lib/attendance/teamToday'
+
+const ATTENDANCE_HREF = '/staff?tab=attendance'
 
 export default function ShiftBoardCard() {
-  const [staff, setStaff] = useState<ShiftEntry[]>([])
+  const [data, setData] = useState<TeamAttendance | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let active = true
-    const supabase = createBrowserSupabaseClient()
+  const load = useCallback(async () => {
     const today = todayLocalStr()
-
-    async function load() {
-      // Fetch staff who have an open attendance session today
-      const { data: sessions, error } = await supabase
-        .from('attendance_sessions')
-        .select('staff_user_id,clock_in')
-        .eq('business_date', today)
-        .is('clock_out', null)
-        .order('clock_in', { ascending: true })
-
-      if (error || !sessions || sessions.length === 0) {
-        if (active) setLoading(false)
-        return
-      }
-
-      const staffIds = [...new Set(sessions.map(s => s.staff_user_id))]
-
-      const { data: profiles } = await supabase
-        .from('staff_profiles')
-        .select('id,display_name,role')
-        .in('id', staffIds)
-        .eq('active', true)
-
-      const profileMap = new Map((profiles ?? []).map(p => [p.id, p]))
-      const earliestByStaff = new Map<string, string>()
-      for (const s of sessions) {
-        if (!earliestByStaff.has(s.staff_user_id)) {
-          const t = new Date(s.clock_in)
-          earliestByStaff.set(s.staff_user_id, `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`)
-        }
-      }
-
-      const entries: ShiftEntry[] = staffIds
-        .map(id => {
-          const p = profileMap.get(id)
-          if (!p) return null
-          return { id, name: p.display_name, role: p.role, clockIn: earliestByStaff.get(id) ?? null }
-        })
-        .filter((e): e is ShiftEntry => e !== null)
-
-      if (active) {
-        setStaff(entries)
-        setLoading(false)
-      }
-    }
-
-    load()
-    return () => { active = false }
+    const [profilesRes, sessionsRes, shiftsRes] = await Promise.all([
+      supabase.from('staff_profiles').select('id,display_name,role').eq('active', true).eq('archived', false),
+      supabase.from('attendance_sessions').select('staff_user_id,clock_in,clock_out').eq('business_date', today),
+      supabase.from('staff_shifts').select('staff_id,shift_type').eq('shift_date', today),
+    ])
+    const staff = (profilesRes.data ?? []).map(p => ({
+      id: p.id as string, name: p.display_name as string, role: p.role as string,
+    }))
+    const sessions = (sessionsRes.data ?? []) as unknown as SessionLite[]
+    const shifts = (shiftsRes.data ?? []) as unknown as ShiftLite[]
+    setData(computeTeamAttendance(staff, sessions, shifts))
+    setLoading(false)
   }, [])
 
+  useEffect(() => { load() }, [load])
+
+  const onDuty = data?.members.filter(m => m.state === 'in') ?? []
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-2 px-1">
+      <NavLink href={ATTENDANCE_HREF} className="flex items-center justify-between mb-2 px-1">
         <span className="text-sm font-semibold text-gray-800">Shift Board</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/>
-        </svg>
-      </div>
+        <span className="text-xs text-gray-400">View all ›</span>
+      </NavLink>
+
+      {data && (
+        <NavLink href={ATTENDANCE_HREF} className="grid grid-cols-3 gap-2 mb-2 block">
+          <Stat n={data.summary.in} label="In" color="text-green-600" bg="bg-green-50" />
+          <Stat n={data.summary.out} label="Out" color="text-gray-500" bg="bg-gray-100" />
+          <Stat n={data.summary.absent} label="Absent" color="text-red-500" bg="bg-red-50" />
+        </NavLink>
+      )}
+
       <div className="space-y-2">
         {loading ? (
           <div className="bg-white rounded-2xl px-4 py-6 text-center text-sm text-gray-400 shadow-sm">
             Loading…
           </div>
-        ) : staff.length === 0 ? (
+        ) : onDuty.length === 0 ? (
           <div className="bg-white rounded-2xl px-4 py-6 text-center text-sm text-gray-400 shadow-sm">
             No one clocked in yet
           </div>
         ) : (
-          staff.map((entry) => (
-            <NavLink key={entry.id} href="/staff" className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 block">
+          onDuty.map((entry) => (
+            <NavLink key={entry.id} href={ATTENDANCE_HREF} className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 block">
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-gray-900 truncate">{entry.name}</span>
-                <span className="block text-xs text-gray-500 truncate mt-0.5">
-                  {entry.role}{entry.clockIn ? ` · since ${entry.clockIn}` : ''}
+                <span className="block text-xs text-gray-500 truncate mt-0.5 capitalize">
+                  {entry.role}{entry.firstIn ? ` · since ${formatClock(entry.firstIn)}` : ''}
                 </span>
               </span>
               <span className="flex-shrink-0 text-xs font-medium rounded-full px-2.5 py-1 bg-green-50 text-green-600">
@@ -104,6 +80,15 @@ export default function ShiftBoardCard() {
           ))
         )}
       </div>
+    </div>
+  )
+}
+
+function Stat({ n, label, color, bg }: { n: number; label: string; color: string; bg: string }) {
+  return (
+    <div className={`rounded-xl ${bg} py-2 flex flex-col items-center`}>
+      <span className={`text-lg font-bold leading-none ${color}`}>{n}</span>
+      <span className="text-[11px] text-gray-500 mt-0.5">{label}</span>
     </div>
   )
 }

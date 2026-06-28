@@ -110,7 +110,7 @@ function summaryForRoster(entries: RosterEntry[]) {
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-export default function StaffPage() {
+export default function StaffPage({ initialTab }: { initialTab?: Tab } = {}) {
   const staff = useStaff()
   const { push } = useNavigation()
   const isOwnerOrManager = staff?.role === 'owner' || staff?.role === 'manager'
@@ -118,7 +118,7 @@ export default function StaffPage() {
   const isManager = staff ? canViewAllAttendance(staff.role) : false
 
   const today = todayLocalStr()
-  const [tab, setTab] = useState<Tab>('schedule')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'schedule')
   const [selectedDate, setSelectedDate] = useState(today)
   const datepickerAreaRef = useRef<HTMLDivElement>(null)
 

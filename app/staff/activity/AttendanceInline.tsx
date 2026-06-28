@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase/client'
 import type { CurrentStaff } from '@/lib/auth/types'
 import { CenteredSpinner } from '@/app/components/Spinner'
 import ClockInOutCard from '@/app/components/attendance/ClockInOutCard'
+import TeamAttendanceBoard from '@/app/components/attendance/TeamAttendanceBoard'
+import { todayLocalStr } from '@/lib/dateUtils'
 
 type SessionRow = {
   id: number
@@ -30,7 +32,7 @@ export default function AttendanceInline({
   const [todaySessions, setTodaySessions] = useState<SessionRow[]>([])
   const [loading, setLoading] = useState(true)
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
 
   const loadData = useCallback(async () => {
     const { data } = await supabase
@@ -98,17 +100,8 @@ export default function AttendanceInline({
         ))}
       </div>
 
-      {/* Team Attendance Board (Manager only) */}
-      {isManager && (
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="text-sm font-semibold text-gray-700 mb-3">Team Attendance</div>
-          <div className="text-center text-gray-400 py-8 text-sm">
-            <div className="text-3xl mb-2">👥</div>
-            Team attendance board will load here when connected to the database.<br />
-            Staff grouped by status: Present · Late · Pending · Absent · Off · On Leave
-          </div>
-        </div>
-      )}
+      {/* Team Attendance Board (Owner/Manager only) — real data */}
+      {isManager && <TeamAttendanceBoard businessDate={today} />}
 
       {/* Session History */}
       <div className="bg-white rounded-2xl p-4 shadow-sm">

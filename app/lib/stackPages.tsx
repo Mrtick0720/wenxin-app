@@ -89,7 +89,7 @@ type RouteFactory = (query: URLSearchParams) => React.ReactNode
 const pages: Record<string, RouteFactory> = {
   '/purchase':     () => <S fallback={<PurchaseFallback />}><PurchaseClient /></S>,
   '/bento':        () => <S><BentoStack /></S>,
-  '/staff':          () => <S><StaffPage /></S>,
+  '/staff':          (q) => <S><StaffPage initialTab={q.get('tab') === 'attendance' ? 'attendance' : undefined} /></S>,
   '/staff/accounts': () => <S><StaffAccountsStack /></S>,
   '/tasks':          () => <S><TasksPage /></S>,
   '/profile':        () => <S><ProfileStack /></S>,
