@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { markPurchasePaidAction } from './actions'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const Z = 2147483647
 
@@ -25,20 +26,24 @@ export default function PaymentModal({
   onClose: () => void
   onPaid: (id: number) => void
 }) {
+  const { showToast } = useGlobalToast()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const res = await markPurchasePaidAction(payableId)
-    setSaving(false)
 
+    // Optimistic: show success + close immediately
+    showToast('Marked paid')
+    onPaid(payableId)
+    onClose()
+
+    const res = await markPurchasePaidAction(payableId)
     if (!res.ok) {
-      setError(res.error)
-      return
+      showToast(res.error, 'error')
+      onPaid(payableId)  // refetch to rollback
     }
-    onPaid(res.data.id)
   }
 
   const content = (

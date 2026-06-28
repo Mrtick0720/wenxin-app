@@ -174,14 +174,15 @@ export default function NumericEditorSheet({
     if (priceCents <= 0) { setActive('unit_price'); setError('Enter a valid unit price.'); return }
     setSaving(true)
     setError(null)
+
+    // Optimistic: dismiss immediately, run server in background
+    dismiss()
     const res = await onSave({
       quantity: qtyNum,
-      unitPrice: priceNum,   // priceCents / 100 — normal decimal submitted to server
+      unitPrice: priceNum,
       supplier: supplier.trim(),
     })
-    setSaving(false)
-    if (!res.ok) { setError(res.error ?? 'Save failed.'); return }
-    dismiss()
+    if (!res.ok) { setError(res.error ?? 'Save failed.') }
   }
 
   // Card styling

@@ -14,6 +14,7 @@ export type GeofenceStatus =
   | 'ready'      // have a fix, inside the radius
   | 'outside'    // have a fix, outside the radius
   | 'denied'     // permission denied
+  | 'insecure'   // page not served over HTTPS — geolocation blocked
   | 'error'      // signal unavailable / timeout / unsupported
 
 export type Geofence = {
@@ -50,7 +51,8 @@ export function useGeofence(): Geofence {
       return c
     } catch (e) {
       if (!activeRef.current) throw e
-      setStatus((e as GeoError) === 'denied' ? 'denied' : 'error')
+      const err = e as GeoError
+      setStatus(err === 'denied' ? 'denied' : err === 'insecure' ? 'insecure' : 'error')
       throw e
     }
   }, [])

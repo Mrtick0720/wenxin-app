@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { saveCountAction } from './count-actions'
 import type { InventoryView } from '@/lib/inventory/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Reason = 'routine' | 'adjustment'
 
@@ -28,13 +29,13 @@ function deltaClass(delta: number): string {
 }
 
 export default function CountItemSheet({ item, isOpen, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [newQty, setNewQty] = useState('')
   const [openedQty, setOpenedQty] = useState('')
   const [unopenedQty, setUnopenedQty] = useState('')
   const [reason, setReason] = useState<Reason>('routine')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen && item) {
@@ -47,7 +48,6 @@ export default function CountItemSheet({ item, isOpen, onClose, onSaved }: Props
       setReason('routine')
       setSaving(false)
       setError(null)
-      setToast(null)
     }
   }, [isOpen, item])
 
@@ -79,15 +79,15 @@ export default function CountItemSheet({ item, isOpen, onClose, onSaved }: Props
       ? { item_id: item.id, new_quantity: totalForOpened, opened_quantity: parsedOpened }
       : { item_id: item.id, new_quantity: parsedQty, opened_quantity: 0 }
 
-    const result = await saveCountAction([entry], item.category, notesForMovement)
-    setSaving(false)
+    // Optimistic: show success + close immediately
+    showToast('Stock updated')
+    onSaved()
+    onClose()
 
-    if (result.ok) {
-      setToast('Stock updated')
-      onSaved()
-      setTimeout(() => { setToast(null); onClose() }, 1200)
-    } else {
-      setError(result.error)
+    const result = await saveCountAction([entry], item.category, notesForMovement)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
@@ -103,13 +103,6 @@ export default function CountItemSheet({ item, isOpen, onClose, onSaved }: Props
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-white flex flex-col">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[210] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0">

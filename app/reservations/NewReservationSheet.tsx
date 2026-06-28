@@ -6,6 +6,7 @@ import { createReservationAction, updateReservationAction, type NewReservationIn
 import { todayLocalStr, addDays } from '@/lib/dateUtils'
 import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const Z_MAX = 2147483647
 
@@ -36,6 +37,7 @@ export default function NewReservationSheet({
   onClose: () => void
   onCreated: () => void
 }) {
+  const { showToast } = useGlobalToast()
   const isEdit = !!edit
   const [form, setForm] = useState<NewReservationInput>({
     customer_name: edit?.customer_name ?? '',
@@ -71,13 +73,19 @@ export default function NewReservationSheet({
       preordered_dishes: form.preordered_dishes?.trim() || undefined,
       notes: form.notes?.trim() || undefined,
     }
+
+    // Optimistic: show success + close immediately
+    showToast(isEdit ? 'Reservation updated' : 'Reservation saved')
+    onCreated()
+    onClose()
+
     const res = edit
       ? await updateReservationAction(edit.id, payload)
       : await createReservationAction(payload)
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
-    onCreated()
-    onClose()
+    if (!res.ok) {
+      showToast(res.error, 'error')
+      onCreated()  // refetch to rollback
+    }
   }
 
   const content = (

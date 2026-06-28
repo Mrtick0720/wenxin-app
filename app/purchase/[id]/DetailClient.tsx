@@ -9,6 +9,7 @@ import BackButton from '../../components/BackButton'
 import { FullPageSpinner } from '../../components/Spinner'
 import CatalogCombobox from '../CatalogCombobox'
 import type { CatalogItem } from '@/lib/purchaseLedger/catalog'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 import {
   fetchRecordContextAction,
   fetchCatalogAction,
@@ -72,6 +73,7 @@ export default function DetailClient({ itemId, onChanged }: Props) {
   const params = useParams()
   const router = useRouter()
   const id = itemId ?? Number(params?.id)
+  const { showToast } = useGlobalToast()
 
   const [record, setRecord] = useState<PurchaseRecord | null>(null)
   const [canViewCosts, setCanViewCosts] = useState(false)
@@ -151,7 +153,8 @@ export default function DetailClient({ itemId, onChanged }: Props) {
     if (!record) return
     setSaving(true)
     setError(null)
-    const res = await updateRecordAction(record.id, {
+
+    const payload = {
       name: form.name.trim(),
       specification: form.specification.trim() || null,
       category: form.category,
@@ -164,10 +167,16 @@ export default function DetailClient({ itemId, onChanged }: Props) {
       remarks: form.remarks.trim() || null,
       purchase_method: form.purchase_method.trim() || null,
       payment_status: form.payment_status.trim() || null,
-    })
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
+    }
+
+    // Optimistic: navigate back immediately
+    showToast('Saved')
     done()
+
+    const res = await updateRecordAction(record.id, payload)
+    if (!res.ok) {
+      showToast(res.error, 'error')
+    }
   }
 
   async function handleDelete() {

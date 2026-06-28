@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReservationRow } from './page'
 import { updateReservationStatusAction } from './actions'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -52,6 +53,7 @@ interface Props {
 export default function ReservationDetail({
   reservation, canSeePii, canEdit, index, total, onPrev, onNext, onClose, onEdit, onStatusChanged,
 }: Props) {
+  const { showToast } = useGlobalToast()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [localStatus, setLocalStatus] = useState(reservation.status)
@@ -64,11 +66,20 @@ export default function ReservationDetail({
   async function handleAction(newStatus: string) {
     setSaving(true)
     setError(null)
-    const res = await updateReservationStatusAction(reservation.id, newStatus)
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
+
+    // Optimistic: update status immediately
+    const prevStatus = localStatus
     setLocalStatus(newStatus)
     onStatusChanged(reservation.id, newStatus)
+
+    const res = await updateReservationStatusAction(reservation.id, newStatus)
+    setSaving(false)
+    if (!res.ok) {
+      // Rollback
+      setLocalStatus(prevStatus)
+      onStatusChanged(reservation.id, prevStatus)
+      showToast(res.error, 'error')
+    }
   }
 
   // compact subtitle line: date · time (pii only) · pax · table

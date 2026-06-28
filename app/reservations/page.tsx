@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { todayLocalStr } from '@/lib/dateUtils'
+import { todayLocalStr, isValidDateStr } from '@/lib/dateUtils'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import DatePicker from '../components/DatePicker'
@@ -72,7 +72,7 @@ function CelebrationDots() {
   )
 }
 
-export default function ReservationsPage() {
+export default function ReservationsPage({ initialDate }: { initialDate?: string } = {}) {
   const staff = useStaff()
   // Normalize as a plain string so a legacy 'boss' value (removed from the role
   // enum) still maps to owner without a no-overlap type error on the comparison.
@@ -83,8 +83,24 @@ export default function ReservationsPage() {
   const canDeleteHistory = role === 'owner' || role === 'manager'
 
   const today = todayLocalStr()
-  const [selectedDate, setSelectedDate] = useState(today)
+  // Stack navigation (Home card → push) passes the focused date as a prop since
+  // it never updates window.location. Direct URL access (/reservations?date=…)
+  // has no prop; that case is handled by the effect below. Invalid/missing →
+  // today.
+  const [selectedDate, setSelectedDate] = useState(
+    isValidDateStr(initialDate) ? initialDate : today,
+  )
   const [markedDates, setMarkedDates] = useState<Set<string>>(new Set())
+
+  // Direct-URL fallback: when not rendered through the client stack there is no
+  // initialDate prop, so read the query param from the address bar on mount.
+  // Runs once; SSR-safe (window guarded). The stack path already has the date
+  // from the prop, so it skips this.
+  useEffect(() => {
+    if (initialDate !== undefined || typeof window === 'undefined') return
+    const q = new URLSearchParams(window.location.search).get('date')
+    if (isValidDateStr(q)) setSelectedDate(q)
+  }, [initialDate])
 
   const [reservations, setReservations] = useState<ReservationRow[]>([])
   const [canSeePii, setCanSeePii] = useState(false)

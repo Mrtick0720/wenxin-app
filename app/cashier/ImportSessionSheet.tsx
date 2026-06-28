@@ -6,6 +6,7 @@ import MoneyInput from '@/app/components/MoneyInput'
 import { importCashDrawerSessionAction, fetchActiveStaffAction } from './actions'
 import type { ImportSessionInput } from '@/lib/cashDrawer/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Step = 1 | 2 | 3 | 4 | 5
 
@@ -114,6 +115,7 @@ type Props = {
 }
 
 export default function ImportSessionSheet({ isOpen, onClose, onImported }: Props) {
+  const { showToast } = useGlobalToast()
   const [mounted, setMounted] = useState(false)
   const [step, setStep] = useState<Step>(1)
   const [form, setForm] = useState<FormState>(emptyForm)
@@ -157,13 +159,16 @@ export default function ImportSessionSheet({ isOpen, onClose, onImported }: Prop
     if (submitting) return
     setSubmitting(true)
     setError(null)
+
+    // Optimistic: show success + close immediately
+    showToast('Session imported')
+    onImported()
+    onClose()
+
     const result = await importCashDrawerSessionAction(buildInput(form))
-    if (result.ok) {
-      onImported()
-      onClose()
-    } else {
-      setError(result.error)
-      setSubmitting(false)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onImported()  // refetch to rollback
     }
   }
 

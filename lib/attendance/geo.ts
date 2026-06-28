@@ -51,16 +51,24 @@ export function formatDistance(metres: number): string {
   return `${(metres / 1000).toFixed(1)} km`
 }
 
-export type GeoError = 'denied' | 'unavailable' | 'timeout' | 'unsupported'
+export type GeoError = 'denied' | 'unavailable' | 'timeout' | 'unsupported' | 'insecure'
 
 /**
  * One-shot high-accuracy position read, wrapped in a Promise. Rejects with a
  * GeoError string so callers can branch on permission vs. signal failures.
+ *
+ * Note: browser geolocation only works in a SECURE context (HTTPS or
+ * localhost). Over a plain-HTTP LAN address (e.g. the dev server on a phone)
+ * the API is blocked — we surface that as 'insecure' so the UI can explain it.
  */
 export function getCurrentCoords(): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       reject('unsupported' as GeoError)
+      return
+    }
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      reject('insecure' as GeoError)
       return
     }
     navigator.geolocation.getCurrentPosition(

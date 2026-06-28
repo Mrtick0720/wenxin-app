@@ -70,7 +70,6 @@ export default function ShiftBoardCard() {
     return () => { active = false }
   }, [])
 
-  const avatarColors = ['bg-purple-500','bg-blue-500','bg-emerald-500','bg-amber-500','bg-rose-500','bg-cyan-500']
 
   return (
     <div>
@@ -90,11 +89,8 @@ export default function ShiftBoardCard() {
             No one clocked in yet
           </div>
         ) : (
-          staff.map((entry, i) => (
+          staff.map((entry) => (
             <NavLink key={entry.id} href="/staff" className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3 block">
-              <span className={`w-9 h-9 rounded-full ${avatarColors[i % avatarColors.length]} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}>
-                {entry.name.charAt(0).toUpperCase()}
-              </span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-semibold text-gray-900 truncate">{entry.name}</span>
                 <span className="block text-xs text-gray-500 truncate mt-0.5">

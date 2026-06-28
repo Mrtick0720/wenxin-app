@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { createLowStockReportAction } from './report-actions'
 import type { LowStockReportInput } from '@/lib/inventory/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type ReportType = 'running_low' | 'out_of_stock' | 'needed_tomorrow' | 'unusual_usage' | 'other'
 type Urgency = 'normal' | 'urgent'
@@ -27,13 +28,13 @@ const REPORT_TYPE_LABELS: Record<ReportType, string> = {
 const REPORT_TYPES = Object.keys(REPORT_TYPE_LABELS) as ReportType[]
 
 export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [reportType, setReportType] = useState<ReportType>('running_low')
   const [urgency, setUrgency] = useState<Urgency>('normal')
   const [note, setNote] = useState('')
   const [suggestedQuantity, setSuggestedQuantity] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -42,7 +43,6 @@ export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props
       setNote('')
       setSuggestedQuantity('')
       setError(null)
-      setToast(null)
     }
   }, [isOpen])
 
@@ -61,30 +61,19 @@ export default function ReportLowSheet({ isOpen, item, onClose, onSaved }: Props
       suggestedQuantity: suggestedQuantity.trim() ? Number(suggestedQuantity.trim()) : undefined,
     }
 
-    const result = await createLowStockReportAction(input)
-    setSubmitting(false)
+    // Optimistic: show success + close immediately
+    showToast('Report submitted')
+    onSaved()
+    onClose()
 
-    if (result.ok) {
-      setToast('Report submitted')
-      onSaved()
-      setTimeout(() => {
-        setToast(null)
-        onClose()
-      }, 1200)
-    } else {
-      setError(result.error ?? 'Something went wrong')
+    const result = await createLowStockReportAction(input)
+    if (!result.ok) {
+      showToast(result.error ?? 'Failed to submit report', 'error')
     }
   }
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-white flex flex-col">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[510] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0">

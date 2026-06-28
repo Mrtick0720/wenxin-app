@@ -38,6 +38,11 @@ export default function NewTaskPage() {
     e.preventDefault()
     if (!form.title.trim()) { show('Please enter a task title', 'error'); return }
     setLoading(true)
+
+    // Optimistic: show success + navigate back immediately
+    show('Task created', 'success')
+    pop()
+
     const { error: err } = await supabase.from('tasks').insert({
       title: form.title.trim(),
       task_type: form.task_type,
@@ -45,10 +50,7 @@ export default function NewTaskPage() {
       date: form.date,
       status: 'pending',
     })
-    setLoading(false)
-    if (err) { show(err.message || 'Failed to create task', 'error'); return }
-    show('Task created', 'success')
-    setTimeout(() => pop(), 600)
+    if (err) { show(err.message || 'Failed to create task', 'error') }
   }
 
   return (

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { receiveStockAction } from './receive-actions'
 import type { InventoryView } from '@/lib/inventory/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Props = {
   item: InventoryView | undefined
@@ -14,17 +15,16 @@ type Props = {
 }
 
 export default function ReceiveStockSheet({ item, isOpen, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [receivedQty, setReceivedQty] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen && item) {
       setReceivedQty('')
       setSaving(false)
       setError(null)
-      setToast(null)
     }
   }, [isOpen, item])
 
@@ -41,15 +41,15 @@ export default function ReceiveStockSheet({ item, isOpen, onClose, onSaved }: Pr
     setSaving(true)
     setError(null)
 
-    const result = await receiveStockAction(item.id, parsedQty, 'Purchase Received')
-    setSaving(false)
+    // Optimistic: show success + close immediately
+    showToast('Stock received')
+    onSaved()
+    onClose()
 
-    if (result.ok) {
-      setToast('Stock received')
-      onSaved()
-      setTimeout(() => { setToast(null); onClose() }, 1200)
-    } else {
-      setError(result.error)
+    const result = await receiveStockAction(item.id, parsedQty, 'Purchase Received')
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
@@ -57,13 +57,6 @@ export default function ReceiveStockSheet({ item, isOpen, onClose, onSaved }: Pr
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-white flex flex-col">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[210] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0">

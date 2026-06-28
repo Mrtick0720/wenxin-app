@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { archiveItemAction, deleteItemAction } from './manage-actions'
 import type { InventoryView } from '@/lib/inventory/types'
 import { canManageInventory, canCountCategory } from '@/lib/inventory/permissions'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Props = {
   item: InventoryView | undefined
@@ -27,12 +28,12 @@ export default function ItemActionSheet({
   onEditItem,
   onSaved,
 }: Props) {
+  const { showToast } = useGlobalToast()
   const [archiveConfirm, setArchiveConfirm] = useState(false)
   const [archiving, setArchiving] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -41,37 +42,38 @@ export default function ItemActionSheet({
       setDeleteConfirm(false)
       setDeleting(false)
       setError(null)
-      setToast(null)
     }
   }, [isOpen])
 
   async function handleArchive() {
     if (!item || archiving) return
     setArchiving(true)
+
+    // Confirmation already shown — optimistic close + feedback
+    showToast('Item archived')
+    onSaved()
+    onClose()
+
     const result = await archiveItemAction(item.id)
-    setArchiving(false)
-    if (result.ok) {
-      setToast('Item archived')
-      onSaved()
-      setTimeout(() => { setToast(null); onClose() }, 1200)
-    } else {
-      setError(result.error)
-      setArchiveConfirm(false)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
   async function handleDelete() {
     if (!item || deleting) return
     setDeleting(true)
+
+    // Confirmation already shown — optimistic close + feedback
+    showToast('Item deleted')
+    onSaved()
+    onClose()
+
     const result = await deleteItemAction(item.id)
-    setDeleting(false)
-    if (result.ok) {
-      setToast('Item deleted')
-      onSaved()
-      setTimeout(() => { setToast(null); onClose() }, 1200)
-    } else {
-      setError(result.error)
-      setDeleteConfirm(false)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
@@ -90,13 +92,6 @@ export default function ItemActionSheet({
 
   return createPortal(
     <div className="fixed inset-0 z-[500] flex flex-col justify-end">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[210] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />

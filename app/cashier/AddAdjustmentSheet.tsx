@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { createCashAdjustmentAction } from './actions'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Tab = 'coupon' | 'pay_out'
 
@@ -17,6 +18,7 @@ type Props = {
 }
 
 export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [mounted, setMounted] = useState(false)
   const [tab, setTab] = useState<Tab>('coupon')
   const [amountValue, setAmountValue] = useState(0)
@@ -50,7 +52,7 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
     setSubmitting(true)
     setError(null)
 
-    const result = await createCashAdjustmentAction({
+    const payload = {
       businessDate,
       sessionId,
       adjustmentType: tab,
@@ -59,14 +61,17 @@ export default function AddAdjustmentSheet({ isOpen, businessDate, sessionId, on
       referenceNo:    tab === 'coupon' && referenceNo.trim() ? referenceNo.trim() : null,
       category:       tab === 'pay_out' && category.trim() ? category.trim() : null,
       note:           note.trim() || null,
-    })
+    }
 
-    if (result.ok) {
-      onSaved()
-      onClose()
-    } else {
-      setError(result.error)
-      setSubmitting(false)
+    // Optimistic: show success + close immediately
+    showToast('Saved')
+    onSaved()
+    onClose()
+
+    const result = await createCashAdjustmentAction(payload)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 

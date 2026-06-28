@@ -13,6 +13,7 @@ import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
 import InventoryItemPicker from './InventoryItemPicker'
 import { INVENTORY_CATEGORIES } from '@/lib/inventory/status'
 import { PURCHASE_UNITS } from '@/lib/units'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Props = {
   mode: 'add' | 'edit'
@@ -72,6 +73,7 @@ function formFromItem(item: InventoryView): FormState {
 }
 
 export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [form, setForm] = useState<FormState>(emptyForm)
   const [selectedCatalogItem, setSelectedCatalogItem] = useState<InventoryCatalogItem | null>(null)
   const [catalogItems, setCatalogItems] = useState<InventoryCatalogItem[]>([])
@@ -80,7 +82,6 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
   const [existingItems, setExistingItems] = useState<Map<number, { currentQuantity: number; displayStatus: DisplayStatus }>>(new Map())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isOpen) return
@@ -88,7 +89,6 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
     setSelectedCatalogItem(null)
     setSaving(false)
     setError(null)
-    setToast(null)
 
     if (mode === 'add') {
       setCatalogLoading(true)
@@ -141,10 +141,11 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
     setSaving(true)
     setError(null)
 
-    let result: { ok: true; id?: number } | { ok: false; error: string }
+    let payload: ItemCreateData | ItemUpdateData
+    let action: () => Promise<{ ok: true; id?: number } | { ok: false; error: string }>
 
     if (mode === 'add') {
-      const payload: ItemCreateData = {
+      payload = {
         catalogId: selectedCatalogItem!.id,
         trackOpened: form.trackOpened,
         reorderLevel: parseFloat(form.reorderLevel) || 0,
@@ -156,10 +157,10 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
         notes: form.notes.trim() || null,
         initialQuantity: initialQty,
         initialOpenedQuantity: form.trackOpened ? initialOpenedQty : 0,
-      }
-      result = await createItemAction(payload)
+      } as ItemCreateData
+      action = () => createItemAction(payload as ItemCreateData)
     } else {
-      const payload: ItemUpdateData = {
+      payload = {
         category: form.category.trim() || item!.category,
         unit: form.unit.trim() || item!.unit,
         trackOpened: form.trackOpened,
@@ -170,21 +171,19 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
         location: form.location.trim() || null,
         supplier: form.supplier.trim() || null,
         notes: form.notes.trim() || null,
-      }
-      result = await updateItemAction(item!.id, payload)
+      } as ItemUpdateData
+      action = () => updateItemAction(item!.id, payload as ItemUpdateData)
     }
 
-    setSaving(false)
+    // Optimistic: show success + close immediately
+    showToast(mode === 'add' ? 'Item added' : 'Item updated')
+    onSaved()
+    onClose()
 
-    if (result.ok) {
-      setToast(mode === 'add' ? 'Item added' : 'Item updated')
-      onSaved()
-      setTimeout(() => {
-        setToast(null)
-        onClose()
-      }, 1200)
-    } else {
-      setError(result.error)
+    const result = await action()
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
@@ -192,13 +191,6 @@ export default function ItemSheet({ mode, item, isOpen, onClose, onSaved }: Prop
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-white flex flex-col">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[210] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0">

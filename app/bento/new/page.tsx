@@ -317,7 +317,7 @@ export default function NewBentoOrder({ initialDate }: { initialDate?: string } 
       }))
       router.refresh()
       show('Order created', 'success')
-      setTimeout(() => { pop() }, 600)
+      pop()
     } catch {
       show('Network error. Please check your connection.', 'error')
       setLoading(false)

@@ -84,7 +84,7 @@ function BentoStack() {
   return <BentoClient initialOrders={[]} role={role} />
 }
 
-type RouteFactory = () => React.ReactNode
+type RouteFactory = (query: URLSearchParams) => React.ReactNode
 
 const pages: Record<string, RouteFactory> = {
   '/purchase':     () => <S fallback={<PurchaseFallback />}><PurchaseClient /></S>,
@@ -99,7 +99,7 @@ const pages: Record<string, RouteFactory> = {
   '/inventory':    () => <S><InventoryPage /></S>,
   '/reports':      () => <S><ReportsPage /></S>,
   '/dine-in':      () => <S><DineInPage /></S>,
-  '/reservations': () => <S><ReservationsPage /></S>,
+  '/reservations': (q) => <S><ReservationsPage initialDate={q.get('date') ?? undefined} /></S>,
   '/complaints':   () => <S><ComplaintsPage /></S>,
   '/incidents':    () => <S><IncidentsPage /></S>,
   '/all':          () => <S><AllModulesPage /></S>,
@@ -117,7 +117,14 @@ const pages: Record<string, RouteFactory> = {
  * back to normal URL navigation when this returns null.
  */
 export function getPageElement(href: string): React.ReactNode | null {
-  const factory = pages[href]
-  return factory ? factory() : null
+  // Split the optional query string so routes are matched by pathname while the
+  // params (e.g. ?date=YYYY-MM-DD) are forwarded to the page factory. Stack
+  // navigation never changes window.location, so the query can only reach the
+  // page this way — it cannot be recovered via useSearchParams().
+  const qIndex = href.indexOf('?')
+  const pathname = qIndex === -1 ? href : href.slice(0, qIndex)
+  const query = new URLSearchParams(qIndex === -1 ? '' : href.slice(qIndex + 1))
+  const factory = pages[pathname]
+  return factory ? factory(query) : null
 }
 

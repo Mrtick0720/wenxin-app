@@ -33,21 +33,47 @@ const TONE_ICONS: Record<IssueTone, React.ReactNode> = {
   ),
 }
 
+const CHEVRON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+)
+
 interface TodaysIssuesCardProps {
   issues: IssueRow[]
   dateLabel: string
+  /** Section heading. Defaults to "Action Required" (used by every role Home). */
+  title?: string
+  /** Compact empty-state text when there are no items. */
+  emptyLabel?: string
+  /** Compact list styling (front-desk Home). Owner/manager Home keeps the larger rows. */
+  compact?: boolean
 }
 
-export default function TodaysIssuesCard({ issues, dateLabel }: TodaysIssuesCardProps) {
+export default function TodaysIssuesCard({ issues, dateLabel, title = 'Action Required', emptyLabel = '✓ No Issues Today', compact = false }: TodaysIssuesCardProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2 px-1">
-        <span className="text-sm font-semibold text-gray-800">Today&apos;s Issues</span>
+        <span className="text-sm font-semibold text-gray-800">{title}</span>
         <span className="text-xs text-gray-400">{dateLabel}</span>
       </div>
       {issues.length === 0 ? (
-        <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <div className="text-sm text-green-500 font-medium">✓ No Issues Today</div>
+        <div className={`bg-white rounded-2xl shadow-sm ${compact ? 'px-4 py-2.5' : 'p-4'}`}>
+          <div className="text-sm text-green-500 font-medium truncate">{emptyLabel}</div>
+        </div>
+      ) : compact ? (
+        <div className="space-y-1.5">
+          {issues.map((issue, i) => {
+            const tone = TONE_STYLES[issue.tone]
+            return (
+              <NavLink key={i} href={issue.link} className={`${tone.bg} rounded-xl px-3 py-2 flex items-center gap-2.5 active:opacity-80`}>
+                <span className={`flex-shrink-0 ${tone.icon}`}>{TONE_ICONS[issue.tone]}</span>
+                <span className={`text-sm font-semibold ${tone.title} truncate min-w-0 flex-1`}>{issue.title}</span>
+                <span className={`text-xs ${tone.detail} flex-shrink-0`}>{issue.detail}</span>
+                <span className={`flex-shrink-0 ${tone.icon} opacity-60`}>{CHEVRON}</span>
+              </NavLink>
+            )
+          })}
         </div>
       ) : (
         <div className="space-y-2">

@@ -15,6 +15,7 @@ type Props = {
 
 const OUTSIDE_MSG = 'You are outside the allowed attendance area.'
 const DENIED_MSG = 'Location permission is required to record attendance.'
+const INSECURE_MSG = 'Location needs a secure (HTTPS) connection. Open the app via its https:// web address — it won’t work over a plain http:// dev link.'
 
 export default function ClockInOutCard({
   staffUserId, businessDate, hasOpenSession, openSince, onChanged,
@@ -41,7 +42,11 @@ export default function ClockInOutCard({
       try {
         coords = await geo.capture()
       } catch (reason) {
-        setError(reason === 'denied' ? DENIED_MSG : 'Could not get your location. Try again.')
+        setError(
+          reason === 'denied' ? DENIED_MSG
+          : reason === 'insecure' ? INSECURE_MSG
+          : 'Could not get your location. Try again.',
+        )
         return null
       }
       const distance = distanceToStore(coords.latitude, coords.longitude)
@@ -181,6 +186,14 @@ function GeofenceStatus({ geo }: { geo: ReturnType<typeof useGeofence> }) {
         <button onClick={geo.refresh} className="mt-2 text-xs font-medium text-orange-500 active:opacity-70">
           Try again
         </button>
+      </div>
+    )
+  }
+
+  if (geo.status === 'insecure') {
+    return (
+      <div className="mb-4">
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">{INSECURE_MSG}</div>
       </div>
     )
   }

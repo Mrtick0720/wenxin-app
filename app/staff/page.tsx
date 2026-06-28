@@ -38,12 +38,25 @@ function sortByRole(a: { role: string; name: string }, b: { role: string; name: 
   return a.name.localeCompare(b.name)
 }
 
+// ─── Shift-status sort — on-duty first, then leave, then off/unscheduled ─────
+function shiftStatusRank(entry: { shiftType: ShiftType | null }): number {
+  if (entry.shiftType && entry.shiftType !== 'off' && entry.shiftType !== 'leave') return 0 // working
+  if (entry.shiftType === 'leave') return 1
+  return 2 // off or no shift assigned
+}
+
+// Primary: shift status (working → leave → off). Secondary: role, then name.
+function sortByShiftStatus(a: RosterEntry, b: RosterEntry): number {
+  const rank = shiftStatusRank(a) - shiftStatusRank(b)
+  if (rank !== 0) return rank
+  return sortByRole(a, b)
+}
+
 // ─── Roster entry — real staff + shift data ─────────────────────────────────
 type RosterEntry = {
   id: string
   name: string
   role: string
-  avatar: string
   shiftType: ShiftType | null      // from staff_shifts
   shiftLabel: string | null        // custom time label
   clockedIn: boolean               // open attendance session today
@@ -58,17 +71,31 @@ const shiftDisplay: Record<ShiftType, { label: string; bg: string; text: string 
   leave:     { label: 'Leave',      bg: 'bg-orange-100', text: 'text-orange-500' },
 }
 
-function shiftPill(entry: RosterEntry) {
-  if (entry.shiftType) {
-    const cfg = shiftDisplay[entry.shiftType]
-    const label = entry.shiftLabel || cfg.label
-    return { label, bg: cfg.bg, text: cfg.text }
+// Status tone — colors the WHOLE roster card by status group, with the name /
+// role / status text and chevron all tinted into the same colour family:
+//   working → green · leave → amber · off / unscheduled → warm gray
+type Tone = { card: string; name: string; role: string; status: string; chevron: string; label: string }
+
+const TONE_GREEN = (label: string): Tone => ({
+  card: 'bg-[#C0DD97]', name: 'text-[#173404]', role: 'text-[#3B6D11]', status: 'text-[#27500A]', chevron: '#3B6D11', label,
+})
+const TONE_AMBER: Tone = {
+  card: 'bg-[#FAC775]', name: 'text-[#412402]', role: 'text-[#854F0B]', status: 'text-[#633806]', chevron: '#854F0B', label: 'Leave',
+}
+const TONE_GRAY = (label: string): Tone => ({
+  card: 'bg-[#D3D1C7]', name: 'text-[#57564F]', role: 'text-[#8A887F]', status: 'text-[#6E6C64]', chevron: '#8A887F', label,
+})
+
+function statusTone(entry: RosterEntry): Tone {
+  // Working shift (morning / full_day / afternoon)
+  if (entry.shiftType && entry.shiftType !== 'off' && entry.shiftType !== 'leave') {
+    return TONE_GREEN(entry.shiftLabel || shiftDisplay[entry.shiftType].label)
   }
-  // No shift assigned — fall back to attendance status
-  if (entry.clockedIn) {
-    return { label: 'Clocked In', bg: 'bg-green-100', text: 'text-green-600' }
-  }
-  return { label: 'Not Clocked In', bg: 'bg-gray-100', text: 'text-gray-400' }
+  if (entry.shiftType === 'leave') return TONE_AMBER
+  // No shift but currently clocked in — they're effectively working.
+  if (!entry.shiftType && entry.clockedIn) return TONE_GREEN('Clocked In')
+  // Off, or unscheduled and not clocked in.
+  return TONE_GRAY(entry.shiftType === 'off' ? 'Off' : 'Not Clocked In')
 }
 
 const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -125,21 +152,24 @@ export default function StaffPage() {
     )
     const clockedInIds = new Set((sessionsRes.data ?? []).map((s: Record<string, unknown>) => s.staff_user_id as string))
 
-    const entries: RosterEntry[] = profiles.map((p: Record<string, unknown>) => {
-      const id = p.id as string
-      const shift = shiftMap.get(id)
-      return {
-        id,
-        name: p.display_name as string,
-        role: p.role as string,
-        avatar: ((p.display_name as string) ?? '?').charAt(0).toUpperCase(),
-        shiftType: shift?.shiftType ?? null,
-        shiftLabel: shift?.shiftLabel || null,
-        clockedIn: clockedInIds.has(id),
-      }
-    })
+    const entries: RosterEntry[] = profiles
+      // Owners aren't shift workers — keep them out of the schedule roster
+      // (and out of the Working/Leave/Off/Total counts).
+      .filter((p: Record<string, unknown>) => (p.role as string) !== 'owner')
+      .map((p: Record<string, unknown>) => {
+        const id = p.id as string
+        const shift = shiftMap.get(id)
+        return {
+          id,
+          name: p.display_name as string,
+          role: p.role as string,
+          shiftType: shift?.shiftType ?? null,
+          shiftLabel: shift?.shiftLabel || null,
+          clockedIn: clockedInIds.has(id),
+        }
+      })
 
-    entries.sort(sortByRole)
+    entries.sort(sortByShiftStatus)
     return entries
   }, [])
 
@@ -252,48 +282,45 @@ export default function StaffPage() {
       {tab === 'schedule' && (
         <div className="pb-28 space-y-4 px-4 pt-4">
 
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-50">
+          <div>
+            <div className="px-1 mb-2">
               <span className="text-sm font-semibold text-gray-900">
                 {isSelectedToday ? "Today's Schedule" : `${selectedLabel}'s Schedule`}
               </span>
             </div>
-            <div className="divide-y divide-gray-50">
-              {rosterLoading ? (
-                <FullPageSpinner />
-              ) : roster.length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-gray-400">No staff accounts found.</div>
-              ) : (
-                roster.map((entry) => {
-                  const pill = shiftPill(entry)
+            {rosterLoading ? (
+              <FullPageSpinner />
+            ) : roster.length === 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm px-4 py-8 text-center text-sm text-gray-400">No staff accounts found.</div>
+            ) : (
+              <div className="space-y-2">
+                {roster.map((entry) => {
+                  const tone = statusTone(entry)
                   const canEdit = isOwnerOrManager
                   return (
                     <div
                       key={entry.id}
                       onClick={() => canEdit && setEditingEntry(entry)}
-                      className={`flex items-center gap-3 px-4 py-3 ${canEdit ? 'active:bg-gray-50 cursor-pointer' : ''}`}
+                      className={`flex items-center gap-3 px-4 py-3.5 rounded-2xl shadow-sm ${tone.card} ${canEdit ? 'active:opacity-80 cursor-pointer' : ''}`}
                       role={canEdit ? 'button' : undefined}
                     >
-                      <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 text-sm font-bold flex-shrink-0">
-                        {entry.avatar}
-                      </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-gray-900">{entry.name}</div>
-                        <div className="text-xs text-gray-400">{entry.role}</div>
+                        <div className={`text-sm font-semibold ${tone.name}`}>{entry.name}</div>
+                        <div className={`text-xs ${tone.role}`}>{entry.role}</div>
                       </div>
-                      <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${pill.bg} ${pill.text}`}>
-                        {pill.label}
+                      <span className={`text-base font-bold whitespace-nowrap ${tone.status}`}>
+                        {tone.label}
                       </span>
                       {canEdit && (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={tone.chevron} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
                           <polyline points="9 18 15 12 9 6"/>
                         </svg>
                       )}
                     </div>
                   )
-                })
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
 
         </div>
@@ -314,6 +341,14 @@ export default function StaffPage() {
           currentShiftType={editingEntry.shiftType}
           currentShiftLabel={editingEntry.shiftLabel}
           onClose={() => setEditingEntry(null)}
+          onOptimistic={(shiftType, shiftLabel) => {
+            // Instant local update so the row reflects the new shift before the
+            // DB round-trip; loadRoster() below reconciles once the write lands.
+            const id = editingEntry.id
+            setRoster(prev => prev.map(e =>
+              e.id === id ? { ...e, shiftType, shiftLabel } : e,
+            ))
+          }}
           onSaved={() => {
             // Refresh roster after saving a shift
             loadRoster(selectedDate).then(setRoster)

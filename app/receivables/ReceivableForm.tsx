@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { createReceivableAction, updateReceivableAction, type ReceivableInput, type Receivable } from './actions'
 import { DatePickerField } from '@/app/components/DateTimePickerFields'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const Z = 2147483647
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 bg-white'
@@ -18,6 +19,7 @@ export default function ReceivableForm({
   onClose: () => void
   onSaved: () => void
 }) {
+  const { showToast } = useGlobalToast()
   const isEdit = !!edit
   const [form, setForm] = useState<ReceivableInput>({
     customer_name: edit?.customer_name ?? '',
@@ -43,13 +45,19 @@ export default function ReceivableForm({
       due_date: form.due_date?.trim() || undefined,
       notes: form.notes?.trim() || undefined,
     }
+
+    // Optimistic: show success + close immediately
+    showToast(isEdit ? 'Updated' : 'Created')
+    onSaved()
+    onClose()
+
     const res = edit
       ? await updateReceivableAction(edit.id, payload)
       : await createReceivableAction(payload)
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
-    onSaved()
-    onClose()
+    if (!res.ok) {
+      showToast(res.error, 'error')
+      onSaved()  // refetch to rollback
+    }
   }
 
   const content = (

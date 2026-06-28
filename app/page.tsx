@@ -2,12 +2,16 @@ import HeroCard from "./components/HeroCard"
 import HomeRefresh from './components/HomeRefresh'
 import HomeReservationsRealtime from './components/HomeReservationsRealtime'
 import HomePurchaseRealtime from './components/HomePurchaseRealtime'
+import HomeShiftRealtime from './components/HomeShiftRealtime'
 import HomeBell from './components/HomeBell'
 import StatusSummaryGrid from './components/home/StatusSummaryGrid'
 import FinancialSnapshot from './components/home/FinancialSnapshot'
 import BentoOpsCard from './components/home/BentoOpsCard'
 import TodaysIssuesCard, { type IssueRow } from './components/home/TodaysIssuesCard'
 import ShiftBoardCard from './components/home/ShiftBoardCard'
+import MyShiftCard from './components/home/MyShiftCard'
+import { findShiftByStaffAndDate } from '@/lib/attendance/repository'
+import { buildShiftView } from '@/lib/attendance/shiftView'
 import QuickAccessGrid from './components/home/QuickAccessGrid'
 import KitchenHome from './components/home/KitchenHome'
 import { canAccessPath, getHomeVisibility } from '@/lib/auth/permissions'
@@ -18,6 +22,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { readRelayDaily, readRelayMtd, readRelayWeek } from '@/lib/feedme/relayStore'
 import { businessToday } from '@/lib/feedme/parseQueryResult'
 import { todayLocalStr } from '@/lib/dateUtils'
+import { getReservationSummary, EMPTY_RESERVATION_SUMMARY } from '@/lib/reservations/homeSummary'
+import FrontDeskHome from './components/home/FrontDeskHome'
 import { fetchCashDrawerSessionsAction, fetchLatestClosedSessionAction } from '@/app/cashier/actions'
 import { computeCurrentCash, computeCurrentCashLive } from '@/lib/cashDrawer/utils'
 
@@ -122,15 +128,9 @@ async function getPayablesSummary() {
   return res.data
 }
 
-async function getReservationCount(supabase: SupabaseClient) {
-  const today = todayLocalStr()
-  const { data } = await supabase
-    .from('reservations')
-    .select('id')
-    .eq('date', today)
-    .in('status', ['confirmed', 'pending'])
-  return data?.length ?? 0
-}
+// The Home Reservations card shows the nearest upcoming active-reservation date
+// (today → +30 days), not just today's. The grouping/horizon logic is shared
+// with the front_desk Home via lib/reservations/homeSummary.
 
 // Per-request fault isolation: resolve to `fallback` instead of rejecting, so a
 // single failed data source (FeedMe timeout, token-refresh failure, a flaky DB
@@ -174,7 +174,7 @@ async function getCashBalance(businessDate: string): Promise<{ balance: number |
   return { balance: null, note: null }
 }
 
-// ── Today's Issues — placeholder logic ──
+// ── Action Required — placeholder logic ──
 type Issue = { type: string; detail: string; link: string }
 function getTodayIssues(role: StaffRole): Issue[] {
   const issues: Issue[] = []
@@ -196,6 +196,13 @@ export default async function Home() {
     return <KitchenHome />
   }
 
+  // Front desk gets an operations-first home (shift, reservations, action
+  // items) with NO owner/manager financial KPIs. Cash Drawer there is gated on
+  // explicit cashier permission, not on the front_desk role.
+  if (staff.role === 'front_desk') {
+    return <FrontDeskHome />
+  }
+
   const supabase = await createServerSupabaseClient()
   const visibility = getHomeVisibility(staff.role)
   // Each source is wrapped in safe() so it resolves independently. The outer
@@ -204,20 +211,21 @@ export default async function Home() {
   // which the UI renders as "—".
   const showPurchase = canAccessPath(staff.role, '/purchase')
   const bizToday = businessToday()
-  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, reservationCount, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary, cashDrawerBalance] = await Promise.all([
+  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, nextReservation, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary, cashDrawerBalance, myShift] = await Promise.all([
     safe(getStats(supabase, visibility.revenue), null),
     safe(getBentoStats(supabase, staff.role, visibility.revenue), { total: 0, completed: 0, revenue: 0 }),
     safe(getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')), 0),
     safe(getPendingCount(supabase), 0),
     safe(showPurchase ? getPendingChecklistCount(supabase) : Promise.resolve(0), 0),
     safe(canAccessPath(staff.role, '/complaints') ? getComplaintCount() : Promise.resolve(0), 0),
-    safe(getReservationCount(supabase), 0),
+    safe(getReservationSummary(supabase), EMPTY_RESERVATION_SUMMARY),
     safe(visibility.revenue ? readRelayDaily() : Promise.resolve(null), null),
     safe(visibility.revenue ? readRelayMtd() : Promise.resolve(null), null),
     safe(visibility.revenue ? readRelayWeek() : Promise.resolve(null), null),
-    safe(visibility.revenue ? getReceivablesSummary(supabase) : Promise.resolve({ totalBalance: 0, openCount: 0 }), { totalBalance: 0, openCount: 0 }),
-    safe(visibility.revenue ? getPayablesSummary() : Promise.resolve({ totalBalance: 0, dueTodayCount: 0 }), { totalBalance: 0, dueTodayCount: 0 }),
+    safe(visibility.finance ? getReceivablesSummary(supabase) : Promise.resolve({ totalBalance: 0, openCount: 0 }), { totalBalance: 0, openCount: 0 }),
+    safe(visibility.finance ? getPayablesSummary() : Promise.resolve({ totalBalance: 0, dueTodayCount: 0 }), { totalBalance: 0, dueTodayCount: 0 }),
     safe(staff.role === 'owner' ? getCashBalance(bizToday) : Promise.resolve({ balance: null, note: null }), { balance: null, note: null }),
+    safe(staff.role !== 'owner' ? findShiftByStaffAndDate(staff.id, bizToday) : Promise.resolve(null), null),
   ])
   const notificationCount = anomalyCount + pendingChecklist
 
@@ -280,6 +288,9 @@ export default async function Home() {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   const todayStr = `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
 
+  // My Today's Shift card — shown for every non-owner role.
+  const shiftView = buildShiftView(myShift, now)
+
   const issueRows: IssueRow[] = getTodayIssues(staff.role).map(issue => ({
     tone: issue.link === '/inventory' ? 'red' as const : 'yellow' as const,
     title: issue.type,
@@ -299,6 +310,7 @@ export default async function Home() {
     <HomeRefresh>
     <HomeReservationsRealtime />
     <HomePurchaseRealtime />
+    <HomeShiftRealtime />
     <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header — status strip (date · pill · bell), identity row below.
           Top padding = iOS safe-area inset (notch / Dynamic Island) + 0.75rem;
@@ -310,26 +322,40 @@ export default async function Home() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-400">{todayStr}</span>
           <div className="flex items-center gap-3">
-            {/* Placeholder status pill — no opening-hours data source yet */}
-            <span className="flex items-center gap-1.5 bg-green-50 text-green-600 text-xs font-medium rounded-full px-3 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-              Open
-            </span>
+            {/* Placeholder status pill — no opening-hours data source yet.
+                Non-owner roles get the "Open" status inside their My Today's
+                Shift card, so it's only shown in the header for the owner. */}
+            {staff.role === 'owner' && (
+              <span className="flex items-center gap-1.5 bg-green-50 text-green-600 text-xs font-medium rounded-full px-3 py-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Open
+              </span>
+            )}
             <HomeBell baseCount={notificationCount} />
           </div>
         </div>
-        <div className="flex items-center gap-3 mt-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold text-base flex-shrink-0">
-            {staff.displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
+        {/* Identity row — only for the owner. Other roles see their name and
+            role inside the My Today's Shift card, so the header stays compact. */}
+        {staff.role === 'owner' && (
+          <div className="mt-2.5 min-w-0">
             <div className="text-[17px] font-bold text-gray-900 leading-tight truncate">{staff.displayName}</div>
             <div className="text-xs text-gray-500 leading-tight mt-0.5">{ROLE_LABELS[staff.role]}</div>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="px-5 sm:px-8 pt-4 pb-28 space-y-4">
+        {staff.role !== 'owner' && (
+          <MyShiftCard
+            name={staff.displayName}
+            roleLabel={ROLE_LABELS[staff.role]}
+            state={shiftView.state}
+            timeLabel={shiftView.timeLabel}
+            progressPercent={shiftView.progressPercent}
+            isOpen={true}
+          />
+        )}
+
         {visibility.revenue && (
           <HeroCard
             revenueTotal={revenueTotal}
@@ -353,10 +379,12 @@ export default async function Home() {
           bentoCompleted={bentoCompleted}
           complaints={complaintCount}
           incidents={anomalyCount}
-          reservations={reservationCount}
+          reservations={nextReservation.count}
+          reservationsLabel={nextReservation.label}
+          reservationsHref={nextReservation.date ? `/reservations?date=${nextReservation.date}` : '/reservations'}
         />
 
-        {visibility.revenue && (
+        {visibility.finance && (
           <FinancialSnapshot
             role={staff.role}
             receivablesTotal={receivablesSummary.totalBalance}

@@ -15,10 +15,14 @@ import { businessToday } from '@/lib/purchaseLedger/time'
 import { listKitchenTasksAction } from '@/app/kitchen/dailyTasksActions'
 import HomeRefresh from '../HomeRefresh'
 import HomePurchaseRealtime from '../HomePurchaseRealtime'
+import HomeShiftRealtime from '../HomeShiftRealtime'
 import HomeBell from '../HomeBell'
 import NavLink from '../NavLink'
 import KitchenTasksWithPolling from './KitchenTasksWithPolling'
 import KitchenCostRatioCard from './KitchenCostRatioCard'
+import MyShiftCard from './MyShiftCard'
+import { findShiftByStaffAndDate } from '@/lib/attendance/repository'
+import { buildShiftView } from '@/lib/attendance/shiftView'
 
 async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   try { return await p } catch { return fallback }
@@ -59,13 +63,14 @@ export default async function KitchenHome() {
   const staff = await requireCurrentStaff()
   const supabase = await createServerSupabaseClient()
 
-  const [bentoResult, pending, lowStock, kpi, complaints, tasksRes] = await Promise.all([
+  const [bentoResult, pending, lowStock, kpi, complaints, tasksRes, myShift] = await Promise.all([
     safe(getBentoCount(supabase), { count: 0, forTomorrow: false }),
     safe(svc.listPendingVerification(staff.role), []),
     safe(findLowStockItems(), []),
     safe(computeKpi('kitchen'), null),
     safe(getComplaintCount(), 0),
     safe(listKitchenTasksAction(), { ok: false as const, error: 'load failed' }),
+    safe(findShiftByStaffAndDate(staff.id, businessToday()), null),
   ])
 
   const initialTasks = tasksRes.ok ? tasksRes.data : []
@@ -73,66 +78,87 @@ export default async function KitchenHome() {
 
   const now = new Date()
   const todayStr = `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
+  const shiftView = buildShiftView(myShift, now)
   const kpiToday = businessToday()
 
   const notificationCount = pending.length + (lowStock.length > 0 ? 1 : 0)
 
   const squares: {
-    title: string; href: string; value: number; status: string; tone: SquareTone; image?: string
+    title: string; href: string; subtitle: string; hasAlert: boolean; tone: SquareTone; image?: string
   }[] = [
-    { title: 'Bento', href: '/bento', value: bentoCount, status: bentoForTomorrow ? 'To make tomorrow' : 'To make today', tone: TONE.blue, image: '/bento-card.webp' },
-    { title: 'To Verify', href: '/purchase', value: pending.length, status: pending.length > 0 ? 'Check stock' : 'All clear', tone: TONE.amber, image: '/to-verify.webp' },
-    { title: 'Low Stock', href: '/inventory', value: lowStock.length, status: lowStock.length > 0 ? 'Restock' : 'All good', tone: TONE.red, image: '/low-stock.webp' },
-    { title: 'Complaints', href: '/complaints', value: complaints, status: complaints > 0 ? '! Review' : 'Clear', tone: TONE.red, image: '/complaints.webp' },
+    {
+      title: 'Bento', href: '/bento',
+      subtitle: bentoCount > 0 ? `${bentoCount} to make · ${bentoForTomorrow ? 'Tomorrow' : 'Today'}` : 'None to make',
+      hasAlert: bentoCount > 0, tone: TONE.blue, image: '/bento-card.webp',
+    },
+    {
+      title: 'To Verify', href: '/purchase',
+      subtitle: pending.length > 0 ? `${pending.length} item${pending.length !== 1 ? 's' : ''} · Check stock` : 'All clear',
+      hasAlert: pending.length > 0, tone: TONE.amber, image: '/to-verify.webp',
+    },
+    {
+      title: 'Low Stock', href: '/inventory',
+      subtitle: lowStock.length > 0 ? `${lowStock.length} item${lowStock.length !== 1 ? 's' : ''} · Restock` : 'All good',
+      hasAlert: lowStock.length > 0, tone: TONE.red, image: '/low-stock.webp',
+    },
+    {
+      title: 'Complaints', href: '/complaints',
+      subtitle: complaints > 0 ? `${complaints} to review` : 'Clear',
+      hasAlert: complaints > 0, tone: TONE.red, image: '/Complaints.webp',
+    },
   ]
 
   return (
     <HomeRefresh>
     <HomePurchaseRealtime />
+    <HomeShiftRealtime />
     <main data-page-capture className="min-h-screen bg-gray-50 w-full mx-auto relative">
       {/* Header */}
       <div className="bg-white px-5 sm:px-8 pb-3 border-b border-gray-50" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)' }}>
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-400">{todayStr}</span>
           <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1.5 bg-green-50 text-green-600 text-xs font-medium rounded-full px-3 py-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-              Open
-            </span>
+            {/* "Open" status now lives in the My Today's Shift card below. */}
             <HomeBell baseCount={notificationCount} />
           </div>
         </div>
-        <div className="flex items-center gap-3 mt-2.5 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-orange-500 flex items-center justify-center text-white font-semibold text-base flex-shrink-0">
-            {staff.displayName.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="text-[17px] font-bold text-gray-900 leading-tight truncate">{staff.displayName}</div>
-            <div className="text-xs text-gray-500 leading-tight mt-0.5">Kitchen</div>
-          </div>
-        </div>
+        {/* Name + role now live in the My Today's Shift card below. */}
       </div>
 
       <div className="px-5 sm:px-8 pt-4 pb-28 space-y-4">
 
+        {/* ── My Today's Shift — personal shift status (carries the Open pill) ── */}
+        <MyShiftCard
+          name={staff.displayName}
+          roleLabel="Kitchen"
+          state={shiftView.state}
+          timeLabel={shiftView.timeLabel}
+          progressPercent={shiftView.progressPercent}
+          isOpen={true}
+        />
+
         {/* ── Hero: Purchase Cost Ratio — tappable, ratio-only for kitchen ── */}
         <KitchenCostRatioCard kpi={kpi} today={kpiToday} />
 
-        {/* ── 2x2 at-a-glance grid ── */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* ── 2x2 module entry cards (same form as Front Desk Home) ── */}
+        <div className="grid grid-cols-2 gap-3">
           {squares.map(card => (
-            <NavLink key={card.title} href={card.href} className={`${card.tone.bg} rounded-2xl px-4 py-3 overflow-hidden block relative`}>
-              {card.image && (
-                <img
-                  src={card.image}
-                  alt=""
-                  aria-hidden
-                  className="absolute bottom-0 right-0 w-[52%] aspect-square object-contain pointer-events-none opacity-90"
-                />
-              )}
-              <span className="text-xs text-gray-700 truncate block relative">{card.title}</span>
-              <div className={`text-2xl font-bold leading-tight mt-1 relative ${card.tone.number}`}>{card.value}</div>
-              <div className={`text-[11px] font-medium mt-0.5 truncate relative ${card.value === 0 ? 'text-gray-400' : card.tone.status}`}>{card.status}</div>
+            <NavLink
+              key={card.title}
+              href={card.href}
+              className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col items-center overflow-hidden active:opacity-80"
+            >
+              {/* Image area */}
+              <div className="w-full flex items-center justify-center pt-4 pb-1">
+                {card.image && <img src={card.image} alt="" aria-hidden className="w-24 h-24 object-contain" />}
+              </div>
+              {/* Text area */}
+              <div className="pb-3 px-3 text-center w-full">
+                <div className="text-sm font-semibold text-gray-800">{card.title}</div>
+                <div className={`text-xs mt-1 ${card.hasAlert ? card.tone.status : 'text-gray-400'}`}>
+                  {card.subtitle}
+                </div>
+              </div>
             </NavLink>
           ))}
         </div>

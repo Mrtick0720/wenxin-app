@@ -8,6 +8,7 @@ import { useNavigation } from '../../../../components/NavigationStack'
 import { updateOrderAction } from '../../actions'
 import { DatePickerField, TimePickerField } from '@/app/components/DateTimePickerFields'
 import { buildStructuredMenu, type ProductionLine } from '@/lib/bentoProduction'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const INPUT = 'w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-orange-400'
 
@@ -39,6 +40,7 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
   const rawParams = useParams()
   const orderId = propOrderId ?? parseInt((rawParams.id as string) || '0', 10)
 
+  const { showToast } = useGlobalToast()
   const [loading, setLoading] = useState(!preloadedOrder)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -296,17 +298,30 @@ export default function EditOrderPage({ orderId: propOrderId, order: preloadedOr
       status:                  allProductionDone ? 'completed' : 'pending',
     }
 
-    const res = await updateOrderAction(orderId, payload)
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
+    // Optimistic: dispatch event + navigate back immediately
     window.dispatchEvent(new CustomEvent('bento-order-updated', {
       detail: {
         dates: [originalDateRef.current, form.delivery_date].filter(Boolean),
-        order: { id: orderId, ...payload, ...(res.data as unknown as Record<string, unknown>) },
       },
     }))
+    showToast('Order updated')
+    pop()
+
+    const res = await updateOrderAction(orderId, payload)
+    if (!res.ok) {
+      showToast(res.error, 'error')
+      window.dispatchEvent(new CustomEvent('bento-order-updated', {
+        detail: { dates: [originalDateRef.current, form.delivery_date].filter(Boolean) },
+      }))
+    } else {
+      window.dispatchEvent(new CustomEvent('bento-order-updated', {
+        detail: {
+          dates: [originalDateRef.current, form.delivery_date].filter(Boolean),
+          order: { id: orderId, ...payload, ...(res.data as unknown as Record<string, unknown>) },
+        },
+      }))
+    }
     router.refresh()
-    setTimeout(() => { pop() }, 100)
   }
 
   const isDelivery     = form.fulfillment_type === 'delivery'

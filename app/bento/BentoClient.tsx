@@ -377,8 +377,12 @@ export default function BentoClient({
 
   async function toggleStatus(order: Order) {
     const newStatus = order.status === 'completed' ? 'pending' : 'completed'
-    setLoading(order.id)
     setError(null)
+
+    // Optimistic: update local state immediately
+    const optimistic = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
+    setOrders(optimistic); cache.current[selectedDate] = optimistic
+
     try {
       let result: { error?: { message?: string } | null }
       if (isKitchen) {
@@ -391,35 +395,39 @@ export default function BentoClient({
       }
       if (result.error) {
         setError(result.error.message || 'Failed to update order status.')
-        setLoading(null)
-        return
+        // Rollback
+        const reverted = orders.map(o => o.id === order.id ? { ...o, status: order.status } : o)
+        setOrders(reverted); cache.current[selectedDate] = reverted
       }
-      const updated = orders.map(o => o.id === order.id ? { ...o, status: newStatus } : o)
-      setOrders(updated); cache.current[selectedDate] = updated
     } catch {
       setError('Network error. Please check your connection.')
+      const reverted = orders.map(o => o.id === order.id ? { ...o, status: order.status } : o)
+      setOrders(reverted); cache.current[selectedDate] = reverted
     }
-    setLoading(null)
   }
 
   async function togglePaid(order: Order) {
     if (!canViewFinancialDetails) return
     const newPaid = !order.paid
-    setLoading(order.id)
     setError(null)
+
+    // Optimistic: update local state immediately
+    const optimistic = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
+    setOrders(optimistic); cache.current[selectedDate] = optimistic
+
     try {
       const { error: paidError } = await supabase.from('bento_orders').update({ paid: newPaid }).eq('id', order.id)
       if (paidError) {
         setError(paidError.message || 'Failed to update payment status.')
-        setLoading(null)
-        return
+        // Rollback
+        const reverted = orders.map(o => o.id === order.id ? { ...o, paid: order.paid } : o)
+        setOrders(reverted); cache.current[selectedDate] = reverted
       }
-      const updated = orders.map(o => o.id === order.id ? { ...o, paid: newPaid } : o)
-      setOrders(updated); cache.current[selectedDate] = updated
     } catch {
       setError('Network error. Please check your connection.')
+      const reverted = orders.map(o => o.id === order.id ? { ...o, paid: order.paid } : o)
+      setOrders(reverted); cache.current[selectedDate] = reverted
     }
-    setLoading(null)
   }
 
   // Owner-only: permanently delete an order. Unlinks it from any subscription
@@ -771,12 +779,12 @@ export default function BentoClient({
                       </div>
                       {order.note && <div className="text-sm text-orange-500 mb-1">📝 {order.note}</div>}
                       {isToday && (
-                        <button onClick={() => toggleStatus(order)} disabled={loading === order.id}
+                        <button onClick={() => toggleStatus(order)}
                           className={`mt-3 w-full py-2 rounded-xl text-sm font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-500' : 'bg-orange-500 text-white'}`}>
-                          {loading === order.id ? 'Updating...' : order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
+                          {order.status === 'completed' ? '✓ Completed' : 'Mark Completed'}
                         </button>
                       )}
-                      {canViewFinancialDetails && <button onClick={() => togglePaid(order)} disabled={loading === order.id}
+                      {canViewFinancialDetails && <button onClick={() => togglePaid(order)}
                         className={`mt-2 w-full py-2 rounded-xl text-sm font-medium border ${order.paid ? 'bg-green-50 text-green-600 border-green-200' : 'bg-red-50 text-red-500 border-red-200'}`}>
                         {order.paid ? '✓ Paid' : 'Unpaid — tap to mark'}
                       </button>}

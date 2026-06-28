@@ -25,12 +25,14 @@ export default function NewKitchenTaskPage({ onSaved }: { onSaved?: () => void }
     e.preventDefault()
     if (!title.trim()) { show('Please enter a task title', 'error'); return }
     setSaving(true)
-    const res = await addKitchenTaskAction(title.trim(), recurring, urgency)
-    setSaving(false)
-    if (!res.ok) { show('Failed to add task, please try again', 'error'); return }
-    onSaved?.()
+
+    // Optimistic: show success + navigate back immediately
     show('Task added', 'success')
-    setTimeout(() => pop(), 600)
+    onSaved?.()
+    pop()
+
+    const res = await addKitchenTaskAction(title.trim(), recurring, urgency)
+    if (!res.ok) { show('Failed to add task, please try again', 'error') }
   }
 
   return (

@@ -52,6 +52,7 @@ import { usePurchaseSync } from './usePurchaseSync'
 import { usePurchaseRealtime } from './usePurchaseRealtime'
 import { rollbackVerifiedToVerifyAction } from './verification-actions'
 import { PURCHASE_UNITS as UNITS } from '@/lib/units'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const DetailClient = lazy(() => import('./[id]/DetailClient'))
 const CostRatioDetailsClient = lazy(() => import('./CostRatioDetailsClient'))
@@ -530,6 +531,7 @@ export default function PurchaseClient(props: Props) {
   const hasInitial = !!(props.role && props.today && props.perms)
   const { push, pop, currentPath } = useNavigation()
   const staff = useStaff()
+  const { showToast } = useGlobalToast()
 
   // Snapshot cache at mount time so useState initializers are stable
   const initCache = hasInitial ? null : purchaseCache
@@ -1173,6 +1175,7 @@ export default function PurchaseClient(props: Props) {
     setSummary((prev) => prev ? applyRecordToSummary(prev, optimistic, 1, ctx!.today) : prev)
     setKpi((prev) => prev ? applyRecordToKpi(prev, optimistic, 1, ctx!.today) : prev)
 
+    showToast('Added')
     setShowAdd(false)
     setSaving(true)
 

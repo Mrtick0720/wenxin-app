@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import MoneyInput from '@/app/components/MoneyInput'
 import { recordReceivablePaymentAction } from './actions'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const Z = 2147483647
 const inputCls = 'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-orange-400 bg-white'
@@ -21,6 +22,7 @@ export default function PaymentModal({
   onClose: () => void
   onPaid: () => void
 }) {
+  const { showToast } = useGlobalToast()
   const [amountValue, setAmountValue] = useState(0)
   const [method, setMethod] = useState('Cash')
   const [notes, setNotes] = useState('')
@@ -32,10 +34,17 @@ export default function PaymentModal({
     if (amountValue > maxAmount) { setError(`Amount cannot exceed RM ${maxAmount.toFixed(2)}.`); return }
     setSaving(true)
     setError(null)
-    const res = await recordReceivablePaymentAction(receivableId, { amount: amountValue, method, notes: notes.trim() || undefined })
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
+
+    // Optimistic: show success + close immediately
+    showToast('Payment recorded')
     onPaid()
+    onClose()
+
+    const res = await recordReceivablePaymentAction(receivableId, { amount: amountValue, method, notes: notes.trim() || undefined })
+    if (!res.ok) {
+      showToast(res.error, 'error')
+      onPaid()  // refetch to rollback
+    }
   }
 
   const content = (

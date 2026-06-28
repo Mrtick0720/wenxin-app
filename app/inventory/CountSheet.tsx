@@ -6,6 +6,7 @@ import { CATEGORY_COUNT_PERMISSIONS } from '@/lib/inventory/permissions'
 import { fetchCountItemsAction, saveCountAction } from './count-actions'
 import type { CountItem, CountEntry } from '@/lib/inventory/types'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Props = {
   isOpen: boolean
@@ -18,6 +19,7 @@ type Props = {
 type Screen = 'category' | 'items'
 
 export default function CountSheet({ isOpen, role, initialCategory, onClose, onSaved }: Props) {
+  const { showToast } = useGlobalToast()
   const [screen, setScreen] = useState<Screen>(initialCategory ? 'items' : 'category')
   const [category, setCategory] = useState<string>(initialCategory ?? '')
   const [items, setItems] = useState<CountItem[]>([])
@@ -27,7 +29,6 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
 
   // Reset state when overlay opens
   useEffect(() => {
@@ -41,7 +42,6 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
       setLoadError(null)
       setSaving(false)
       setSaveError(null)
-      setToast(null)
     }
   }, [isOpen, initialCategory])
 
@@ -92,18 +92,15 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
         : 0,
     }))
 
-    const result = await saveCountAction(entries, category)
-    setSaving(false)
+    // Optimistic: show success + close immediately
+    showToast(`Count saved — ${category}`)
+    onSaved()
+    onClose()
 
-    if (result.ok) {
-      setToast(`Count saved — ${category}`)
-      onSaved()
-      setTimeout(() => {
-        setToast(null)
-        onClose()
-      }, 1200)
-    } else {
-      setSaveError(result.error)
+    const result = await saveCountAction(entries, category)
+    if (!result.ok) {
+      showToast(result.error, 'error')
+      onSaved()  // refetch to rollback
     }
   }
 
@@ -113,13 +110,6 @@ export default function CountSheet({ isOpen, role, initialCategory, onClose, onS
 
   return createPortal(
     <div className="fixed inset-0 z-[500] bg-white flex flex-col">
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-0 inset-x-0 z-[210] bg-green-500 text-white text-sm font-medium text-center py-3 px-4">
-          {toast}
-        </div>
-      )}
 
       {/* ── Screen 1: Category selector ── */}
       {screen === 'category' && (

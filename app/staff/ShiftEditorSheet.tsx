@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { ShiftType } from '@/lib/attendance/types'
 import { upsertStaffShiftAction } from './actions'
 import { SheetActionFooter } from '@/components/ui/SheetActionFooter'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 type Props = {
   staffUserId: string
@@ -15,6 +16,9 @@ type Props = {
   currentShiftLabel: string | null
   onClose: () => void
   onSaved: () => void
+  // Apply the new shift to the roster locally for instant feedback, before the
+  // DB write completes. Reconciled by onSaved() once the write lands.
+  onOptimistic: (shiftType: ShiftType, shiftLabel: string | null) => void
 }
 
 const SHIFT_OPTIONS: { type: ShiftType; label: string; color: string }[] = [
@@ -30,8 +34,9 @@ const Z_MAX = 2147483647
 export default function ShiftEditorSheet({
   staffUserId, staffName, date, dateLabel,
   currentShiftType, currentShiftLabel,
-  onClose, onSaved,
+  onClose, onSaved, onOptimistic,
 }: Props) {
+  const { showToast } = useGlobalToast()
   const [shiftType, setShiftType] = useState<ShiftType>(currentShiftType ?? 'off')
   const [shiftLabel, setShiftLabel] = useState(currentShiftLabel ?? '')
   const [saving, setSaving] = useState(false)
@@ -42,14 +47,22 @@ export default function ShiftEditorSheet({
   async function handleSave() {
     setSaving(true)
     setError(null)
-    const res = await upsertStaffShiftAction(
-      staffUserId, date, shiftType,
-      isWorkingShift ? shiftLabel.trim() || undefined : undefined,
-    )
-    setSaving(false)
-    if (!res.ok) { setError(res.error); return }
-    onSaved()
+
+    const label = isWorkingShift ? shiftLabel.trim() || undefined : undefined
+
+    // Optimistic: reflect the new shift in the roster + close immediately.
+    onOptimistic(shiftType, label ?? null)
     onClose()
+
+    // Write FIRST, then reconcile. Refetching before the write lands would read
+    // the stale row and visibly revert the change.
+    const res = await upsertStaffShiftAction(staffUserId, date, shiftType, label)
+    if (res.ok) {
+      showToast('Shift saved')
+    } else {
+      showToast(res.error, 'error')
+    }
+    onSaved()  // sync from DB (reconciles success, rolls back failure)
   }
 
   const content = (

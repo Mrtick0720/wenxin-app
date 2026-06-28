@@ -11,6 +11,7 @@ import type { PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { categoryColor } from '@/lib/purchaseLedger/categories'
 import { fetchCatalogAction } from './actions'
 import { acceptVerificationAction, rejectVerificationAction, cancelPurchaseAction } from './verification-actions'
+import { useGlobalToast } from '@/app/components/GlobalToast'
 
 const Z_MAX = 2147483647
 
@@ -259,16 +260,11 @@ function PendingRow({ item, displayName, isFirst, isLast, onTap }: RowProps) {
 
 export default function PendingVerificationSection({ items, canVerify, canCancel, onAccepting, onAccepted, onAcceptFailed, onRejected, onRejectFailed, onCancelling, onCancelled, onCancelFailed }: Props) {
   const staff = useStaff()
+  const { showToast } = useGlobalToast()
   const latinOnly = staff?.role === 'kitchen'
   const [catalog, setCatalog] = useState<CatalogItem[]>([])
   const [catalogLoaded, setCatalogLoaded] = useState(false)
   const [activeItem, setActiveItem] = useState<PendingVerificationItem | null>(null)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
-
-  function showError(msg: string) {
-    setErrorMsg(msg)
-    setTimeout(() => setErrorMsg(null), 3000)
-  }
 
   useEffect(() => {
     if (!latinOnly) return
@@ -299,18 +295,20 @@ export default function PendingVerificationSection({ items, canVerify, canCancel
     const item = activeItem
     setActiveItem(null)
     onAccepting?.(item, receivedQty)
+    showToast('Verified')
     const res = await acceptVerificationAction(id, receivedQty)
     if (res.ok) onAccepted(res.data)
-    else { showError(res.error ?? 'Verification failed. Please try again.'); onAcceptFailed(id) }
+    else { showToast(res.error ?? 'Verification failed. Please try again.', 'error'); onAcceptFailed(id) }
   }
 
   async function handleReject(reason: string) {
     if (!activeItem) return
     const id = activeItem.id
     setActiveItem(null)
+    showToast('Rejected')
     const res = await rejectVerificationAction(id, reason)
     if (res.ok) onRejected(id)
-    else { showError(res.error ?? 'Rejection failed. Please try again.'); onRejectFailed(id) }
+    else { showToast(res.error ?? 'Rejection failed. Please try again.', 'error'); onRejectFailed(id) }
   }
 
   async function handleCancel() {
@@ -318,10 +316,11 @@ export default function PendingVerificationSection({ items, canVerify, canCancel
     const id = activeItem.id
     const item = activeItem
     setActiveItem(null)
+    showToast('Returned to To Buy')
     onCancelling?.(item)
     const res = await cancelPurchaseAction(id)
     if (res.ok) onCancelled(id)
-    else onCancelFailed(id)
+    else { showToast('Failed to cancel', 'error'); onCancelFailed(id) }
   }
 
   if (items.length === 0) return null
@@ -354,15 +353,6 @@ export default function PendingVerificationSection({ items, canVerify, canCancel
         />
       )}
 
-      {errorMsg && typeof document !== 'undefined' && createPortal(
-        <div
-          className="fixed left-1/2 z-[600] -translate-x-1/2 px-5 py-2.5 rounded-full text-sm font-medium text-white shadow-lg pointer-events-none"
-          style={{ bottom: 'calc(env(safe-area-inset-bottom,0px) + 72px)', background: '#ef4444' }}
-        >
-          {errorMsg}
-        </div>,
-        document.body,
-      )}
     </div>
   )
 }

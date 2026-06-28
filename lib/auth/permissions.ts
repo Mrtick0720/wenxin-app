@@ -3,6 +3,8 @@ import {
   type NavigationItem,
   type StaffRole,
 } from './types.ts'
+import { hasPermission } from './permissionCheck'
+import { PERMISSION } from './permissionKeys'
 
 export const SESSION_DAYS = 7
 export const STAFF_EMAIL_DOMAIN = 'staff.wenxin.internal'
@@ -108,7 +110,7 @@ export function getHomeVisibility(role: StaffRole) {
   return {
     revenue: seesBusinessTotals,
     reports: seesBusinessTotals,
-    finance: role === 'owner',
+    finance: hasPermission(role, PERMISSION.VIEW_FINANCE),
     operationalAlerts: true,
   }
 }

@@ -5,6 +5,7 @@ import SessionHeartbeat from "./components/SessionHeartbeat";
 import StaffProvider from "./components/StaffProvider";
 import GlobalBottomNav from "./components/GlobalBottomNav";
 import UnregisterSW from "./components/UnregisterSW";
+import { GlobalToastProvider } from "./components/GlobalToast";
 import { getCurrentStaff } from "@/lib/auth/currentStaff";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
@@ -114,8 +115,10 @@ export default async function RootLayout({
         <StaffProvider staff={staff}>
           <SessionHeartbeat />
           <NavigationProvider>
-            {children}
-            {staff && <GlobalBottomNav pendingCount={pendingCount} purchasePending={purchasePending} bentoPending={bentoPending} />}
+            <GlobalToastProvider>
+              {children}
+              {staff && <GlobalBottomNav pendingCount={pendingCount} purchasePending={purchasePending} bentoPending={bentoPending} />}
+            </GlobalToastProvider>
           </NavigationProvider>
         </StaffProvider>
       </body>

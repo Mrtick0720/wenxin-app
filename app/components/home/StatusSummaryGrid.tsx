@@ -36,9 +36,13 @@ interface StatusSummaryGridProps {
   complaints: number
   incidents: number
   reservations: number
+  /** Date label for the nearest reservation count: "Today" | "Tomorrow" | "Jun 30" | "No upcoming". */
+  reservationsLabel: string
+  /** Reservations link, with ?date=YYYY-MM-DD when an upcoming date exists so the page opens focused there. */
+  reservationsHref: string
 }
 
-export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complaints, incidents, reservations }: StatusSummaryGridProps) {
+export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complaints, incidents, reservations, reservationsLabel, reservationsHref }: StatusSummaryGridProps) {
   const bentoPending = bentoOrders - bentoCompleted
   const cards: StatusCard[] = [
     {
@@ -57,7 +61,7 @@ export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complai
       status: complaints > 0 ? '! Urgent' : 'Clear',
       isClear: complaints === 0,
       tone: COMPLAINTS,
-      image: '/complaints.webp',
+      image: '/Complaints.webp',
     },
     {
       title: 'Incidents',
@@ -70,12 +74,12 @@ export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complai
     },
     {
       title: 'Reservations',
-      href: '/reservations',
+      href: reservationsHref,
       value: reservations,
-      status: 'Today',
-      isClear: false,
+      status: reservationsLabel,
+      isClear: reservationsLabel === 'No upcoming',
       tone: RESERVATIONS,
-      image: '/reservations.webp',
+      image: '/Reservations.webp',
     },
   ]
 
@@ -87,7 +91,7 @@ export default function StatusSummaryGrid({ bentoOrders, bentoCompleted, complai
             src={card.image}
             alt=""
             aria-hidden
-            className="absolute bottom-0 right-0 w-[42%] aspect-square object-contain pointer-events-none opacity-90"
+            className="absolute bottom-1 right-2 w-[40%] aspect-square object-contain pointer-events-none opacity-90"
           />
           <span className={`text-xs ${card.tone.title} truncate block relative`}>{card.title}</span>
           <div className={`text-2xl font-bold leading-tight mt-1 relative ${card.tone.number}`}>{card.value}</div>
