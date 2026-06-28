@@ -21,20 +21,33 @@ export default function MyLeaveRequests({ refreshKey }: { refreshKey: number }) 
   const { showToast } = useGlobalToast()
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   async function reload() {
     const res = await fetchMyLeaveRequestsAction()
-    if (res.ok) setRequests(res.data)
+    if (res.ok) { setRequests(res.data); setError(null) }
+    else setError(res.error)
     setLoading(false)
   }
 
   useEffect(() => {
     let active = true
-    fetchMyLeaveRequestsAction().then((res) => {
-      if (!active) return
-      if (res.ok) setRequests(res.data)
-      setLoading(false)
-    })
+    fetchMyLeaveRequestsAction()
+      .then((res) => {
+        if (!active) return
+        if (res.ok) {
+          setRequests(res.data)
+          setError(null)
+        } else {
+          setError(res.error)
+        }
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
     return () => {
       active = false
     }
@@ -53,6 +66,14 @@ export default function MyLeaveRequests({ refreshKey }: { refreshKey: number }) 
 
   if (loading) {
     return <div className="text-center text-gray-400 py-6 text-sm">Loading leave requests…</div>
+  }
+  if (error) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm px-4 py-5 text-center">
+        <div className="text-sm font-medium text-red-500">Couldn&apos;t load leave requests</div>
+        <div className="text-xs text-gray-400 mt-1 break-words">{error}</div>
+      </div>
+    )
   }
   if (requests.length === 0) {
     return (

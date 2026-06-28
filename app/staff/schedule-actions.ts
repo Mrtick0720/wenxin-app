@@ -68,31 +68,30 @@ export async function fetchScheduleForDateAction(
 // ── Resolved schedule (staff: own only) ─────────────────────────────────────
 export async function fetchMyScheduleAction(
   date: string,
-): Promise<ActionResult<{ day: ResolvedDay; fixedOffWeekday: number | null; holiday: PublicHoliday | null }>> {
+): Promise<ActionResult<{ day: ResolvedDay; fixedOffWeekday: number | null; holiday: PublicHoliday | null; hasProfile: boolean }>> {
   try {
     const staff = await requireCurrentStaff()
     requireDate(date)
 
-    const [profiles, shifts, leaveIds, holiday, invitedIds] = await Promise.all([
-      repo.getActiveNonOwnerProfiles(),
-      repo.getShiftsMap(date),
-      repo.getApprovedLeaveStaffIds(date),
+    const [me, shift, approvedLeave, holiday, invited] = await Promise.all([
+      repo.getProfileBrief(staff.id),
+      repo.getMyShift(staff.id, date),
+      repo.hasApprovedLeave(staff.id, date),
       repo.getHoliday(date),
-      repo.getInvitedStaffIds(date),
+      repo.isInvitedToHoliday(staff.id, date),
     ])
-    const me = profiles.find((p) => p.id === staff.id)
     const fixedOffWeekday = me?.fixedOffWeekday ?? null
 
     const day = resolveScheduleStatus({
       date,
       fixedOffWeekday,
-      approvedLeave: leaveIds.has(staff.id),
+      approvedLeave,
       holiday,
-      invitedToHoliday: invitedIds.has(staff.id),
-      shift: shifts.get(staff.id) ?? null,
+      invitedToHoliday: invited,
+      shift,
     })
 
-    return { ok: true, data: { day, fixedOffWeekday, holiday } }
+    return { ok: true, data: { day, fixedOffWeekday, holiday, hasProfile: me !== null } }
   } catch (error) {
     return fail(error)
   }

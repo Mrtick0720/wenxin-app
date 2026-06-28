@@ -123,6 +123,8 @@ export default function StaffPage({ initialTab }: { initialTab?: Tab } = {}) {
   const [myDay, setMyDay] = useState<ResolvedDay | null>(null)
   const [myFixedOff, setMyFixedOff] = useState<number | null>(null)
   const [myLoading, setMyLoading] = useState(true)
+  const [myError, setMyError] = useState<string | null>(null)
+  const [myHasProfile, setMyHasProfile] = useState(true)
 
   // ── Sheets / refresh keys ──
   const [editingEntry, setEditingEntry] = useState<RosterDay | null>(null)
@@ -169,19 +171,31 @@ export default function StaffPage({ initialTab }: { initialTab?: Tab } = {}) {
     return () => { active = false }
   }, [staff, isOwnerOrManager])
 
-  // Staff own resolved day.
+  // Staff own resolved day. Always resolves the loading state — on success,
+  // failure (RLS / missing migration), or a rejected promise — so the card
+  // can never hang on "Loading…".
   useEffect(() => {
     if (!staff || isOwnerOrManager) return
     let active = true
-    fetchMyScheduleAction(selectedDate).then((res) => {
-      if (!active) return
-      if (res.ok) {
-        setMyDay(res.data.day)
-        setMyFixedOff(res.data.fixedOffWeekday)
-        setHoliday(res.data.holiday)
-      }
-      setMyLoading(false)
-    })
+    fetchMyScheduleAction(selectedDate)
+      .then((res) => {
+        if (!active) return
+        if (res.ok) {
+          setMyDay(res.data.day)
+          setMyFixedOff(res.data.fixedOffWeekday)
+          setMyHasProfile(res.data.hasProfile)
+          setHoliday(res.data.holiday)
+          setMyError(null)
+        } else {
+          setMyError(res.error)
+        }
+      })
+      .catch((err) => {
+        if (active) setMyError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (active) setMyLoading(false)
+      })
     return () => { active = false }
   }, [staff, isOwnerOrManager, selectedDate])
 
@@ -378,12 +392,21 @@ export default function StaffPage({ initialTab }: { initialTab?: Tab } = {}) {
               <div>
                 <div className="px-1 mb-2">
                   <span className="text-sm font-semibold text-gray-900">
-                    {isSelectedToday ? 'My Schedule Today' : `My Schedule · ${selectedLabel}`}
+                    {isSelectedToday ? 'My Schedule · Today' : `My Schedule · ${selectedLabel}`}
                   </span>
                 </div>
-                {myLoading || !myDay ? (
+                {myLoading ? (
                   <div className="bg-white rounded-2xl shadow-sm px-4 py-6 text-center text-sm text-gray-400">Loading…</div>
-                ) : (
+                ) : myError ? (
+                  <div className="bg-white rounded-2xl shadow-sm px-4 py-5 text-center">
+                    <div className="text-sm font-medium text-red-500">Couldn&apos;t load your schedule</div>
+                    <div className="text-xs text-gray-400 mt-1 break-words">{myError}</div>
+                  </div>
+                ) : !myHasProfile ? (
+                  <div className="bg-white rounded-2xl shadow-sm px-4 py-6 text-center text-sm text-gray-400">
+                    No staff profile found.
+                  </div>
+                ) : myDay ? (
                   <div className="bg-white rounded-2xl shadow-sm px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-sm text-gray-500">{selectedLabel}</span>
@@ -400,7 +423,7 @@ export default function StaffPage({ initialTab }: { initialTab?: Tab } = {}) {
                       </div>
                     )}
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Request leave */}

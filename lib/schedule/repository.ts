@@ -18,6 +18,28 @@ export type ProfileBrief = {
 export type ShiftBrief = { shiftType: ShiftType; shiftLabel: string }
 
 // ── Profiles ──────────────────────────────────────────────────────────────
+
+// A single staff member's own profile. Returns null if no profile row is
+// visible (missing account, or RLS denies the read) so callers can render a
+// clear "no staff profile" state instead of hanging.
+export async function getProfileBrief(staffId: string): Promise<ProfileBrief | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('staff_profiles')
+    .select('id, display_name, role, fixed_off_weekday')
+    .eq('id', staffId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const p = data as Record<string, unknown>
+  return {
+    id: p.id as string,
+    name: p.display_name as string,
+    role: p.role as string,
+    fixedOffWeekday: (p.fixed_off_weekday as number | null) ?? null,
+  }
+}
+
 export async function getActiveNonOwnerProfiles(): Promise<ProfileBrief[]> {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
@@ -51,7 +73,35 @@ export async function getShiftsMap(date: string): Promise<Map<string, ShiftBrief
   )
 }
 
+export async function getMyShift(staffId: string, date: string): Promise<ShiftBrief | null> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('staff_shifts')
+    .select('shift_type, time_label')
+    .eq('staff_id', staffId)
+    .eq('shift_date', date)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+  const s = data as Record<string, unknown>
+  return { shiftType: s.shift_type as ShiftType, shiftLabel: (s.time_label as string) || '' }
+}
+
 // ── Approved leave covering a date ──────────────────────────────────────────
+export async function hasApprovedLeave(staffId: string, date: string): Promise<boolean> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('staff_leave_requests')
+    .select('id')
+    .eq('staff_id', staffId)
+    .eq('status', 'approved')
+    .lte('start_date', date)
+    .gte('end_date', date)
+    .limit(1)
+  if (error) throw error
+  return (data ?? []).length > 0
+}
+
 export async function getApprovedLeaveStaffIds(date: string): Promise<Set<string>> {
   const supabase = await createServerSupabaseClient()
   const { data, error } = await supabase
@@ -120,6 +170,18 @@ export async function getInvitedStaffIds(date: string): Promise<Set<string>> {
     .eq('holiday_date', date)
   if (error) throw error
   return new Set((data ?? []).map((r: Record<string, unknown>) => r.staff_id as string))
+}
+
+export async function isInvitedToHoliday(staffId: string, date: string): Promise<boolean> {
+  const supabase = await createServerSupabaseClient()
+  const { data, error } = await supabase
+    .from('public_holiday_work_invitations')
+    .select('id')
+    .eq('holiday_date', date)
+    .eq('staff_id', staffId)
+    .limit(1)
+  if (error) throw error
+  return (data ?? []).length > 0
 }
 
 export async function insertInvitation(
