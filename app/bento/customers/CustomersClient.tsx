@@ -29,6 +29,7 @@ export type Customer = {
   total_portions: number
   used_portions: number
   opening_offset?: number
+  package_mode?: string
   note: string
   active: boolean
 }
@@ -38,6 +39,9 @@ export default function CustomersClient() {
   const router = useRouter()
   const { push } = useNavigation()
   const [customers, setCustomers] = useState<Customer[]>([])
+  // Delivered portions (completed = date on/before today) summed per customer
+  // name, so balance packages show real meals delivered, not the stored count.
+  const [deliveredByName, setDeliveredByName] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
 
   // Role gate — equivalent to requireRole('owner','manager','front_desk')
@@ -48,15 +52,22 @@ export default function CustomersClient() {
   }, [staff, router])
 
   // Fetch customers — RLS on bento_customers enforces the same access control
-  function loadCustomers() {
-    return supabase
-      .from('bento_customers')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        setCustomers((data || []) as Customer[])
-        setLoading(false)
-      })
+  async function loadCustomers() {
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuching' })
+    const [custRes, ordRes] = await Promise.all([
+      supabase.from('bento_customers').select('*').order('name'),
+      supabase.from('bento_orders').select('customer_name,date,quantity,status'),
+    ])
+    setCustomers((custRes.data || []) as Customer[])
+
+    const delivered = new Map<string, number>()
+    for (const o of (ordRes.data || []) as { customer_name?: string; date: string; quantity?: number; status: string }[]) {
+      if (!o.customer_name || o.status === 'canceled' || o.date > today) continue
+      const key = o.customer_name.trim().toLowerCase()
+      delivered.set(key, (delivered.get(key) ?? 0) + (o.quantity ?? 1))
+    }
+    setDeliveredByName(delivered)
+    setLoading(false)
   }
   useEffect(() => { void loadCustomers() }, [])
 
@@ -69,13 +80,16 @@ export default function CustomersClient() {
   const completedList = customers.filter(c => !c.active)
 
   function CustomerCard({ c, done }: { c: Customer; done: boolean }) {
-    // Mirror the detail page: usage is measured against the opening balance
-    // (purchased − previous-overuse offset), and overuse is shown explicitly
-    // instead of a negative "left".
+    // Mirror the detail page. For balance packages "used" = real delivered
+    // portions (completed orders); for scheduled packages keep the stored count.
+    // Usage is measured against the opening balance (purchased − overuse offset),
+    // and overuse is shown explicitly instead of a negative "left".
+    const isBalance = c.package_mode === 'balance'
+    const used = isBalance ? (deliveredByName.get(c.name.trim().toLowerCase()) ?? 0) : c.used_portions
     const openingBalance = Math.max(c.total_portions - (c.opening_offset ?? 0), 0)
-    const remaining = Math.max(openingBalance - c.used_portions, 0)
-    const overused = Math.max(c.used_portions - openingBalance, 0)
-    const pct = openingBalance > 0 ? Math.min(Math.round((c.used_portions / openingBalance) * 100), 100) : 100
+    const remaining = Math.max(openingBalance - used, 0)
+    const overused = Math.max(used - openingBalance, 0)
+    const pct = openingBalance > 0 ? Math.min(Math.round((used / openingBalance) * 100), 100) : 100
     const accent = done ? '#9ca3af' : '#f97316'
     return (
       <button type="button" onClick={() => push(
@@ -96,7 +110,7 @@ export default function CustomersClient() {
         {c.total_portions > 0 && (
           <div className="mt-2">
             <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>{c.used_portions} used</span>
+              <span>{used} used</span>
               <span className={!done && (overused > 0 || remaining <= 3) ? 'text-red-500 font-medium' : 'text-gray-400'}>
                 {done ? 'Completed' : overused > 0 ? `Overused ${overused}` : `${remaining} left`}
               </span>
