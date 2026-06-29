@@ -89,32 +89,38 @@ export default function FrontDeskShiftCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className={`text-2xl font-bold leading-tight ${cfg.accent}`}>{cfg.label}</div>
-          <div className="text-xs text-gray-500 leading-tight mt-0.5 truncate">
-            {shiftState === 'on_duty' && timeLabel ? timeLabel : cfg.subtitle}
-          </div>
-        </div>
-      </div>
-
-      {showAttendance && (
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <div className={`text-sm font-semibold ${att.tone} truncate`}>{att.label}</div>
-            {attendance === 'clocked_in' && sinceLabel && (
-              <div className="text-xs text-gray-400 leading-tight mt-0.5">Since {sinceLabel}</div>
+          {/* Sub-line: working time + attendance status (or rest-day subtitle),
+              kept to a single line so the card stays compact. */}
+          <div className="text-xs leading-tight mt-0.5 truncate">
+            {shiftState === 'on_duty' ? (
+              <>
+                {timeLabel && <span className="text-gray-500">{timeLabel}</span>}
+                {timeLabel && <span className="text-gray-300"> · </span>}
+                <span className={`font-medium ${att.tone}`}>{att.label}</span>
+                {attendance === 'clocked_in' && sinceLabel && (
+                  <span className="text-gray-400"> · Since {sinceLabel}</span>
+                )}
+              </>
+            ) : (
+              <span className="text-gray-500">
+                {attendance === 'missing_punch_out' ? att.label : cfg.subtitle}
+              </span>
             )}
           </div>
-          {att.cta && (
-            <NavLink
-              href="/attendance"
-              className={`flex-shrink-0 px-4 py-2 rounded-xl text-sm font-semibold text-white active:opacity-80 ${
-                att.cta === 'out' ? 'bg-orange-500' : 'bg-gray-900'
-              }`}
-            >
-              {att.cta === 'out' ? 'Clock Out' : 'Clock In'}
-            </NavLink>
-          )}
         </div>
-      )}
+
+        {/* Clock In / Clock Out — on the same row as the status, right-aligned. */}
+        {showAttendance && att.cta && (
+          <NavLink
+            href="/attendance"
+            className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold text-white active:opacity-80 ${
+              att.cta === 'out' ? 'bg-orange-500' : 'bg-gray-900'
+            }`}
+          >
+            {att.cta === 'out' ? 'Clock Out' : 'Clock In'}
+          </NavLink>
+        )}
+      </div>
     </div>
   )
 }
