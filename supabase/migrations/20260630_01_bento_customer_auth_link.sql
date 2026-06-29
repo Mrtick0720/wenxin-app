@@ -103,10 +103,20 @@ begin
 
       select email into caller_email from auth.users where id = caller;
 
+      -- Concurrency guard: re-check `auth_user_id is null` in the UPDATE so two
+      -- racing claims for the same unclaimed row cannot both succeed. If a
+      -- concurrent transaction won, FOUND is false -> raise rather than return a
+      -- row that now belongs to another account.
       update public.bento_customers
       set auth_user_id = caller,
           email = coalesce(email, caller_email)
-      where id = matched_id;
+      where id = matched_id
+        and auth_user_id is null;
+
+      if not found then
+        raise exception
+          'This customer record was just claimed by another account; please contact staff.';
+      end if;
 
       return matched_id;
     end if;
