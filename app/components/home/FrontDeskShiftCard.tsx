@@ -58,7 +58,7 @@ function ShiftIcon({ state }: { state: ShiftViewState }) {
 }
 
 export default function FrontDeskShiftCard({
-  name, roleLabel, shiftState, timeLabel, attendance, sinceLabel, isOpen,
+  name, roleLabel, shiftState, timeLabel, attendance, isOpen,
 }: FrontDeskShiftCardProps) {
   const cfg = SHIFT_CONFIG[shiftState]
   const att = ATTENDANCE_CONFIG[attendance]
@@ -87,22 +87,16 @@ export default function FrontDeskShiftCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className={`text-xl sm:text-2xl font-bold leading-tight whitespace-nowrap ${cfg.accent}`}>{cfg.label}</div>
-          {/* Sub-line: working time + attendance status (or rest-day subtitle),
-              kept to a single line so the card stays compact. */}
+          {/* Sub-line: just the working time (or rest-day subtitle). The Clock
+              In / Clock Out button already conveys the attendance state, so no
+              status text here — it only got truncated on narrow screens. */}
           <div className="text-xs leading-tight mt-0.5 truncate">
             {shiftState === 'on_duty' ? (
-              <>
-                {timeLabel && <span className="text-gray-500">{timeLabel}</span>}
-                {timeLabel && <span className="text-gray-300"> · </span>}
-                <span className={`font-medium ${att.tone}`}>{att.label}</span>
-                {attendance === 'clocked_in' && sinceLabel && (
-                  <span className="text-gray-400"> · Since {sinceLabel}</span>
-                )}
-              </>
+              <span className="text-gray-500">{timeLabel ?? cfg.subtitle}</span>
+            ) : attendance === 'missing_punch_out' ? (
+              <span className={`font-medium ${att.tone}`}>{att.label}</span>
             ) : (
-              <span className="text-gray-500">
-                {attendance === 'missing_punch_out' ? att.label : cfg.subtitle}
-              </span>
+              <span className="text-gray-500">{cfg.subtitle}</span>
             )}
           </div>
         </div>
