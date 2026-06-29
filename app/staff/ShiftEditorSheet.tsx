@@ -29,6 +29,29 @@ const SHIFT_OPTIONS: { type: ShiftType; label: string; color: string }[] = [
   { type: 'leave',     label: 'Leave',      color: '#f97316' },
 ]
 
+// ── Fixed shift-time options ────────────────────────────────────────────────
+const START_TIMES = ['07:00', '08:00', '09:00', '10:00'] as const
+const END_TIMES = ['17:00', '20:00', '21:00', '22:00', '23:00'] as const
+
+// Auto-selected end time when a start time is chosen (still adjustable after).
+const AUTO_END: Record<string, string> = {
+  '07:00': '17:00',
+  '08:00': '20:00',
+  '09:00': '21:00',
+  '10:00': '22:00',
+}
+
+// Restaurant default full-day shift (break 15:00–17:00 is business context only).
+const FULL_DAY_START = '10:00'
+const FULL_DAY_END = '22:00'
+
+// Accepts the stored "HH:MM–HH:MM" / "HH:MM-HH:MM" label and splits it.
+const TIME_LABEL_RE = /^(\d{1,2}:\d{2})\s*[–-]\s*(\d{1,2}:\d{2})$/
+function parseTimeLabel(label: string): { start: string; end: string } | null {
+  const m = label.trim().match(TIME_LABEL_RE)
+  return m ? { start: m[1], end: m[2] } : null
+}
+
 const Z_MAX = 2147483647
 
 export default function ShiftEditorSheet({
@@ -37,18 +60,41 @@ export default function ShiftEditorSheet({
   onClose, onSaved, onOptimistic,
 }: Props) {
   const { showToast } = useGlobalToast()
-  const [shiftType, setShiftType] = useState<ShiftType>(currentShiftType ?? 'off')
-  const [shiftLabel, setShiftLabel] = useState(currentShiftLabel ?? '')
+  const initialType = currentShiftType ?? 'off'
+  const initialTimes = parseTimeLabel(currentShiftLabel ?? '')
+  const [shiftType, setShiftType] = useState<ShiftType>(initialType)
+  // Selected start/end times. Null = no explicit time → default shift label.
+  const [startTime, setStartTime] = useState<string | null>(
+    initialTimes?.start ?? (initialType === 'full_day' ? FULL_DAY_START : null),
+  )
+  const [endTime, setEndTime] = useState<string | null>(
+    initialTimes?.end ?? (initialType === 'full_day' ? FULL_DAY_END : null),
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const isWorkingShift = shiftType !== 'off' && shiftType !== 'leave'
 
+  function chooseType(type: ShiftType) {
+    setShiftType(type)
+    // Full Day uses the restaurant default whenever it's picked.
+    if (type === 'full_day') {
+      setStartTime(FULL_DAY_START)
+      setEndTime(FULL_DAY_END)
+    }
+  }
+
+  function chooseStart(time: string) {
+    setStartTime(time)
+    // Auto-set the matching default end time; still manually adjustable below.
+    setEndTime(AUTO_END[time] ?? endTime)
+  }
+
   async function handleSave() {
     setSaving(true)
     setError(null)
 
-    const label = isWorkingShift ? shiftLabel.trim() || undefined : undefined
+    const label = isWorkingShift && startTime && endTime ? `${startTime}–${endTime}` : undefined
 
     // Optimistic: reflect the new shift in the roster + close immediately.
     onOptimistic(shiftType, label ?? null)
@@ -99,7 +145,7 @@ export default function ShiftEditorSheet({
                 <button
                   key={opt.type}
                   type="button"
-                  onClick={() => setShiftType(opt.type)}
+                  onClick={() => chooseType(opt.type)}
                   className="py-3 px-2 rounded-xl text-sm font-semibold border-2 transition-colors"
                   style={{
                     borderColor: shiftType === opt.type ? opt.color : '#e5e7eb',
@@ -113,42 +159,53 @@ export default function ShiftEditorSheet({
             </div>
           </div>
 
-          {/* Custom time label — only for working shifts */}
+          {/* Start / End time selectors — only for working shifts */}
           {isWorkingShift && (
-            <div>
-              <label className="text-xs text-gray-400 mb-1 block">Time (optional)</label>
-              <input
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-orange-400"
-                style={{ fontSize: 16 }}
-                placeholder="e.g. 09:00–15:00"
-                value={shiftLabel}
-                onChange={e => setShiftLabel(e.target.value)}
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Leave empty to use the default label.
-              </p>
-            </div>
-          )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs text-gray-400 mb-2 block">Start Time</label>
+                <div className="grid grid-cols-4 sm:grid-cols-2 gap-2">
+                  {START_TIMES.map(time => {
+                    const active = startTime === time
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => chooseStart(time)}
+                        className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                          active
+                            ? 'border-orange-400 bg-orange-50 text-orange-600'
+                            : 'border-gray-200 bg-white text-gray-600 active:bg-gray-50'
+                        }`}
+                      >
+                        {time}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
 
-          {/* Preset time buttons */}
-          {isWorkingShift && (
-            <div>
-              <label className="text-xs text-gray-400 mb-2 block">Quick set</label>
-              <div className="flex gap-2 flex-wrap">
-                {['09:00–15:00','10:00–20:00','14:00–21:00','08:00–16:00','12:00–20:00'].map(preset => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setShiftLabel(preset)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                      shiftLabel === preset
-                        ? 'border-orange-400 bg-orange-50 text-orange-600'
-                        : 'border-gray-200 bg-white text-gray-600 active:bg-gray-50'
-                    }`}
-                  >
-                    {preset}
-                  </button>
-                ))}
+              <div>
+                <label className="text-xs text-gray-400 mb-2 block">End Time</label>
+                <div className="grid grid-cols-4 sm:grid-cols-3 gap-2">
+                  {END_TIMES.map(time => {
+                    const active = endTime === time
+                    return (
+                      <button
+                        key={time}
+                        type="button"
+                        onClick={() => setEndTime(time)}
+                        className={`py-2.5 rounded-xl text-sm font-semibold border transition-colors ${
+                          active
+                            ? 'border-orange-400 bg-orange-50 text-orange-600'
+                            : 'border-gray-200 bg-white text-gray-600 active:bg-gray-50'
+                        }`}
+                      >
+                        {time}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           )}
