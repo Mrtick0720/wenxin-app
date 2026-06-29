@@ -20,9 +20,10 @@ import HomeBell from '../HomeBell'
 import NavLink from '../NavLink'
 import KitchenTasksWithPolling from './KitchenTasksWithPolling'
 import KitchenCostRatioCard from './KitchenCostRatioCard'
-import MyShiftCard from './MyShiftCard'
+import FrontDeskShiftCard from './FrontDeskShiftCard'
 import { findShiftByStaffAndDate } from '@/lib/attendance/repository'
 import { buildShiftView } from '@/lib/attendance/shiftView'
+import { getHomeAttendance } from '@/lib/attendance/homeAttendance'
 
 async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   try { return await p } catch { return fallback }
@@ -63,7 +64,7 @@ export default async function KitchenHome() {
   const staff = await requireCurrentStaff()
   const supabase = await createServerSupabaseClient()
 
-  const [bentoResult, pending, lowStock, kpi, complaints, tasksRes, myShift] = await Promise.all([
+  const [bentoResult, pending, lowStock, kpi, complaints, tasksRes, myShift, attendanceInfo] = await Promise.all([
     safe(getBentoCount(supabase), { count: 0, forTomorrow: false }),
     safe(svc.listPendingVerification(staff.role), []),
     safe(findLowStockItems(), []),
@@ -71,6 +72,7 @@ export default async function KitchenHome() {
     safe(getComplaintCount(), 0),
     safe(listKitchenTasksAction(), { ok: false as const, error: 'load failed' }),
     safe(findShiftByStaffAndDate(staff.id, businessToday()), null),
+    safe(getHomeAttendance(staff.id, businessToday()), { attendance: 'not_clocked_in' as const, sinceLabel: null }),
   ])
 
   const initialTasks = tasksRes.ok ? tasksRes.data : []
@@ -127,13 +129,14 @@ export default async function KitchenHome() {
 
       <div className="px-5 sm:px-8 pt-4 pb-28 space-y-4">
 
-        {/* ── My Today's Shift — personal shift status (carries the Open pill) ── */}
-        <MyShiftCard
+        {/* ── My Today's Shift — duty status + Clock In/Out (carries Open pill) ── */}
+        <FrontDeskShiftCard
           name={staff.displayName}
           roleLabel="Kitchen"
-          state={shiftView.state}
+          shiftState={shiftView.state}
           timeLabel={shiftView.timeLabel}
-          progressPercent={shiftView.progressPercent}
+          attendance={attendanceInfo.attendance}
+          sinceLabel={attendanceInfo.sinceLabel}
           isOpen={true}
         />
 

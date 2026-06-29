@@ -11,8 +11,9 @@ import { businessToday } from '@/lib/feedme/parseQueryResult'
 import { canAccessPath } from '@/lib/auth/permissions'
 import * as purchaseSvc from '@/lib/purchaseLedger/service'
 import { getReservationSummary, EMPTY_RESERVATION_SUMMARY } from '@/lib/reservations/homeSummary'
-import { findShiftByStaffAndDate, findSessionsByStaff } from '@/lib/attendance/repository'
+import { findShiftByStaffAndDate } from '@/lib/attendance/repository'
 import { buildShiftView } from '@/lib/attendance/shiftView'
+import { getHomeAttendance } from '@/lib/attendance/homeAttendance'
 
 import HomeRefresh from '../HomeRefresh'
 import HomeReservationsRealtime from '../HomeReservationsRealtime'
@@ -20,7 +21,7 @@ import HomePurchaseRealtime from '../HomePurchaseRealtime'
 import HomeShiftRealtime from '../HomeShiftRealtime'
 import HomeBell from '../HomeBell'
 import NavLink from '../NavLink'
-import FrontDeskShiftCard, { type AttendanceState } from './FrontDeskShiftCard'
+import FrontDeskShiftCard from './FrontDeskShiftCard'
 import NextReservationCard from './NextReservationCard'
 import BentoOpsCard from './BentoOpsCard'
 import TodaysIssuesCard, { type IssueRow } from './TodaysIssuesCard'
@@ -52,12 +53,6 @@ async function getIncidentCount(supabase: SupabaseClient): Promise<number> {
     .eq('date', todayLocalStr())
     .neq('status', 'resolved')
   return data?.length ?? 0
-}
-
-function clockTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-MY', {
-    hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kuching',
-  })
 }
 
 type OpTone = { status: string }
@@ -98,9 +93,9 @@ export default async function FrontDeskHome() {
   const supabase = await createServerSupabaseClient()
   const bizToday = businessToday()
 
-  const [shift, sessions, reservation, bento, pendingVerify, complaints, incidents] = await Promise.all([
+  const [shift, attendanceInfo, reservation, bento, pendingVerify, complaints, incidents] = await Promise.all([
     safe(findShiftByStaffAndDate(staff.id, bizToday), null),
-    safe(findSessionsByStaff(staff.id, 10), []),
+    safe(getHomeAttendance(staff.id, bizToday), { attendance: 'not_clocked_in' as const, sinceLabel: null }),
     safe(getReservationSummary(supabase), EMPTY_RESERVATION_SUMMARY),
     safe(getBentoToday(supabase), { total: 0, completed: 0 }),
     safe(purchaseSvc.listPendingVerification(staff.role), []),
@@ -111,25 +106,7 @@ export default async function FrontDeskHome() {
   const now = new Date()
   const todayStr = `${months[now.getMonth()]} ${now.getDate()} ${weekdays[now.getDay()]}`
   const shiftView = buildShiftView(shift, now)
-
-  // ── Attendance punch state (today vs. an orphaned open session) ──
-  const openAny = sessions.find(s => s.clockOut === null) // findSessionsByStaff is newest-first
-  const todaySessions = sessions.filter(s => s.businessDate === bizToday)
-  let attendance: AttendanceState
-  let sinceLabel: string | null = null
-  if (openAny && openAny.businessDate !== bizToday) {
-    attendance = 'missing_punch_out'
-  } else {
-    const openToday = todaySessions.find(s => s.clockOut === null)
-    if (openToday) {
-      attendance = 'clocked_in'
-      sinceLabel = clockTime(openToday.clockIn)
-    } else if (todaySessions.length > 0) {
-      attendance = 'clocked_out'
-    } else {
-      attendance = 'not_clocked_in'
-    }
-  }
+  const { attendance, sinceLabel } = attendanceInfo
 
   const bentoPending = Math.max(0, bento.total - bento.completed)
   const bentoPercent = bento.total > 0 ? Math.round((bento.completed / bento.total) * 100) : 0

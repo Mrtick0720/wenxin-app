@@ -1,4 +1,5 @@
-// Front-desk shift + attendance status card.
+// Shared Home duty card for every non-owner role (front desk, kitchen,
+// manager, cashier, …).
 //
 // Combines the scheduled shift (ON DUTY / DAY OFF / ON LEAVE) with today's
 // real attendance punch state, and links Clock In / Clock Out to the existing
@@ -6,12 +7,9 @@
 
 import NavLink from '../NavLink'
 import type { ShiftViewState } from '@/lib/attendance/shiftView'
+import type { HomeAttendanceState } from '@/lib/attendance/homeAttendance'
 
-export type AttendanceState =
-  | 'not_clocked_in'
-  | 'clocked_in'
-  | 'clocked_out'
-  | 'missing_punch_out'
+export type AttendanceState = HomeAttendanceState
 
 interface FrontDeskShiftCardProps {
   name: string
@@ -88,7 +86,7 @@ export default function FrontDeskShiftCard({
           <ShiftIcon state={shiftState} />
         </span>
         <div className="min-w-0 flex-1">
-          <div className={`text-2xl font-bold leading-tight ${cfg.accent}`}>{cfg.label}</div>
+          <div className={`text-xl sm:text-2xl font-bold leading-tight whitespace-nowrap ${cfg.accent}`}>{cfg.label}</div>
           {/* Sub-line: working time + attendance status (or rest-day subtitle),
               kept to a single line so the card stays compact. */}
           <div className="text-xs leading-tight mt-0.5 truncate">

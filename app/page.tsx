@@ -9,9 +9,10 @@ import FinancialSnapshot from './components/home/FinancialSnapshot'
 import BentoOpsCard from './components/home/BentoOpsCard'
 import TodaysIssuesCard, { type IssueRow } from './components/home/TodaysIssuesCard'
 import ShiftBoardCard from './components/home/ShiftBoardCard'
-import MyShiftCard from './components/home/MyShiftCard'
+import FrontDeskShiftCard from './components/home/FrontDeskShiftCard'
 import { findShiftByStaffAndDate } from '@/lib/attendance/repository'
 import { buildShiftView } from '@/lib/attendance/shiftView'
+import { getHomeAttendance } from '@/lib/attendance/homeAttendance'
 import QuickAccessGrid from './components/home/QuickAccessGrid'
 import KitchenHome from './components/home/KitchenHome'
 import { canAccessPath, getHomeVisibility } from '@/lib/auth/permissions'
@@ -209,7 +210,7 @@ export default async function Home() {
   // which the UI renders as "—".
   const showPurchase = canAccessPath(staff.role, '/purchase')
   const bizToday = businessToday()
-  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, nextReservation, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary, cashDrawerBalance, myShift] = await Promise.all([
+  const [stats, bentoStats, anomalyCount, pendingCount, pendingChecklist, complaintCount, nextReservation, feedMeRevenue, feedMeMtd, feedMe7Day, receivablesSummary, payablesSummary, cashDrawerBalance, myShift, myAttendance] = await Promise.all([
     safe(getStats(supabase, visibility.revenue), null),
     safe(getBentoStats(supabase, staff.role, visibility.revenue), { total: 0, completed: 0, revenue: 0 }),
     safe(getAnomalyCount(supabase, canAccessPath(staff.role, '/incidents')), 0),
@@ -224,6 +225,7 @@ export default async function Home() {
     safe(visibility.finance ? getPayablesSummary() : Promise.resolve({ totalBalance: 0, dueTodayCount: 0 }), { totalBalance: 0, dueTodayCount: 0 }),
     safe(staff.role === 'owner' ? getCashBalance(bizToday) : Promise.resolve({ balance: null, note: null }), { balance: null, note: null }),
     safe(staff.role !== 'owner' ? findShiftByStaffAndDate(staff.id, bizToday) : Promise.resolve(null), null),
+    safe(staff.role !== 'owner' ? getHomeAttendance(staff.id, bizToday) : Promise.resolve({ attendance: 'not_clocked_in' as const, sinceLabel: null }), { attendance: 'not_clocked_in' as const, sinceLabel: null }),
   ])
   const notificationCount = anomalyCount + pendingChecklist
 
@@ -344,12 +346,13 @@ export default async function Home() {
 
       <div className="px-5 sm:px-8 pt-4 pb-28 space-y-4">
         {staff.role !== 'owner' && (
-          <MyShiftCard
+          <FrontDeskShiftCard
             name={staff.displayName}
             roleLabel={ROLE_LABELS[staff.role]}
-            state={shiftView.state}
+            shiftState={shiftView.state}
             timeLabel={shiftView.timeLabel}
-            progressPercent={shiftView.progressPercent}
+            attendance={myAttendance.attendance}
+            sinceLabel={myAttendance.sinceLabel}
             isOpen={true}
           />
         )}
