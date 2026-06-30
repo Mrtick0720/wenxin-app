@@ -7,6 +7,7 @@ import {
   type PayableProjection,
   type PurchasePayableRow,
 } from '@/lib/payables/purchasePayables'
+import { createAdminSupabaseClient } from '@/lib/supabase/admin'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import { todayLocalStr } from '@/lib/dateUtils'
 
@@ -22,7 +23,7 @@ function fail(error: unknown): ActionResult<never> {
   return { ok: false, error: message }
 }
 
-const WRITE_ROLES = ['owner', 'manager'] as const
+const WRITE_ROLES = ['owner', 'manager', 'front_desk'] as const
 const PURCHASE_PAYABLE_COLUMNS =
   'id,supplier,name,total_price,payment_status,date,note,created_at'
 
@@ -65,8 +66,8 @@ export async function markPurchasePaidAction(
 ): Promise<ActionResult<{ id: number }>> {
   try {
     await requireRole(...WRITE_ROLES)
-    const supabase = await createServerSupabaseClient()
-    const { data, error } = await supabase
+    const admin = createAdminSupabaseClient()
+    const { data, error } = await admin
       .from('purchase_items')
       .update({ payment_status: 'paid' })
       .eq('id', id)

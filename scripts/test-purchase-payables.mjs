@@ -6,6 +6,7 @@ import {
 import {
   reconcilePayablesAfterFetch,
 } from '../lib/payables/optimisticPayables.ts'
+import { readFileSync } from 'node:fs'
 
 let passed = 0
 let failed = 0
@@ -94,6 +95,21 @@ const confirmedFetch = reconcilePayablesAfterFetch(
 assert(
   !confirmedFetch.pendingPaidIds.has(payable.id),
   'paid id is released once server stops returning it',
+)
+
+const actionsSource = readFileSync('app/payables/actions.ts', 'utf8')
+assert(
+  actionsSource.includes("const WRITE_ROLES = ['owner', 'manager', 'front_desk'] as const"),
+  'front_desk can mark purchase payables paid',
+)
+assert(
+  actionsSource.includes('await requireRole(...WRITE_ROLES)'),
+  'mark paid server action enforces the shared write roles',
+)
+assert(
+  actionsSource.includes('const admin = createAdminSupabaseClient()') &&
+    actionsSource.includes("await admin\n      .from('purchase_items')"),
+  'mark paid uses an admin client after role validation so RLS row windows do not block payment updates',
 )
 
 console.log(`Purchase Payables: ${passed} passed, ${failed} failed`)
