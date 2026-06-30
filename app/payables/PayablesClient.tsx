@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import BackButton from '../components/BackButton'
 import PageTransition from '../components/PageTransition'
 import { useStaff } from '../components/StaffProvider'
@@ -9,6 +9,7 @@ import { fetchPayablesAction, type Payable } from './actions'
 import PayableDetail from './PayableDetail'
 import { usePurchaseRealtime } from '../purchase/usePurchaseRealtime'
 import { todayLocalStr } from '@/lib/dateUtils'
+import { reconcilePayablesAfterFetch } from '@/lib/payables/optimisticPayables'
 
 const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
   outstanding: { label: 'Outstanding', bg: 'bg-orange-100', text: 'text-orange-700' },
@@ -34,13 +35,19 @@ export default function PayablesClient() {
   const [canWrite, setCanWrite] = useState(payablesCache?.canWrite ?? false)
   const [loading, setLoading] = useState(!payablesCache)
   const [selected, setSelected] = useState<Payable | null>(null)
+  const pendingPaidIdsRef = useRef<Set<number>>(new Set())
 
   const load = useCallback(async () => {
     const res = await fetchPayablesAction()
     if (res.ok) {
-      setItems(res.data.payables)
+      const reconciled = reconcilePayablesAfterFetch(
+        res.data.payables,
+        pendingPaidIdsRef.current,
+      )
+      pendingPaidIdsRef.current = reconciled.pendingPaidIds
+      setItems(reconciled.items)
       setCanWrite(res.data.canWrite)
-      payablesCache = { items: res.data.payables, canWrite: res.data.canWrite }
+      payablesCache = { items: reconciled.items, canWrite: res.data.canWrite }
     }
     setLoading(false)
   }, [])
@@ -60,14 +67,19 @@ export default function PayablesClient() {
   const totalBalance = items.filter(p => p.status !== 'paid').reduce((s, p) => s + p.balance, 0)
   const dueTodayCount = items.filter(p => p.status !== 'paid' && p.due_date === today).length
 
+  // Optimistic removal only. The reconciling refetch is deliberately NOT fired
+  // here: at this point the payment write hasn't run yet (PaymentModal awaits the
+  // action AFTER calling onPaid), so an immediate load() would read stale data and
+  // make the just-removed row flash back. Reconciliation happens via onSettled
+  // (after the write resolves) and the realtime subscription (after it commits).
   function handlePaid(id: number) {
+    pendingPaidIdsRef.current = new Set(pendingPaidIdsRef.current).add(id)
     setItems((current) => {
       const next = current.filter((item) => item.id !== id)
       payablesCache = { items: next, canWrite }
       return next
     })
     setSelected(null)
-    load().catch(() => {})
   }
 
   const rowBg = (i: number) => i % 2 === 1 ? '#f9fafb' : '#ffffff'
@@ -151,6 +163,14 @@ export default function PayablesClient() {
             canWrite={canWrite}
             onClose={() => setSelected(null)}
             onPaid={handlePaid}
+            onSettled={(result) => {
+              if (!result.ok) {
+                const pending = new Set(pendingPaidIdsRef.current)
+                pending.delete(result.id)
+                pendingPaidIdsRef.current = pending
+              }
+              load().catch(() => {})
+            }}
           />
         )}
       </main>

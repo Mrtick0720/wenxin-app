@@ -20,30 +20,36 @@ export default function PaymentModal({
   amount,
   onClose,
   onPaid,
+  onSettled,
 }: {
   payableId: number
   amount: number
   onClose: () => void
   onPaid: (id: number) => void
+  onSettled: (result: { id: number; ok: boolean }) => void
 }) {
   const { showToast } = useGlobalToast()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   async function handleSave() {
+    if (saving) return
     setSaving(true)
     setError(null)
 
-    // Optimistic: show success + close immediately
+    // Optimistic: remove the row, show success + close immediately.
     showToast('Marked paid')
     onPaid(payableId)
     onClose()
 
+    // Reconcile only AFTER the write resolves — never before, or the refetch
+    // reads stale data and flashes the row back. onSettled refetches: on success
+    // it confirms the removal, on failure it restores the row.
     const res = await markPurchasePaidAction(payableId)
     if (!res.ok) {
       showToast(res.error, 'error')
-      onPaid(payableId)  // refetch to rollback
     }
+    onSettled({ id: payableId, ok: res.ok })
   }
 
   const content = (

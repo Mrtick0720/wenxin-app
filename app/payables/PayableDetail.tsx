@@ -32,11 +32,13 @@ export default function PayableDetail({
   canWrite,
   onClose,
   onPaid,
+  onSettled,
 }: {
   payable: Payable
   canWrite: boolean
   onClose: () => void
   onPaid: (id: number) => void
+  onSettled: (result: { id: number; ok: boolean }) => void
 }) {
   const [showPayment, setShowPayment] = useState(false)
   const st = statusConfig[payable.status] ?? statusConfig.outstanding
@@ -94,6 +96,7 @@ export default function PayableDetail({
           amount={payable.balance}
           onClose={() => setShowPayment(false)}
           onPaid={onPaid}
+          onSettled={onSettled}
         />
       )}
     </div>

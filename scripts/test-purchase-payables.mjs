@@ -3,6 +3,9 @@ import {
   purchaseRowToPayable,
   summarizePurchasePayables,
 } from '../lib/payables/purchasePayables.ts'
+import {
+  reconcilePayablesAfterFetch,
+} from '../lib/payables/optimisticPayables.ts'
 
 let passed = 0
 let failed = 0
@@ -70,6 +73,28 @@ assert(paid.paid_amount === 50 && paid.balance === 0, 'paid row has no outstandi
 const summary = summarizePurchasePayables(rows, '2026-06-20')
 assert(summary.totalBalance === 100, 'paid rows are excluded from total balance')
 assert(summary.dueTodayCount === 1, 'only outstanding due-today rows count')
+
+const staleFetch = reconcilePayablesAfterFetch(
+  [payable, fallbackName],
+  new Set([payable.id]),
+)
+assert(
+  staleFetch.items.every((item) => item.id !== payable.id),
+  'stale fetch cannot reinsert an optimistically paid payable',
+)
+assert(
+  staleFetch.pendingPaidIds.has(payable.id),
+  'paid id remains pending while server still returns it',
+)
+
+const confirmedFetch = reconcilePayablesAfterFetch(
+  [fallbackName],
+  staleFetch.pendingPaidIds,
+)
+assert(
+  !confirmedFetch.pendingPaidIds.has(payable.id),
+  'paid id is released once server stops returning it',
+)
 
 console.log(`Purchase Payables: ${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)
