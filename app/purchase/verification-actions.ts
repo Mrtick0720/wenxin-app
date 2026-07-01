@@ -4,6 +4,8 @@ import { requireRole } from '@/lib/auth/currentStaff'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import type { ActionResult, PurchaseRecord } from '@/lib/purchaseLedger/types'
 import { purchaseRecordColumnsForRole } from '@/lib/purchaseLedger/repository'
+import { businessToday } from '@/lib/purchaseLedger/time'
+import { projectAcceptedVerification } from '@/lib/purchaseLedger/verification'
 
 const VERIFY_ROLES = ['owner', 'manager', 'kitchen', 'front_desk'] as const
 
@@ -33,6 +35,7 @@ export async function acceptVerificationAction(
     const staff = await requireRole(...VERIFY_ROLES)
     const supabase = await createServerSupabaseClient()
     const verifiedAt = new Date().toISOString()
+    const businessDate = businessToday()
 
     const { data: existing, error: fetchError } = await supabase
       .from('purchase_items')
@@ -49,6 +52,7 @@ export async function acceptVerificationAction(
     const { error, count } = await supabase
       .from('purchase_items')
       .update({
+        date: businessDate,
         status: 'verified',
         verified_by_name: staff.displayName,
         verified_at: verifiedAt,
@@ -61,13 +65,12 @@ export async function acceptVerificationAction(
     if (count !== 1) return { ok: false, error: 'Record not found or already verified.' }
     return {
       ok: true,
-      data: {
-        ...existingRecord,
-        status: 'verified',
-        verified_by_name: staff.displayName,
-        verified_at: verifiedAt,
-        received_quantity: receivedQuantity,
-      },
+      data: projectAcceptedVerification(existingRecord, {
+        businessDate,
+        verifiedByName: staff.displayName,
+        verifiedAt,
+        receivedQuantity,
+      }),
     }
   } catch (error) {
     return fail(error)

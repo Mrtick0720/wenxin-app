@@ -1384,6 +1384,7 @@ export default function PurchaseClient(props: Props) {
     pendingAcceptSnapshot.current = { records, pending: pendingVerification }
     const optimistic: LedgerRecord = {
       ...(item as LedgerRecord),
+      date: ctx!.today,
       status: 'verified',
       received_quantity: receivedQty,
       verified_by_name: staff?.displayName ?? null,

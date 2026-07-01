@@ -42,6 +42,7 @@ import {
   reconcileOptimisticRecord,
   removeOptimisticRecord,
 } from '../app/purchase/optimistic.ts'
+import { projectAcceptedVerification } from '../lib/purchaseLedger/verification.ts'
 
 let passed = 0
 let failed = 0
@@ -118,12 +119,12 @@ assert(ownerView.unit_price === 10, 'owner view keeps unit_price')
 
 // ── Categories ──
 section('8. categories')
-assert(PURCHASE_CATEGORIES.length === 7, '7 categories')
+assert(PURCHASE_CATEGORIES.length === 8, '8 categories')
 assert(PURCHASE_CATEGORIES.includes('Seafood') && PURCHASE_CATEGORIES.includes('Packaging'), 'spec categories present')
 assert(categoryColor('Meat') === '#ef4444', 'meat color')
 assert(categoryColor('Unknown') === '#9ca3af', 'unknown color fallback')
 assert(categoryOrderIndex('Seafood') === 0, 'seafood first')
-assert(categoryOrderIndex('Condiments') === 7, 'legacy category sorts last')
+assert(categoryOrderIndex('Condiments') === PURCHASE_CATEGORIES.length, 'legacy category sorts after standard categories')
 const ordered = sortCategories(['Others', 'Condiments', 'Meat', 'Seafood'])
 assert(ordered[0] === 'Seafood' && ordered[1] === 'Meat', 'sort puts standard categories first')
 assert(ordered[ordered.length - 1] === 'Condiments', 'legacy sorts after Others')
@@ -134,6 +135,8 @@ assert(isValidItemName('Chicken'), 'valid name')
 assert(!isValidItemName('   '), 'whitespace name invalid')
 assert(isValidQuantity(2.3), 'positive qty valid')
 assert(!isValidQuantity(0), 'zero qty invalid')
+assert(isValidUnit('kg'), 'non-empty unit valid')
+assert(!isValidUnit('   '), 'blank unit invalid')
 assert(isValidPrice(null), 'null price valid (unset)')
 assert(isValidPrice(0), 'zero price valid')
 assert(!isValidPrice(-1), 'negative price invalid')
@@ -160,8 +163,32 @@ assert(shiftDays('2026-06-16', -6) === '2026-06-10', 'shiftDays -6')
 assert(shiftDays('2026-03-01', -1) === '2026-02-28', 'shiftDays crosses month')
 assert(monthStart('2026-06-16') === '2026-06-01', 'monthStart')
 
+// ── Cross-day verification ──
+section('12. cross-day verification date')
+const carriedPurchase = {
+  id: 301,
+  date: '2026-06-29',
+  status: 'pending_verification',
+  created_at: '2026-06-29T03:15:00.000Z',
+  verified_by_name: null,
+  verified_at: null,
+  received_quantity: null,
+}
+const acceptedPurchase = projectAcceptedVerification(carriedPurchase, {
+  businessDate: '2026-07-01',
+  verifiedByName: 'Bruce',
+  verifiedAt: '2026-07-01T02:00:00.000Z',
+  receivedQuantity: 3,
+})
+assert(acceptedPurchase.date === '2026-07-01', 'verification assigns the processing business date')
+assert(acceptedPurchase.created_at === carriedPurchase.created_at, 'verification preserves original submission timestamp')
+assert(acceptedPurchase.status === 'verified', 'verification marks record verified')
+assert(acceptedPurchase.verified_by_name === 'Bruce', 'verification records verifier')
+assert(acceptedPurchase.verified_at === '2026-07-01T02:00:00.000Z', 'verification records verification timestamp')
+assert(acceptedPurchase.received_quantity === 3, 'verification records received quantity')
+
 // ── Cost Ratio KPI math ──
-section('12. costRatio')
+section('13. costRatio')
 assert(costRatio(500, 2000) === 25, '500/2000 = 25%')
 assert(costRatio(0, 2000) === 0, '0 purchase = 0%')
 assert(costRatio(700, 2000) === 35, '700/2000 = 35%')
@@ -170,21 +197,22 @@ assert(costRatio(100, null) === null, 'null revenue → null')
 assert(costRatio(null, 2000) === 0, 'null purchase treated as 0')
 assert(costRatio(333, 1000) === 33.3, 'rounds to 1 decimal')
 
-section('13. ratioStatus thresholds')
-assert(ratioStatus(25) === 'good', '25% good')
+section('14. ratioStatus thresholds')
+assert(ratioStatus(25) === 'excellent', '25% excellent (≤25)')
+assert(ratioStatus(25.1) === 'good', 'above 25% enters good band')
 assert(ratioStatus(30) === 'good', '30% good (≤30)')
 assert(ratioStatus(32) === 'warning', '32% warning')
 assert(ratioStatus(35) === 'warning', '35% warning (≤35)')
 assert(ratioStatus(40) === 'bad', '40% bad')
 assert(ratioStatus(null) === 'na', 'null → na')
 
-section('14. KPI labels + target')
+section('15. KPI labels + target')
 assert(COST_RATIO_TARGET === 30, 'target is 30%')
 assert(statusLabel('good') === 'Good', 'good label')
 assert(statusLabel('na') === 'No data', 'na label')
 
 // ── Purchase checklist optimistic completion ──
-section('15. checklist optimistic completion')
+section('16. checklist optimistic completion')
 const checklistItem = {
   id: 88,
   name: '菜心',
@@ -204,6 +232,7 @@ const tempRecord = createOptimisticPurchaseRecord({
   today: '2026-06-17',
   unitPrice: 15,
   supplier: null,
+  quantity: checklistItem.quantity,
 })
 assert(tempRecord.id === -1, 'optimistic record uses temporary id')
 assert(tempRecord.total_price === 15, 'optimistic record computes total')
