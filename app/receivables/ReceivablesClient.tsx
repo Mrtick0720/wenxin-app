@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase/client'
 import ReceivableDetail from './ReceivableDetail'
 import { FullPageSpinner } from '../components/Spinner'
 import ReceivableForm from './ReceivableForm'
+import { buildBentoPaymentUpdates } from '@/lib/receivables/bentoPayment'
 
 const statusConfig: Record<string, { label: string; bg: string; text: string }> = {
   outstanding: { label: 'Outstanding', bg: 'bg-orange-100', text: 'text-orange-700' },
@@ -30,9 +31,10 @@ function fmtDate(d: string) {
 
 type BentoOrderLite = { id: number; customer_name: string | null; date: string; items: string | null; amount: number | null; quantity: number | null }
 type BentoOwed = { customer: string; amount: number; orders: BentoOrderLite[] }
+type BentoDateGroup = { date: string; total: number; orders: BentoOrderLite[] }
 
-function groupByDate(orders: BentoOrderLite[]): { date: string; total: number; orders: BentoOrderLite[] }[] {
-  const map = new Map<string, { date: string; total: number; orders: BentoOrderLite[] }>()
+function groupByDate(orders: BentoOrderLite[]): BentoDateGroup[] {
+  const map = new Map<string, BentoDateGroup>()
   for (const o of orders) {
     const g = map.get(o.date) ?? { date: o.date, total: 0, orders: [] }
     g.total += Number(o.amount || 0)
@@ -57,6 +59,9 @@ export default function ReceivablesClient() {
   // the bento order Paid. Tap a customer to see the individual orders.
   const [bentoOwed, setBentoOwed] = useState<BentoOwed[]>([])
   const [bentoDetail, setBentoDetail] = useState<BentoOwed | null>(null)
+  const [paymentTarget, setPaymentTarget] = useState<BentoDateGroup | null>(null)
+  const [paymentSaving, setPaymentSaving] = useState(false)
+  const [paymentError, setPaymentError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     const [res, bento] = await Promise.all([
@@ -94,6 +99,42 @@ export default function ReceivablesClient() {
     setSelected(null)
     setEditTarget(item)
     setShowForm(true)
+  }
+
+  async function confirmBentoPayment() {
+    if (!paymentTarget || paymentSaving || !canWrite) return
+    setPaymentSaving(true)
+    setPaymentError(null)
+
+    try {
+      const updates = buildBentoPaymentUpdates(paymentTarget.orders)
+      const results = await Promise.all(updates.map(({ id, ...values }) =>
+        supabase.from('bento_orders').update(values).eq('id', id),
+      ))
+      const failed = results.find(result => result.error)
+      if (failed?.error) {
+        setPaymentError(failed.error.message || 'Failed to confirm payment.')
+        return
+      }
+
+      const paidIds = new Set(updates.map(update => update.id))
+      setBentoDetail(current => {
+        if (!current) return null
+        const remainingOrders = current.orders.filter(order => !paidIds.has(order.id))
+        if (remainingOrders.length === 0) return null
+        return {
+          ...current,
+          orders: remainingOrders,
+          amount: remainingOrders.reduce((sum, order) => sum + Number(order.amount || 0), 0),
+        }
+      })
+      setPaymentTarget(null)
+      await load()
+    } catch {
+      setPaymentError('Network error. Please check your connection.')
+    } finally {
+      setPaymentSaving(false)
+    }
   }
 
   const rowBg = (i: number) => i % 2 === 1 ? '#f9fafb' : '#ffffff'
@@ -245,10 +286,22 @@ export default function ReceivablesClient() {
                 </div>
                 <div className="px-4 py-2 overflow-y-auto">
                   {groupByDate(bentoDetail.orders).map(g => (
-                    <div key={g.date} className="mb-3">
-                      <div className="flex items-baseline justify-between gap-3 py-1.5 border-b border-gray-100">
+                    <div key={g.date} className="mb-4">
+                      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-gray-100">
                         <span className="text-xs font-bold text-gray-600">{fmtDate(g.date)}</span>
-                        <span className="tabular-nums text-xs font-semibold text-gray-400 flex-shrink-0">{fmt(g.total)}</span>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="tabular-nums text-xs font-semibold text-gray-400">{fmt(g.total)}</span>
+                          {canWrite && (
+                            <button
+                              type="button"
+                              aria-label={`Confirm payment for ${fmtDate(g.date)}`}
+                              onClick={() => { setPaymentError(null); setPaymentTarget(g) }}
+                              className="rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 active:opacity-70"
+                            >
+                              Confirm payment
+                            </button>
+                          )}
+                        </div>
                       </div>
                       {g.orders.map(o => (
                         <div key={o.id} className="flex items-baseline justify-between gap-3 py-2 pl-3 border-l-2 border-gray-100 ml-0.5">
@@ -259,7 +312,58 @@ export default function ReceivablesClient() {
                     </div>
                   ))}
                 </div>
-                <div className="px-4 pt-2 text-[11px] text-gray-400">Mark each order Paid in Bento to settle.</div>
+                <div className="px-4 pt-2 text-[11px] text-gray-400">Confirm payment by delivery date to settle.</div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+        {paymentTarget && bentoDetail && typeof document !== 'undefined' && createPortal(
+          <div
+            className="fixed inset-0 flex items-center justify-center px-6"
+            role="presentation"
+            style={{ zIndex: 2147483647, background: 'rgba(17,24,39,0.55)' }}
+            onClick={() => { if (!paymentSaving) setPaymentTarget(null) }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="confirm-bento-payment-title"
+              className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl"
+              onClick={event => event.stopPropagation()}
+            >
+              <div id="confirm-bento-payment-title" className="text-lg font-bold text-gray-900">
+                Confirm received payment
+              </div>
+              <div className="mt-3 rounded-2xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                <div className="font-semibold text-gray-900">{bentoDetail.customer}</div>
+                <div className="mt-1">{fmtDate(paymentTarget.date)} · {paymentTarget.orders.length} order{paymentTarget.orders.length === 1 ? '' : 's'}</div>
+                <div className="mt-2 text-xl font-bold text-orange-500">{fmt(paymentTarget.total)}</div>
+              </div>
+              <div className="mt-3 text-sm text-gray-500">
+                This will mark all orders for this date as paid.
+              </div>
+              {paymentError && (
+                <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-600">{paymentError}</div>
+              )}
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  disabled={paymentSaving}
+                  onClick={() => setPaymentTarget(null)}
+                  className="rounded-xl bg-gray-100 px-4 py-3 text-sm font-semibold text-gray-600 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={paymentSaving}
+                  onClick={confirmBentoPayment}
+                  className="rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {paymentSaving ? 'Processing…' : 'Confirm'}
+                </button>
               </div>
             </div>
           </div>,
