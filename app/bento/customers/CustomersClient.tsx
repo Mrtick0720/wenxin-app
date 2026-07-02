@@ -1,12 +1,13 @@
 'use client'
 
-import { lazy, Suspense, useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import BackButton from '../../components/BackButton'
 import { supabase } from '@/lib/supabase/client'
 import { useStaff } from '@/app/components/StaffProvider'
 import { useNavigation } from '../../components/NavigationStack'
 import { FullPageSpinner } from '@/app/components/Spinner'
+import { getCurrentPackageUsage, type CustomerOrderForUsage } from '@/lib/customerPackageUsage'
 
 const loadCustomerDetailPage = () => import('@/app/bento/customers/[id]/page')
 const CustomerDetailPage = lazy(loadCustomerDetailPage)
@@ -37,11 +38,10 @@ export type Customer = {
 export default function CustomersClient() {
   const staff = useStaff()
   const router = useRouter()
-  const { push } = useNavigation()
+  const { push, currentPath } = useNavigation()
   const [customers, setCustomers] = useState<Customer[]>([])
-  // Delivered portions (completed = date on/before today) summed per customer
-  // name, so balance packages show real meals delivered, not the stored count.
-  const [deliveredByName, setDeliveredByName] = useState<Map<string, number>>(new Map())
+  const [orders, setOrders] = useState<CustomerOrderForUsage[]>([])
+  const [today, setToday] = useState('')
   const [loading, setLoading] = useState(true)
 
   // Role gate — equivalent to requireRole('owner','manager','front_desk')
@@ -52,24 +52,25 @@ export default function CustomersClient() {
   }, [staff, router])
 
   // Fetch customers — RLS on bento_customers enforces the same access control
-  async function loadCustomers() {
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuching' })
+  const loadCustomers = useCallback(async () => {
+    const currentDay = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kuching' })
     const [custRes, ordRes] = await Promise.all([
       supabase.from('bento_customers').select('*').order('name'),
       supabase.from('bento_orders').select('customer_name,date,quantity,status'),
     ])
     setCustomers((custRes.data || []) as Customer[])
-
-    const delivered = new Map<string, number>()
-    for (const o of (ordRes.data || []) as { customer_name?: string; date: string; quantity?: number; status: string }[]) {
-      if (!o.customer_name || o.status === 'canceled' || o.date > today) continue
-      const key = o.customer_name.trim().toLowerCase()
-      delivered.set(key, (delivered.get(key) ?? 0) + (o.quantity ?? 1))
-    }
-    setDeliveredByName(delivered)
+    setOrders((ordRes.data || []) as CustomerOrderForUsage[])
+    setToday(currentDay)
     setLoading(false)
-  }
-  useEffect(() => { void loadCustomers() }, [])
+  }, [])
+
+  // Stack pages stay mounted underneath their detail page. Refetch when this
+  // layer becomes current again so renewals, edits, and status changes appear.
+  useEffect(() => {
+    // The state updates happen after the Supabase requests resolve.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (currentPath === '/bento/customers') void loadCustomers()
+  }, [currentPath, loadCustomers])
 
   useEffect(() => {
     void loadCustomerDetailPage()
@@ -83,7 +84,7 @@ export default function CustomersClient() {
     // Mirror the detail page: "used" = real delivered portions (non-cancelled
     // orders on/before today), measured against the opening balance (purchased −
     // overuse offset). Overuse shows explicitly instead of a negative "left".
-    const used = deliveredByName.get(c.name.trim().toLowerCase()) ?? 0
+    const used = getCurrentPackageUsage(orders, c.name, c.start_date || '0000-01-01', today)
     const openingBalance = Math.max(c.total_portions - (c.opening_offset ?? 0), 0)
     const remaining = Math.max(openingBalance - used, 0)
     const overused = Math.max(used - openingBalance, 0)
